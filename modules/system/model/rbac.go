@@ -3,13 +3,19 @@ package model
 import "time"
 
 type Role struct {
-	ID        uint64    `gorm:"primaryKey" json:"id"`
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	Status    int       `json:"status"`
-	TenantID   uint64    `json:"tenant_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID               uint64    `gorm:"primaryKey" json:"id"`
+	Code             string    `json:"code"`
+	Name             string    `json:"name"`
+	Sort             int       `json:"sort"`
+	DataScope        int       `json:"data_scope"`
+	DataScopeDeptIDs string    `json:"data_scope_dept_ids"`
+	Type             int       `json:"type"`
+	Remark           string    `json:"remark"`
+	Status           int       `json:"status"`
+	Deleted          bool      `gorm:"column:deleted" json:"-"`
+	TenantID         uint64    `json:"tenant_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Menu struct {
@@ -23,6 +29,9 @@ type Menu struct {
 	Permission string    `json:"permission"`
 	Sort       int       `json:"sort"`
 	Status     int       `json:"status"`
+	Deleted    bool      `gorm:"column:deleted" json:"-"`
+	Updater    string    `json:"updater,omitempty"`
+	Creator    string    `json:"creator,omitempty"`
 	TenantID   uint64    `json:"tenant_id"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
@@ -41,4 +50,3 @@ type RoleMenu struct {
 	MenuID   uint64 `json:"menu_id"`
 	TenantID uint64 `json:"tenant_id"`
 }
-

@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `system_oauth2_access_token` (
+  `id`            BIGINT       NOT NULL AUTO_INCREMENT,
+  `user_id`       BIGINT       NOT NULL COMMENT '用户编号',
+  `user_type`     TINYINT      NOT NULL COMMENT '用户类型 1管理员 2会员',
+  `access_token`  VARCHAR(255) NOT NULL COMMENT '访问令牌',
+  `refresh_token` VARCHAR(32)  NOT NULL DEFAULT '' COMMENT '刷新令牌',
+  `client_id`     VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '客户端编号',
+  `scopes`        VARCHAR(255) NOT NULL DEFAULT '' COMMENT '授权范围',
+  `expires_time`  DATETIME     NOT NULL COMMENT '过期时间',
+  `deleted`       BIT(1)       NOT NULL DEFAULT 0,
+  `creator`       VARCHAR(64)  NOT NULL DEFAULT '',
+  `create_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updater`       VARCHAR(64)  NOT NULL DEFAULT '',
+  `update_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `tenant_id`     BIGINT       NOT NULL DEFAULT 0 COMMENT '租户编号',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_access_token` (`access_token`),
+  UNIQUE KEY `uk_refresh_token` (`refresh_token`),
+  KEY `idx_user` (`user_id`, `user_type`),
+  KEY `idx_expires` (`expires_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OAuth2 访问令牌表';
