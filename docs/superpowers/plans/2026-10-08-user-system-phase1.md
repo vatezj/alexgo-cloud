@@ -437,12 +437,12 @@ func TestRefresh_Rotates(t *testing.T) {
 	}
 }
 
-// 注销必须同时打掉本地缓存（否则 60s 内仍放行）。
+// 注销后立即失效（无缓存层，直接反映 DB 行删除——踢人立即失效的验收项）。
 func TestRevoke_InvalidatesCache(t *testing.T) {
 	s := newTestService(t)
 	issued := mustIssue(t, s)
 	if _, err := s.Validate(context.Background(), issued.AccessToken); err != nil {
-		t.Fatal(err) // 先填缓存
+		t.Fatal(err) // 撤销前必须可用
 	}
 	if err := s.Revoke(context.Background(), issued.AccessToken); err != nil {
 		t.Fatalf("Revoke() error = %v", err)
@@ -506,6 +506,22 @@ func TestRefresh_AccessExpiredButWithinWindow(t *testing.T) {
 }
 
 const cfgRefreshDays = 7
+
+// 刷新窗口必须有上界：create_time 超过 refreshExpireDay → Refresh 必须失败
+// （若实现删除窗口校验行，本测试必须变红——钉死 refresh_expire_day 非死配置）。
+func TestRefresh_WindowExceeded(t *testing.T) {
+	s := newTestService(t)
+	issued := mustIssue(t, s)
+	tooOld := time.Now().AddDate(0, 0, -(cfgRefreshDays + 1))
+	if err := s.db.Model(&accessToken{}).
+		Where("access_token = ?", issued.AccessToken).
+		Update("create_time", tooOld).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Refresh(context.Background(), issued.RefreshToken); err == nil {
+		t.Error("refresh beyond window must fail")
+	}
+}
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -537,7 +553,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -561,17 +576,14 @@ type accessToken struct {
 
 func (accessToken) TableName() string { return "system_oauth2_access_token" }
 
-// cacheEntry：进程内缓存（60s TTL）。为什么需要缓存：校验是每请求路径，
-// 直查 DB 会让鉴权延迟绑定 DB；注销/刷新时同步删除对应 key 保证不放行已吊销 token。
-type cacheEntry struct {
-	claims   *Claims
-	expireAt time.Time
-}
-
+// Service 不做进程内缓存：校验恒查库（yudao 同款）。
+// 为什么不用 TTL 缓存：① cache-aside 存在 TOCTOU——Validate 读库后、写缓存前，
+// 可与 Revoke 交错把已吊销 token 重新写回；② 多进程部署时（member-server 校验、
+// system-server 踢人），进程内缓存让"踢人立即失效"最长延迟 60s，违背 spec 验收项。
+// 单表唯一索引点查的代价可接受，正确性优先。
 type Service struct {
-	db    *gorm.DB
-	cfg   *config.Config
-	cache sync.Map // access_token -> cacheEntry
+	db  *gorm.DB
+	cfg *config.Config
 }
 
 func NewService(db *gorm.DB, cfg *config.Config) *Service {
@@ -676,13 +688,6 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 	if accessTokenStr == "" {
 		return nil, errors.New("token: empty")
 	}
-	if v, ok := s.cache.Load(accessTokenStr); ok {
-		e := v.(cacheEntry)
-		if time.Now().Before(e.expireAt) {
-			return e.claims, nil
-		}
-		s.cache.Delete(accessTokenStr)
-	}
 	var row accessToken
 	err := s.db.WithContext(ctx).
 		Where("access_token = ?", accessTokenStr).
@@ -721,12 +726,6 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 	default:
 		return nil, fmt.Errorf("token: unknown user type")
 	}
-	// 缓存 TTL 60s，但不越过 token 自身过期时刻。
-	ttl := 60 * time.Second
-	if left := time.Until(row.ExpiresTime); left < ttl {
-		ttl = left
-	}
-	s.cache.Store(accessTokenStr, cacheEntry{claims: claims, expireAt: time.Now().Add(ttl)})
 	return claims, nil
 }
 
@@ -759,8 +758,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, er
 	if err != nil || time.Now().After(row.ExpiresTime) {
 		return nil, fmt.Errorf("token: invalid refresh token")
 	}
-	// 单次使用：旧 access 立即失效（清缓存 + 删行），旧 refresh 随行删除一并作废。
-	s.cache.Delete(row.AccessToken)
+	// 单次使用：旧 access 立即失效（删行），旧 refresh 随行删除一并作废。
 	if derr := s.db.WithContext(ctx).Where("id = ?", row.ID).Delete(&accessToken{}).Error; derr != nil {
 		return nil, derr
 	}
@@ -771,23 +769,12 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, er
 }
 
 func (s *Service) Revoke(ctx context.Context, accessTokenStr string) error {
-	s.cache.Delete(accessTokenStr)
 	return s.db.WithContext(ctx).
 		Where("access_token = ?", accessTokenStr).
 		Delete(&accessToken{}).Error
 }
 
 func (s *Service) RevokeAll(ctx context.Context, userType UserType, userID uint64) error {
-	var tokens []string
-	if err := s.db.WithContext(ctx).
-		Model(&accessToken{}).
-		Where("user_id = ? AND user_type = ?", userID, userType).
-		Pluck("access_token", &tokens).Error; err != nil {
-		return err
-	}
-	for _, tk := range tokens {
-		s.cache.Delete(tk)
-	}
 	return s.db.WithContext(ctx).
 		Where("user_id = ? AND user_type = ?", userID, userType).
 		Delete(&accessToken{}).Error
@@ -795,8 +782,10 @@ func (s *Service) RevokeAll(ctx context.Context, userType UserType, userID uint6
 
 // SweepExpired 清理过期超过 7 天的行（由调用方以 ticker 驱动，见 Task 11 注册）。
 func (s *Service) SweepExpired(ctx context.Context) error {
+	// 保留期与刷新窗口对齐（refreshExpire()，默认 7 天）：行存活期间 refresh 可用，
+	// 超窗后才清扫——改 refresh_expire_day 配置时两者同步漂移。
 	return s.db.WithContext(ctx).
-		Where("expires_time < ?", time.Now().Add(-7*24*time.Hour)).
+		Where("expires_time < ?", time.Now().Add(-s.refreshExpire())).
 		Delete(&accessToken{}).Error
 }
 ```
