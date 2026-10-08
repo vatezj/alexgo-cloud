@@ -2,13 +2,20 @@ package limiter_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/logging"
 
 	"alexGo-cloud/pkg/limiter"
 )
+
+func TestMain(m *testing.M) {
+	redis.SetLogger(&logging.VoidLogger{}) // 静默 go-redis 内部日志，保证测试输出纯净
+	os.Exit(m.Run())
+}
 
 func newTestLimiter(t *testing.T) (*limiter.RateLimiter, *miniredis.Miniredis) {
 	t.Helper()
