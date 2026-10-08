@@ -8,6 +8,14 @@
 make run
 ```
 
+## 测试
+
+```bash
+make test
+```
+
+测试为进程内单元测试，不依赖 MySQL/Redis/NATS。
+
 ## 迁移
 
 ```bash
@@ -80,6 +88,10 @@ npm run dev
 - username: admin
 - password: admin123
 
+## 前端目录
+
+- `admin-web/`：管理后台（Vue 3 + Naive UI + Vite），唯一维护的前端
+
 ## Kubernetes
 
 ```bash
@@ -93,6 +105,9 @@ make load-test
 ```
 
 ## pprof
+
+默认关闭（`server.pprof_enabled: false`）。本地 `alexgo-server/configs/config.yaml` 已开启；
+生产环境请保持关闭，调试时临时开启并限制网络访问。
 
 ```bash
 make pprof
