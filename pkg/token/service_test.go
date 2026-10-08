@@ -92,12 +92,12 @@ func TestRefresh_Rotates(t *testing.T) {
 	}
 }
 
-// 注销必须同时打掉本地缓存（否则 60s 内仍放行）。
+// 注销后立即失效（无缓存层，直接反映 DB 行删除——踢人立即失效的验收项）。
 func TestRevoke_InvalidatesCache(t *testing.T) {
 	s := newTestService(t)
 	issued := mustIssue(t, s)
 	if _, err := s.Validate(context.Background(), issued.AccessToken); err != nil {
-		t.Fatal(err) // 先填缓存
+		t.Fatal(err) // 撤销前必须可用
 	}
 	if err := s.Revoke(context.Background(), issued.AccessToken); err != nil {
 		t.Fatalf("Revoke() error = %v", err)
@@ -161,3 +161,19 @@ func TestRefresh_AccessExpiredButWithinWindow(t *testing.T) {
 }
 
 const cfgRefreshDays = 7
+
+// 刷新窗口必须有上界：create_time 超过 refreshExpireDay → Refresh 必须失败
+// （若实现删除窗口校验行，本测试必须变红——钉死 refresh_expire_day 非死配置）。
+func TestRefresh_WindowExceeded(t *testing.T) {
+	s := newTestService(t)
+	issued := mustIssue(t, s)
+	tooOld := time.Now().AddDate(0, 0, -(cfgRefreshDays + 1))
+	if err := s.db.Model(&accessToken{}).
+		Where("access_token = ?", issued.AccessToken).
+		Update("create_time", tooOld).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Refresh(context.Background(), issued.RefreshToken); err == nil {
+		t.Error("refresh beyond window must fail")
+	}
+}
