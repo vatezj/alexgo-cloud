@@ -104,7 +104,27 @@ func TestParseToken_AlgNoneRejected(t *testing.T) {
 }
 
 func TestParseToken_EmptySecretConfig(t *testing.T) {
-	if _, err := auth.ParseToken("whatever", cfgWithSecret("")); err == nil {
+	// 用空密钥签名一个合法且未过期的 token：若 jwt.go 缺少空 secret 守卫，
+	// 该 token 会被空密钥成功验签并返回 claims（测试失败），
+	// 从而对守卫分支产生真实的回归保护，而非依赖输入本身非法。
+	type okClaims struct {
+		auth.Claims
+		jwt.RegisteredClaims
+	}
+	forged, err := jwt.NewWithClaims(jwt.SigningMethodHS256, okClaims{
+		Claims: auth.Claims{UserID: 1, Username: "alice"},
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}).SignedString([]byte(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ParseToken(forged, cfgWithSecret("")); err == nil {
 		t.Error("empty secret config should fail")
+	}
+	// nil 配置同样必须在解析前被拒。
+	if _, err := auth.ParseToken(forged, nil); err == nil {
+		t.Error("nil config should fail")
 	}
 }
