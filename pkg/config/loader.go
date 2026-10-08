@@ -17,8 +17,8 @@ import (
 // 3) 模块配置以“命名空间”合并：例如 system/config.yaml 中的 jwt_secret 会合并到 key "system.jwt_secret"
 //
 // 环境变量覆盖：
-// - viper.AutomaticEnv() 允许使用 SERVER_HTTP_ADDR 等方式覆盖（通过 replacer "." -> "_"）
-// - 额外 BindEnv：DB_DSN / HTTP_ADDR / GRPC_ADDR / NATS_URL / REDIS_ADDR
+// - viper.AutomaticEnv() + BindEnv：HTTP_ADDR / GRPC_ADDR / NATS_URL / REDIS_ADDR
+// - applyEnvOverrides（Unmarshal 之后）：DB_DSN / JWT_SECRET / REDIS_PASSWORD（密钥类，保证压过模块 yaml）
 //
 // 容器友好：
 // - 当 config 文件不存在时不会报错（ConfigFileNotFoundError 直接忽略），便于仅靠 env 启动。
@@ -98,5 +98,28 @@ func LoadGlobalConfig() (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config failed: %w", err)
 	}
+	applyEnvOverrides(&cfg)
 	return &cfg, nil
+}
+
+// applyEnvOverrides 在 Unmarshal 之后用显式环境变量覆盖安全敏感配置。
+//
+// 为什么不用 viper.AutomaticEnv / BindEnv：
+// 1) AutomaticEnv 的隐式映射不会参与 Unmarshal（viper 已知行为）；
+// 2) 模块配置合并使用 v.Set()，其优先级高于 env，会导致 env 永远输给模块 yaml。
+// 因此对 K8s Secret / Compose 注入的密钥变量，在这里做最终覆盖（仅非空时生效）。
+func applyEnvOverrides(cfg *Config) {
+	pairs := []struct {
+		env string
+		set func(v string)
+	}{
+		{"DB_DSN", func(v string) { cfg.Database.DSN = v }},
+		{"JWT_SECRET", func(v string) { cfg.System.JWTSecret = v }},
+		{"REDIS_PASSWORD", func(v string) { cfg.Redis.Password = v }},
+	}
+	for _, p := range pairs {
+		if v := os.Getenv(p.env); v != "" {
+			p.set(v)
+		}
+	}
 }
