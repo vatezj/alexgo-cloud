@@ -28,11 +28,11 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
 
-      - name: Generate proto + CRUD
+      - name: Generate proto
         run: make generate-all
 
       - name: Test
-        run: go test ./... -v
+        run: go test ./... -v -race
 
       - name: Build
         run: make build

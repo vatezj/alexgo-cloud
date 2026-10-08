@@ -23,6 +23,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: alexgo-config
+          env:
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: DB_DSN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: JWT_SECRET
           volumeMounts:
             - name: alexgo-config
               mountPath: /app/alexgo-server/configs
@@ -40,12 +51,14 @@ spec:
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: alexgo-config
           configMap:

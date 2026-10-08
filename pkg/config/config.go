@@ -17,6 +17,9 @@ type Config struct {
 		HTTPAddr string `mapstructure:"http_addr"`
 		// GRPCAddr：gRPC 监听地址（用于模块拆分后的独立 gRPC server），示例 ":50051"。
 		GRPCAddr string `mapstructure:"grpc_addr"`
+		// PprofEnabled：是否挂载 /debug/pprof/**。
+		// 生产默认关闭：pprof 端点会泄露命令行参数、堆栈与运行时信息，应仅在本地/内网调试时开启。
+		PprofEnabled bool `mapstructure:"pprof_enabled"`
 	} `mapstructure:"server"`
 
 	// Database：数据库连接信息与连接池参数。

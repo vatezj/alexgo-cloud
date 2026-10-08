@@ -1,6 +1,7 @@
 server:
   http_addr: ":8080"
   grpc_addr: ":50051"
+  pprof_enabled: true
 
 database:
   dsn: "root:root@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"

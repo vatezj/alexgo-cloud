@@ -7,7 +7,9 @@ data:
     server:
       http_addr: {{ .Values.config.server.httpAddr | quote }}
       grpc_addr: {{ .Values.config.server.grpcAddr | quote }}
+      pprof_enabled: {{ .Values.config.server.pprofEnabled }}
     database:
+      # dsn 兜底：仅作 Secret 未配置时的回退，生产应由环境变量 DB_DSN（Secret）覆盖
       dsn: {{ .Values.config.database.dsn | quote }}
     migrate:
       auto: {{ .Values.config.migrate.auto }}
@@ -38,6 +40,7 @@ data:
       threshold: {{ .Values.config.breaker.threshold }}
       open_second: {{ .Values.config.breaker.openSecond }}
     system:
+      # jwt_secret 兜底：仅作 Secret 未配置时的回退，生产应由环境变量 JWT_SECRET（Secret）覆盖
       jwt_secret: {{ .Values.config.system.jwtSecret | quote }}
       default_admin_role: {{ .Values.config.system.defaultAdminRole | quote }}
       default_admin_username: {{ .Values.config.system.defaultAdminUsername | quote }}

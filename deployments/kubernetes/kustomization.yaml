@@ -6,6 +6,7 @@ namespace: alexgo-cloud
 resources:
   - namespace.yaml
   - configmap.yaml
+  - secret.yaml
   - deployment.yaml
   - service.yaml
   - hpa.yaml
