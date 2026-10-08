@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/model"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
@@ -180,6 +181,10 @@ func (r *roleMenuRepo) ListMenuIDsByRoleIDs(ctx context.Context, tenantID uint64
 	if len(roleIDs) == 0 {
 		return nil, nil
 	}
+	// 显式 tenantID 为权威：把 ctx 租户对齐到 tenantID，隔离插件注入的条件与显式过滤同值。
+	// 否则调用者 ctx 是别的租户时（如全局重建读取另一租户角色的菜单），插件按 ctx 注入
+	// tenant_id=<ctx> 与这里 tenant_id=<tenantID> 矛盾 → 0 行 → 该角色菜单读不到。
+	ctx = tenant.WithTenantID(ctx, tenantID)
 	var items []model.RoleMenu
 	if err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND role_id IN ?", tenantID, roleIDs).

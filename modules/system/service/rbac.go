@@ -399,7 +399,8 @@ func (s *permissionService) RebuildPolicies(ctx context.Context) error {
 	}
 	roleMenus := make(map[uint64][]*model.Menu, len(roles))
 	for _, r := range roles {
-		menuIDs, merr := s.roleMenuRepo.ListMenuIDsByRoleIDs(ctx, r.TenantID, []uint64{r.ID})
+		roleCtx := tenant.WithTenantID(ctx, r.TenantID)
+		menuIDs, merr := s.roleMenuRepo.ListMenuIDsByRoleIDs(roleCtx, r.TenantID, []uint64{r.ID})
 		if merr != nil {
 			return merr
 		}
@@ -433,7 +434,8 @@ func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint
 	if err != nil {
 		return err
 	}
-	menuIDs, err := s.roleMenuRepo.ListMenuIDsByRoleIDs(ctx, r.TenantID, []uint64{r.ID})
+	roleCtx := tenant.WithTenantID(ctx, r.TenantID)
+	menuIDs, err := s.roleMenuRepo.ListMenuIDsByRoleIDs(roleCtx, r.TenantID, []uint64{r.ID})
 	if err != nil {
 		return err
 	}
