@@ -51,6 +51,11 @@ func LoadGlobalConfig() (*Config, error) {
 	v.SetDefault("breaker.open_second", 30)
 	v.SetDefault("system.default_admin_username", "admin")
 	v.SetDefault("system.default_admin_password", "admin123")
+	v.SetDefault("auth.mode", "token")
+	v.SetDefault("auth.access_expire_hour", 2)
+	v.SetDefault("auth.refresh_expire_day", 7)
+	v.SetDefault("deployment.mode", "mono")
+	v.SetDefault("system_grpc_addr", "127.0.0.1:50051")
 
 	// 常用 env 覆盖：兼容 docker-compose / k8s secret 注入。
 	_ = v.BindEnv("server.http_addr", "HTTP_ADDR")
@@ -119,6 +124,8 @@ func applyEnvOverrides(cfg *Config) {
 		{"DB_DSN", func(v string) { cfg.Database.DSN = v }},
 		{"JWT_SECRET", func(v string) { cfg.System.JWTSecret = v }},
 		{"REDIS_PASSWORD", func(v string) { cfg.Redis.Password = v }},
+		{"DEPLOYMENT_MODE", func(v string) { cfg.Deployment.Mode = v }},
+		{"SYSTEM_GRPC_ADDR", func(v string) { cfg.SystemGRPCAddr = v }},
 	}
 	for _, p := range pairs {
 		if v := os.Getenv(p.env); v != "" {

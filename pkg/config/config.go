@@ -94,4 +94,19 @@ type Config struct {
 		DefaultAdminUsername string `mapstructure:"default_admin_username"`
 		DefaultAdminPassword string `mapstructure:"default_admin_password"`
 	} `mapstructure:"system"`
+
+	// Auth：OAuth2 令牌与认证模式。
+	Auth struct {
+		Mode            string `mapstructure:"mode"` // token | jwt（回滚开关）
+		AccessExpireHour int    `mapstructure:"access_expire_hour"`
+		RefreshExpireDay int    `mapstructure:"refresh_expire_day"`
+	} `mapstructure:"auth"`
+
+	// Deployment：mono=单体一键启动（默认）；micro=双服务部署形态。
+	Deployment struct {
+		Mode string `mapstructure:"mode"`
+	} `mapstructure:"deployment"`
+
+	// SystemGRPCAddr：member-server → system-server TokenService 的地址。
+	SystemGRPCAddr string `mapstructure:"system_grpc_addr"`
 }
