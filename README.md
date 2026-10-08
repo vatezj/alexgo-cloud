@@ -57,6 +57,11 @@ Helm 多环境 values：
 docker-compose -f deployments/docker-compose/docker-compose.monitor.yml up
 ```
 
+## 健康检查
+
+- `GET /health`：存活探针（不依赖 DB，livenessProbe 用）
+- `GET /health/ready`：就绪探针（ping DB，失败 503，readinessProbe 用）
+
 ## 后台前端（Vben Admin + Naive UI 风格）
 
 目录：admin-web/

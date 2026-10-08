@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/pprof"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/fx"
+	"gorm.io/gorm"
 
 	"github.com/casbin/casbin/v2"
 
@@ -44,8 +46,10 @@ type HTTPServerParams struct {
 	// RateLimiter：Redis Token Bucket 限流器；nil 表示禁用限流（Allow() 会默认放行）。
 	RateLimiter *limiter.RateLimiter `optional:"true"`
 	// Breaker：熔断器；nil 表示禁用熔断（请求不会因熔断提前失败）。
-	Breaker *circuitbreaker.CircuitBreaker `optional:"true"`
-	OperateRecorder audit.OperateRecorder `optional:"true"`
+	Breaker         *circuitbreaker.CircuitBreaker `optional:"true"`
+	OperateRecorder audit.OperateRecorder          `optional:"true"`
+	// DB：用于 /health/ready 探活（fx 由 database.NewDB 注入）。
+	DB *gorm.DB
 	// Modules：模块列表（group 聚合）。
 	Modules []Module `group:"modules"`
 }
@@ -80,9 +84,28 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		m.RegisterRoutes(api)
 	}
 
-	// 健康检查：不依赖 DB/Redis/NATS 是否可用（生产中可扩展为更严格的 readiness）。
+	// 健康检查（liveness）：不依赖 DB/Redis/NATS 是否可用，进程活着即 200。
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "alexGo-cloud"})
+	})
+	// readiness：依赖探活。DB ping 失败返回 503，供 K8s readinessProbe 摘流。
+	// 注意：livenessProbe 继续使用 /health（不依赖 DB），避免 DB 故障触发全员重启。
+	r.GET("/health/ready", func(c *gin.Context) {
+		if p.DB == nil {
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "db": "unconfigured"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		sqlDB, err := p.DB.DB()
+		if err == nil {
+			err = sqlDB.PingContext(ctx)
+		}
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "db": "down"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "db": "up"})
 	})
 	// /metrics：Prometheus 拉取点（Prometheus server scrape）。
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -102,7 +125,8 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 //
 // 路由结构约定：
 // - /api/**：业务 API（模块自己注册）
-// - /health：健康检查（liveness/readiness 探针）
+// - /health：liveness 探针（不依赖 DB）
+// - /health/ready：readiness 探针（ping DB，失败 503）
 // - /metrics：Prometheus 指标
 // - /debug/pprof/**：pprof 性能分析（默认关闭，由 server.pprof_enabled 控制）
 func StartHTTPServer(p HTTPServerParams) {
