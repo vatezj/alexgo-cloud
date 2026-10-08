@@ -21,5 +21,6 @@ func NewGRPCConn(p GRPCConnParams) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// NewClient 取代已弃用的 Dial（golangci-lint SA1019）：同样懒连接，不做 I/O。
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }

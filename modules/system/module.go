@@ -1,17 +1,33 @@
 package system
 
 import (
+	"context"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/system/controller/admin"
 	"alexGo-cloud/modules/system/controller/app"
+	"alexGo-cloud/modules/system/grpcserver"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/audit"
+	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
 	"alexGo-cloud/pkg/tenant"
+	"alexGo-cloud/pkg/token"
+)
+
+// tokenServiceRegistrar 把 TokenServiceImpl 放进 group:"grpc_registrars"
+// （由 grpcserver.StartGRPCServer 聚合注册；mono 模式该 group 无人消费、惰性不构造）。
+// 提取为包级变量：正/反向干跑测试与 FxModule 共用同一对象，防装配漂移。
+var tokenServiceRegistrar = fx.Annotate(
+	grpcserver.NewTokenServiceImpl,
+	fx.As(new(grpcserver.Registrar)),
+	fx.ResultTags(`group:"grpc_registrars"`),
 )
 
 var FxModule = fx.Module("system",
@@ -58,8 +74,40 @@ var FxModule = fx.Module("system",
 		// AuthDeps 经 HTTPServerParams(optional) 消费；member 端不提供该实现。
 		service.NewDataScopeLoader,
 		func(l *service.DataScopeLoader) tenant.ScopeLoader { return l },
+		// T11：TokenService 的 gRPC Registrar（As 版本单条，同时满足组注册）。
+		tokenServiceRegistrar,
 	),
 	fx.Invoke(service.StartSeeder),
+	// 过期令牌清扫 ticker（T11，仿 outbox.StartRelay 的 Fx 生命周期模式）。
+	// 关键：OnStart 的 ctx 在启动完成即被 cancel——goroutine 不能监听它（会秒退），
+	// 改为独立 runCtx，并在 OnStop 时 cancel 保证退出（OnStart 只负责起 goroutine）。
+	fx.Invoke(func(lc fx.Lifecycle, svc *token.Service) {
+		runCtx, cancel := context.WithCancel(context.Background())
+		lc.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				go func() {
+					ticker := time.NewTicker(time.Hour)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-runCtx.Done():
+							return
+						case <-ticker.C:
+							// 扫描用 Background：不受请求/生命周期 ctx 影响。
+							if err := svc.SweepExpired(context.Background()); err != nil && logger.Log != nil {
+								logger.Log.Warn("token sweep failed", zap.Error(err))
+							}
+						}
+					}
+				}()
+				return nil
+			},
+			OnStop: func(context.Context) error {
+				cancel()
+				return nil
+			},
+		})
+	}),
 	fx.Provide(
 		fx.Annotate(
 			NewSystemModule,

@@ -18,12 +18,18 @@ type Registrar interface {
 type GRPCServerParams struct {
 	fx.In
 
-	LC         fx.Lifecycle
-	Cfg        *config.Config
-	Registrars []Registrar `group:"grpc_registrars" optional:"true"`
+	LC  fx.Lifecycle
+	Cfg *config.Config
+	// Registrars 聚合 group:"grpc_registrars"。注意：dig 值组不允许 optional 标记
+	//（`optional:"true"` 会在构图期硬报 "value groups cannot be optional"）——
+	// 空组自然解析为空切片，语义与 optional 等价，无需也不能加 optional。
+	Registrars []Registrar `group:"grpc_registrars"`
 }
 
 func StartGRPCServer(p GRPCServerParams) error {
+	if p.Cfg.Deployment.Mode != "micro" {
+		return nil // mono 模式不起 gRPC（本地直调 token.Service，无需监听）
+	}
 	addr := p.Cfg.Server.GRPCAddr
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
