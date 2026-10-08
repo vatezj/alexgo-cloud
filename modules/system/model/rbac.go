@@ -13,6 +13,8 @@ type Role struct {
 	Remark           string    `json:"remark"`
 	Status           int       `json:"status"`
 	Deleted          bool      `gorm:"column:deleted" json:"-"`
+	Creator          string    `json:"creator,omitempty"`
+	Updater          string    `json:"updater,omitempty"`
 	TenantID         uint64    `json:"tenant_id"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

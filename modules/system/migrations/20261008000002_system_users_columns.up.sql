@@ -8,6 +8,6 @@ ALTER TABLE `system_users`
   ADD COLUMN `avatar`     VARCHAR(100) NOT NULL DEFAULT '' COMMENT '头像' AFTER `sex`,
   ADD COLUMN `login_ip`   VARCHAR(50)  NOT NULL DEFAULT '' COMMENT '最近登录IP' AFTER `status`,
   ADD COLUMN `login_date` DATETIME     NULL COMMENT '最近登录时间' AFTER `login_ip`,
-  ADD COLUMN `deleted`    BIT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删，仅落列）' AFTER `login_date`,
+  ADD COLUMN `deleted`    TINYINT(1)   NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删，仅落列）' AFTER `login_date`,
   ADD COLUMN `creator`    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '创建者' AFTER `deleted`,
   ADD COLUMN `updater`    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '更新者' AFTER `creator`;

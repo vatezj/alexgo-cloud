@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `expire_time`   DATETIME    NULL COMMENT '过期时间（NULL=永久）',
   `account_limit` INT         NOT NULL DEFAULT -1 COMMENT '账号额度 -1不限',
   `domain`        VARCHAR(64) NOT NULL DEFAULT '' COMMENT '绑定域名（登录解析用，可空）',
-  `deleted`       BIT(1)      NOT NULL DEFAULT 0,
+  `deleted`       TINYINT(1)  NOT NULL DEFAULT 0,
   `creator`       VARCHAR(64) NOT NULL DEFAULT '',
   `create_time`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updater`       VARCHAR(64) NOT NULL DEFAULT '',

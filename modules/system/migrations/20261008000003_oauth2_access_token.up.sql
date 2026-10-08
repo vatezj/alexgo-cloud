@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS `system_oauth2_access_token` (
   `client_id`     VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '客户端编号',
   `scopes`        VARCHAR(255) NOT NULL DEFAULT '' COMMENT '授权范围',
   `expires_time`  DATETIME     NOT NULL COMMENT '过期时间',
-  `deleted`       BIT(1)       NOT NULL DEFAULT 0,
+  `deleted`       TINYINT(1)   NOT NULL DEFAULT 0,
   `creator`       VARCHAR(64)  NOT NULL DEFAULT '',
   `create_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updater`       VARCHAR(64)  NOT NULL DEFAULT '',
