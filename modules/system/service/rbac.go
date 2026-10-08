@@ -369,10 +369,13 @@ func (s *permissionService) UserRoutes(ctx context.Context, userID uint64) ([]*V
 	return build(0), nil
 }
 
-// RebuildPolicies 按当前 role_menus 全量重建 Casbin p 策略。
-// tid=0（启动/seed）拉全部租户角色，否则仅当前租户；逐角色装配其菜单后统一重建。
+// RebuildPolicies 按 role_menus **全局**重建 Casbin p 策略。
+// 重建是全局一致性操作（RebuildAllPolicies 先清空全部 p），故恒取全租户 scope：
+// roles 用 ListAll、menus 用 ListAll，完全忽略 ctx 的租户编号——否则单租户的
+// 菜单/角色变更会误删其他租户的策略。逐角色装配菜单时仍用该角色自身 tid
+// 查 role_menu（role_menu 行是租户隔离的）。
 // 注：ListMenuIDsByRoleIDs 现签名为聚合扁平切片（非 roleID→menuIDs 映射），
-// 故按角色自身租户逐角色查询以获得精确的 role→menus 映射。
+// 故按角色逐个查询以获得精确的 role→menus 映射。
 func (s *permissionService) RebuildPolicies(ctx context.Context) error {
 	if s.enforcer == nil {
 		return nil
@@ -380,34 +383,22 @@ func (s *permissionService) RebuildPolicies(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	tid := tenant.TenantIDFromContext(ctx)
-	var roles []*model.Role
-	var err error
-	if tid == 0 {
-		roles, err = s.roleRepo.ListAll(ctx)
-	} else {
-		roles, err = s.roleRepo.List(ctx, tid)
-	}
+	roles, err := s.roleRepo.ListAll(ctx)
 	if err != nil {
 		return err
 	}
-	if len(roles) == 0 {
-		// 无角色也要清空旧策略（防止残留）。
-		return RebuildAllPolicies(ctx, s.enforcer, nil, nil)
+	menus, err := s.menuRepo.ListAll(ctx)
+	if err != nil {
+		return err
 	}
-
-	// 菜单按租户缓存，避免逐角色重复查询。
-	menusByTenant := make(map[uint64][]*model.Menu, 4)
+	byID := make(map[uint64]*model.Menu, len(menus))
+	for _, m := range menus {
+		if m != nil {
+			byID[m.ID] = m
+		}
+	}
 	roleMenus := make(map[uint64][]*model.Menu, len(roles))
 	for _, r := range roles {
-		ms, ok := menusByTenant[r.TenantID]
-		if !ok {
-			ms, err = s.menuRepo.List(ctx, r.TenantID)
-			if err != nil {
-				return err
-			}
-			menusByTenant[r.TenantID] = ms
-		}
 		menuIDs, merr := s.roleMenuRepo.ListMenuIDsByRoleIDs(ctx, r.TenantID, []uint64{r.ID})
 		if merr != nil {
 			return merr
@@ -415,22 +406,21 @@ func (s *permissionService) RebuildPolicies(ctx context.Context) error {
 		if len(menuIDs) == 0 {
 			continue
 		}
-		idset := make(map[uint64]bool, len(menuIDs))
-		for _, mid := range menuIDs {
-			idset[mid] = true
-		}
 		var bound []*model.Menu
-		for _, m := range ms {
-			if m != nil && idset[m.ID] {
+		for _, mid := range menuIDs {
+			if m, ok := byID[mid]; ok {
 				bound = append(bound, m)
 			}
 		}
 		roleMenus[r.ID] = bound
 	}
+	// 空 roles 也照走：RebuildAllPolicies 会清空全部 p（防残留）后不加任何规则。
 	return RebuildAllPolicies(ctx, s.enforcer, roles, roleMenus)
 }
 
-// RebuildRolePolicies 单角色重建（AssignMenus/Delete 触发）。
+// RebuildRolePolicies 单角色重建（AssignMenus 触发）。
+// 只清该角色 sub 的 p 再按其菜单重建，不清全局，故不涉跨租户误删；
+// 菜单实体用 ListAll 取（按 menuIDs 过滤），避免与 ctx 租户耦合。
 func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint64) error {
 	if s.enforcer == nil {
 		return nil
@@ -449,7 +439,7 @@ func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint
 	}
 	var menus []*model.Menu
 	if len(menuIDs) > 0 {
-		all, merr := s.menuRepo.List(ctx, r.TenantID)
+		all, merr := s.menuRepo.ListAll(ctx)
 		if merr != nil {
 			return merr
 		}

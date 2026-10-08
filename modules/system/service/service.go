@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -59,6 +60,12 @@ func (s *userService) GetUserByID(ctx context.Context, id uint64) (*model.User, 
 func (s *userService) CreateUser(ctx context.Context, username, nickname, password string) (*model.User, error) {
 	if username == "" || password == "" {
 		return nil, fmt.Errorf("username or password empty")
+	}
+	// 用户名禁止含 ':'：角色 sub 命名空间为 "{tid}:role:{code}"，用户 sub 为
+	// "{tid}:{username}"。若用户名可含 ':'，建号 "role:admin" 会得到
+	// "{tid}:role:admin"，与管理员角色 sub 撞车 → casbin g(x,x) 恒等 → 提权。
+	if strings.Contains(username, ":") {
+		return nil, fmt.Errorf("username/nickname must not contain ':'")
 	}
 	tid := tenant.TenantIDFromContext(ctx)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -59,6 +60,12 @@ func (s *memberService) Register(ctx context.Context, mobile, password, nickname
 	}
 	if len(password) < 8 {
 		return nil, fmt.Errorf("password too short (min 8)")
+	}
+	// 昵称禁止含 ':'：角色 sub 命名空间为 "{tid}:role:{code}"，用户 sub 为
+	// "{tid}:{nickname}"。若昵称可含 ':'，注册昵称 "role:admin" 会得到
+	// "{tid}:role:admin"，与管理员角色 sub 撞车 → casbin g(x,x) 恒等 → 提权。
+	if strings.Contains(nickname, ":") {
+		return nil, fmt.Errorf("username/nickname must not contain ':'")
 	}
 	tid := tenant.TenantIDFromContext(ctx)
 	if _, err := s.repo.GetByMobile(ctx, tid, mobile); err == nil {

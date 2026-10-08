@@ -22,6 +22,8 @@ type RoleRepository interface {
 
 type MenuRepository interface {
 	List(ctx context.Context, tenantID uint64) ([]*model.Menu, error)
+	// ListAll 返回全部租户的菜单（全局重建 Casbin 策略用，无租户过滤）。
+	ListAll(ctx context.Context) ([]*model.Menu, error)
 	GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.Menu, error)
 	Create(ctx context.Context, m *model.Menu) error
 	Update(ctx context.Context, m *model.Menu) error
@@ -96,6 +98,16 @@ func (r *menuRepo) List(ctx context.Context, tenantID uint64) ([]*model.Menu, er
 	var items []*model.Menu
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
+		Order("sort asc, id asc").
+		Find(&items).Error
+	return items, err
+}
+
+// ListAll 返回全部租户的菜单。IgnoreTenant 确保不被隔离插件按 ctx 租户过滤，
+// 保证“全量”语义（全局重建 Casbin 策略用）。
+func (r *menuRepo) ListAll(ctx context.Context) ([]*model.Menu, error) {
+	var items []*model.Menu
+	err := r.db.WithContext(gormplugin.IgnoreTenant(ctx)).
 		Order("sort asc, id asc").
 		Find(&items).Error
 	return items, err

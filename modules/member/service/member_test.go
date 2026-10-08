@@ -119,6 +119,21 @@ func TestRegister_DuplicateMobile(t *testing.T) {
 	}
 }
 
+// 昵称含 ':' 必须拒绝（I2 提权修复）：角色 sub 命名空间为 "{tid}:role:{code}"，
+// 若昵称可含 ':'，注册 "role:admin" 会得到用户 sub "{tid}:role:admin"，
+// 与管理员角色 sub 撞车 → casbin g(x,x) 恒等 → 继承全部管理员策略。
+func TestRegister_NicknameWithColon_Rejected(t *testing.T) {
+	repo := newMemRepo()
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
+	if _, err := svc.Register(context.Background(), "13800000000", "pw123456", "role:admin", "1.2.3.4"); err == nil {
+		t.Error("nickname containing ':' must be rejected")
+	}
+	// 合法昵称仍可注册。
+	if _, err := svc.Register(context.Background(), "13800000001", "pw123456", "role-admin", "1.2.3.4"); err != nil {
+		t.Errorf("normal nickname must register: %v", err)
+	}
+}
+
 func TestLogin_WrongPassword(t *testing.T) {
 	repo := newMemRepo()
 	svc := NewMemberService(repo, &fakeIssuer{}, nil)

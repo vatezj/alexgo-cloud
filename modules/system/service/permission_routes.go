@@ -44,9 +44,13 @@ func permPrefix(permission string) string {
 	return permission
 }
 
-// roleSub：Casbin 主体一律带租户前缀，杜绝跨租户同 code 串策略。
+// roleSub：Casbin 角色主体带租户前缀 + 独立命名空间（"{tid}:role:{code}"），
+// 杜绝跨租户同 code 串策略，并避免与用户 sub（"{tid}:{username}"）命名空间撞车——
+// casbin g(x,x)=true 恒等，若二者同命名空间，成员自注册昵称 "admin" 即得到
+// "{tid}:admin"，与管理员角色 sub 相等 → 继承其全部策略（提权）。
+// 用户 sub 格式不变（"{tid}:{username}" / 空 username 退化 "{tid}:{userid}"）。
 func roleSub(tenantID uint64, roleCode string) string {
-	return fmt.Sprintf("%d:%s", tenantID, roleCode)
+	return fmt.Sprintf("%d:role:%s", tenantID, roleCode)
 }
 
 // savePolicy 落盘；无 adapter（内存 enforcer，单测）时跳过——SavePolicy 对 nil adapter 会 panic。
@@ -65,8 +69,32 @@ func loadPolicy(e *casbin.Enforcer) error {
 	return e.LoadPolicy()
 }
 
+// clearPPolicies 清空全部 p 策略（保留 g 绑定）。
+// casbin v2.135.0 的 RemoveFilteredPolicy(0) 因 fieldValues 为空被拒
+//（internal_api.go removeFilteredPolicyWithoutNotify: "fieldValues requires at
+// least one parameter"），故改用 GetPolicy + RemovePolicy 循环：
+// GetPolicy/RemovePolicy 仅触及 p 段，g（用户→角色绑定）不受影响。
+func clearPPolicies(e *casbin.Enforcer) error {
+	if e == nil {
+		return nil
+	}
+	rules, err := e.GetPolicy()
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		// RemovePolicy 单 []string 形参走 RemoveNamedPolicy 的 strSlice 快捷分支。
+		if _, err := e.RemovePolicy(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // RebuildAllPolicies 全量重建：roleMenus 为 roleID → 该角色的菜单集合。
 // 启动重灌与菜单变更调用；调用方负责从 role_menus 表装配 roleMenus。
+// 重建是**全局一致性操作**：先清空全部 p（各租户），再按传入 roles 全量重建，
+// 因此调用方必须传全租户的 roles（roleRepo.ListAll），否则会误删其他租户策略。
 func RebuildAllPolicies(ctx context.Context, e *casbin.Enforcer,
 	roles []*model.Role, roleMenus map[uint64][]*model.Menu) error {
 	if e == nil {
@@ -75,7 +103,7 @@ func RebuildAllPolicies(ctx context.Context, e *casbin.Enforcer,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if _, err := e.RemoveFilteredPolicy(0); err != nil {
+	if err := clearPPolicies(e); err != nil {
 		return err
 	}
 	for _, r := range roles {

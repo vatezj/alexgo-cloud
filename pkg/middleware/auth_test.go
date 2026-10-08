@@ -307,16 +307,16 @@ func TestAuthMiddleware_TokenMode_CasbinPrefix(t *testing.T) {
 }
 
 // T3 移交②：claims.Username 为空 → sub 退化为 {tid}:{userid}，仍能命中以 userid 为
-// sub 的 g 绑定（g("1:9","1:editor") → p("1:editor",…)）。若未退化则 sub="1:" 不命中。
+// sub 的 g 绑定（g("1:9","1:role:editor") → p("1:role:editor",…)）。若未退化则 sub="1:" 不命中。
 func TestAuthMiddleware_EmptyUsername_SubUserIDFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := testCfg()
 	cfg.Auth.Mode = "token"
 	enf := newEnforcer(t)
-	if _, err := enf.AddGroupingPolicy("1:9", "1:editor"); err != nil {
+	if _, err := enf.AddGroupingPolicy("1:9", "1:role:editor"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := enf.AddPolicy("1:editor", "/api/admin/system/users", "GET"); err != nil {
+	if _, err := enf.AddPolicy("1:role:editor", "/api/admin/system/users", "GET"); err != nil {
 		t.Fatal(err)
 	}
 
