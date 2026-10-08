@@ -37,36 +37,88 @@
 - OAuth2 **授权码模式**对外开放（`/oauth2/authorize` 给第三方应用授权）——本期 Token 体系只覆盖**本系统自家客户端**的登录签发
 - Redis 缓存 Token（先直查 DB，预留缓存位）
 
-## 2. 总体架构
+## 2. 总体架构（双微服务，方案 A 已确认）
+
+> **架构形态决策（2026-10-08 评审确认）**：拆为 **两个微服务进程**——`system-server` 与 `member-server`；
+> **OAuth2 认证中心内聚在 system-server**（Token 表 + 签发/刷新/注销的权威），member-server 登录成功后经
+> **gRPC 委托签发**。一期**同库不同进程**（共享一个 MySQL），真分库留二期。**不引入 API 网关**，用
+> 路径前缀分流（vite proxy / Ingress path 规则）。
 
 ```
-                        ┌──────────────────────────────────────────┐
-   管理后台 (admin-web) │  /api/admin/**                          │
-                        │  AuthMiddleware(JWT/Token+Casbin)       │
-   用户 App / 小程序     │  TenantMiddleware(租户解析)              │
-   /api/app/**          └──────────────────────────────────────────┘
-                                     │
-             ┌───────────────────────┼───────────────────────┐
-             ▼                       ▼                       ▼
-      system 模块               member 模块             pkg 层公共能力
-   AdminUser 管理            MemberUser 注册/登录      token(签发/校验/刷新)
-   租户管理(CRUD)            短信登录(自动注册)          tenant(解析+gorm隔离插件)
-   RBAC / 审计               三方绑定 / 小程序登录      sms / social 可插拔Provider
-             │                       │                       │
-             └───────────────────────┴───────────────────────┘
-                                     ▼
-                    system_users / member_user / system_oauth2_access_token / tenants
-                    （user_id + user_type + tenant_id 三维度贯穿）
+                          admin-web / 用户App / 小程序
+                                   │ HTTP
+                    ┌──────────────┴───────────────┐
+                    │  路径前缀分流（无网关）         │
+   /api/app/member/**│                    其余全部  │
+                    ▼                              ▼
+        ┌───────────────────────┐      ┌────────────────────────┐
+        │  member-server :8081  │      │  system-server :8080   │
+        │  （独立进程/二进制）     │      │  （现有 alexgo-server） │
+        │  modules/member 路由   │      │  modules/system + order│
+        │  · 会员注册/登录        │ gRPC │  · 管理员用户/租户/RBAC │
+        │  · 短信/三方/小程序登录  │─────▶│  · OAuth2 认证中心      │
+        │  · 会员管理(admin API) │      │    IssueToken/Refresh/ │
+        │  · Token 校验(共享表)   │      │    Revoke + Token 表    │
+        └───────────┬───────────┘      └───────────┬────────────┘
+                    │                              │
+                    └──────────────┬───────────────┘
+                                   ▼
+              同一 MySQL：system_users / member_user /
+              system_oauth2_access_token / tenants / roles / menus …
+              （user_id + user_type + tenant_id 三维度贯穿）
 ```
 
-**模块落位**：
-- `modules/system`（扩展）：管理员用户增强、租户管理、Token 签发的 admin 侧
-- `modules/member`（新建）：会员用户、短信登录/注册、三方绑定、小程序登录
-- `pkg/token`（新建）：Token 签发/校验/刷新/注销（两端共用）
-- `pkg/tenant`（扩展）：租户解析 + gorm 查询隔离插件
-- `pkg/sms`、`pkg/social`（新建）：可插拔 Provider 接口 + mock 实现
+### 2.1 服务职责与边界
 
-**全局枚举 `UserType`**（放 `pkg/token` 或 `pkg/utype`，避免循环依赖）：
+| | system-server（:8080） | member-server（:8081） |
+| --- | --- | --- |
+| 进程入口 | `alexgo-server/cmd/main.go`（现有） | `modules/member/cmd/main.go`（新建，独立二进制） |
+| 业务模块 | `modules/system` + `modules/order` | `modules/member` |
+| HTTP 路由 | `/api/admin/system/**`、`/api/admin/tenants/**`、`/api/app/system/**` | `/api/app/member/**`（会员登录族）、`/api/admin/member/**`（会员管理——模块自持双端路由，见 4.1） |
+| gRPC | **服务端**：`TokenService`（监听 `grpc_addr`） | **客户端**：调 TokenService |
+| 认证 | 本地签发 + 本地校验（共享 token 表） | 登录验证后委托签发；请求校验走共享 token 表 |
+| 中间件 | 全套（Casbin/审计/限流/熔断） | Tenant + Auth(Token) + 日志/指标（**无 Casbin**，会员无 RBAC） |
+
+### 2.2 gRPC 契约（`modules/system/api/rpc/token.proto`）
+
+```protobuf
+service TokenService {
+  rpc IssueToken(IssueTokenRequest) returns (IssueTokenResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (IssueTokenResponse);
+  rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse);
+}
+message IssueTokenRequest {
+  int64 user_id = 1;      // 已在 member-server 侧验证通过的用户
+  int32 user_type = 2;    // 1=Admin(仅 system 内部用) 2=Member
+  int64 tenant_id = 3;
+  string client_id = 4;   // alexgo-app / alexgo-admin
+}
+message IssueTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64  expires_in = 3;  // 秒
+}
+```
+
+- 生成：`make proto`（现有 `gen_proto.sh` 链路）
+- 连接：`pkg/client`（现有 grpc_conn/registry），配置 `system_grpc_addr`；**gRPC 不可用时登录接口 fail-fast 503 + 有限重试**，不降级签发
+- 本地调用优化：system-server 进程内**直接注入本地 `token.Service`**（不走自环 gRPC）——沿用现有 `fx.Decorate` 模式
+
+### 2.3 HTTP 分流（不引入网关）
+
+- **本地开发**：`admin-web/vite.config.ts` proxy 按前缀分流——`/api/app/member` → `localhost:8081`，其余 → `localhost:8080`
+- **K8s/Helm**：Ingress path 规则 `/api/app/member` → member-service，其余 → system-service；compose 前端按同样规则配两条 upstream
+- 网关（统一入口/鉴权/限流下沉）列为**二期以后**的演进项，本期不做
+
+### 2.4 代码落位（共享能力放 pkg，两服务复用）
+
+- `modules/system`（扩展）：管理员用户增强、租户管理、**TokenService gRPC 服务端**
+- `modules/member`（新建）：会员用户、短信/三方/小程序登录、会员管理、`cmd/main.go` 独立进程
+- `pkg/token`（新建）：签发/校验/刷新/注销核心库——**两服务共用**（system 是权威写入方，member 只读校验 + gRPC 委托写入）
+- `pkg/tenant`（扩展）：租户解析 + gorm 查询隔离插件（两服务都挂）
+- `pkg/sms`、`pkg/social`（新建）：可插拔 Provider + mock（主要在 member 侧使用）
+
+**全局枚举 `UserType`**（放 `pkg/token`，避免循环依赖）：
 
 ```go
 type UserType int8
@@ -247,8 +299,9 @@ ALTER TABLE `menus`
 | app | `POST /api/app/member/auth/*` | 会员侧全部登录入口（新增） |
 
 **代码落位**：
-- `modules/member/`：model/member_user.go、repository、service（Register/Login/SmsLogin/SocialLogin…）、controller/admin（会员管理）、controller/app（登录入口）、module.go（Fx 装配 + 路由注册 + migration source）
+- `modules/member/`（**member-server 服务的业务模块**）：model/member_user.go、repository、service（Register/Login/SmsLogin/SocialLogin…）、controller/admin（会员管理）、controller/app（登录入口）、module.go（Fx 装配 + 路由注册 + migration source）、`cmd/main.go`（独立进程：HTTP :8081 + 中间件 + token gRPC 客户端注入）
 - `modules/system`：User 模型补字段、Admin 用户 CRUD 扩展（dept/post/email/sex 等）
+- **会员管理接口归属**：`/api/admin/member/**` 由 member-server 承载（模块自持 admin+app 两端路由，与现有 module 模式一致）；admin-web 按 2.3 前缀分流（`/api/admin/member` 也走 :8081）
 - 现有 seed（admin/admin123）逻辑迁移至 `system_users`
 
 **双端登录返回统一结构**：`{ token, refresh_token, expires_in }`。
@@ -260,13 +313,16 @@ ALTER TABLE `menus`
 - `user_id + user_type + tenant_id` 集中在一张表，审计/查询方便
 - 代价：每次鉴权查 DB → 中间件加**进程内 LRU 缓存（60s TTL）**缓解，预留 Redis 升级位
 
-**流程**：
-1. **签发** `pkg/token.Service`：生成随机 `access_token`（crypto/rand 32 字节 base64url，DB 存明文哈希前缀校验——简化为 yudao 式直接存明文，依赖 DB 访问控制；spec 选**存明文**与参考图一致）、`refresh_token`（32 位随机）、写 `system_oauth2_access_token`，默认 access 2h、refresh 7d（配置化）；`client_id` 按端固定——admin 侧 `alexgo-admin`、app 侧 `alexgo-app`，`scopes` 暂置 `all`
-2. **校验**：`AuthMiddleware` 改为查 Token 表（经 LRU）→ 得 `(user_id, user_type, tenant_id)` → 按 user_type 加载对应用户表 → 注入 context（`claims` 结构扩展 `user_type`）→ Casbin 照旧
-3. **刷新**：`POST /api/app/**/auth/refresh`，refresh_token 换新 access（旧 access 作废）
-4. **注销**：`POST .../auth/logout` 删行；admin 侧"踢人"= 按 user_id 删其全部 Token
-5. **过期清扫**：复用 Outbox Relay 式后台 ticker，每小时删 `expires_time < now - 7d` 的行
-6. **兼容期**：现有 JWT 中间件代码保留在 `pkg/auth/jwt.go`（测试已覆盖），`AuthMiddleware` 内切换为 Token 校验；配置 `auth.mode: token | jwt`（默认 token，回滚开关）
+**流程（双服务形态，方案 A）**：
+1. **签发（权威在 system-server）** `pkg/token.Service`：生成随机 `access_token`（crypto/rand 32 字节 base64url，DB 存明文——与参考图一致，依赖 DB 访问控制）、`refresh_token`（32 位随机）、写 `system_oauth2_access_token`，默认 access 2h、refresh 7d（配置化）；`client_id` 固定——admin 侧 `alexgo-admin`、app 侧 `alexgo-app`，`scopes` 暂置 `all`
+   - **system-server 本地登录**（管理员账号密码等）：进程内直接调 `token.Service`（`fx.Decorate` 注入，不走自环 gRPC）
+   - **member-server 登录**（账号/短信/三方/小程序验证通过后）：gRPC 调 `TokenService.IssueToken(user_type=2, …)` → 返回 token 对；gRPC 失败 → 登录接口 503（不降级）
+2. **校验（两服务各自本地做）**：`AuthMiddleware` 查共享 `system_oauth2_access_token` 表（经 LRU 缓存，60s）→ 得 `(user_id, user_type, tenant_id)` → 按 user_type 加载对应用户表 → 注入 context（`claims` 扩展 `user_type`）→ Casbin 仅 system-server 启用
+   - 依赖约束：一期两服务连**同一个 MySQL**（分进程不分库）；未来真分库时把校验替换为 gRPC introspection（`ValidateToken` 预留，不在一期）
+3. **刷新**：`POST /api/app/system/auth/refresh`（system 本地）与 `POST /api/app/member/auth/refresh`（member → gRPC `RefreshToken`）
+4. **注销/踢人**：统一落 system-server 权威——admin 侧踢人删行；member 的 logout 走 gRPC `RevokeToken`
+5. **过期清扫**：system-server 内复用 Outbox Relay 式 ticker，每小时删 `expires_time < now - 7d` 的行
+6. **兼容期**：`pkg/auth/jwt.go` 保留（测试覆盖）；配置 `auth.mode: token | jwt`（默认 token，回滚开关）
 
 ### 4.3 块③ 多租户 SaaS
 
@@ -336,6 +392,14 @@ ALTER TABLE `menus`
 ## 5. 配置扩展（config.yaml）
 
 ```yaml
+server:
+  http_addr: ":8080"     # member-server 用 ":8081"（modules/member/cmd 独立配置）
+  grpc_addr: ":50051"    # system-server 的 TokenService 监听地址
+
+# member-server → system-server 的 gRPC 直连地址（服务发现一期用静态地址，
+# registry consul:// 为演进项）
+system_grpc_addr: "127.0.0.1:50051"
+
 auth:
   mode: token            # token | jwt（回滚开关）
   access_expire_hour: 2
@@ -370,6 +434,8 @@ social:
 | `OperateLog` / `Audit` | `creator/updater` 自动注入（补列后可真实落库） |
 | 现有 JWT 测试（pkg/auth 7包之一） | 保留不删；`pkg/token` 新增独立测试包 |
 | admin-web 登录 | 响应结构变化：`{token, refresh_token, expires_in}` → 前端 `stores/auth.ts` 适配 |
+| admin-web 代理 | vite proxy 按前缀分流：`/api/app/member`、`/api/admin/member` → :8081，其余 → :8080（K8s Ingress 同规则） |
+| 部署清单 | compose/k8s/helm 从 1 Deployment 变 2（system/member 各自 Service；helm values 增 `member.*` 段）；member-server 无 Casbin/审计中间件 |
 
 ## 7. 测试策略（沿用项目铁律：进程内、零外部依赖）
 
@@ -379,13 +445,14 @@ social:
 - `pkg/sms`：Mock Provider + 频控；`pkg/social`：Mock Provider 全流程
 - `AuthMiddleware`：Token 模式 401/200/踢人失效/租户不符 403
 - 块⑦：`AssignMenus` 后 Casbin 策略重建断言（角色获得/失去权限立即生效）、跨租户同 code 角色策略不串（sub 前缀）、`data_scope` 五种范围各一条 sqlite 查询断言、系统内置角色删除被拒
+- 双服务链路：TokenService gRPC 服务端单测 + member-server 侧 client 用 bufconn/内存 gRPC mock（IssueToken 成功/失败→503）；两服务对同一 token 的校验结果一致
 - 全量 `go test ./...`（CI 加 `-race` 已就位）
 
 ## 8. 实施分期（计划按期拆分）
 
 | 期 | 内容 | 交付判定 |
 | --- | --- | --- |
-| **一期** | 块①②③⑦：三表迁移 + member 模块骨架 + Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 + **权限管理对齐（Casbin 策略同步 / data_scope / 租户隔离 / role 补列）** | 双端登录走 Token 表；两租户数据互不可见且策略不串；踢人立即失效；**新角色分配菜单后端 API 立即可用**；全测试绿 |
+| **一期** | 块①②③⑦ + **双服务骨架**：三表迁移 + member-server 独立进程（cmd/main、:8081、vite/Ingress 分流）+ gRPC TokenService（Issue/Refresh/Revoke）+ Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 + **权限管理对齐（Casbin 策略同步 / data_scope / 租户隔离 / role 补列）** | 双端登录走 Token 表（member 经 gRPC 委托签发）；两服务独立进程各自可启动；两租户数据互不可见且策略不串；踢人立即失效；**新角色分配菜单后端 API 立即可用**；全测试绿 |
 | **二期** | 块④：SMS Provider + 验证码 + 短信登录/自动注册 | Mock 下全流程通过；频控生效 |
 | **三期** | 块⑤⑥：social Provider + 绑定/快登录 + 小程序登录 | Mock 下三方与小程序全流程通过 |
 
@@ -401,10 +468,13 @@ social:
 6. **`account_limit` 额度**：只做"创建用户时计数校验"，不做套餐/续费（预留 package_id）
 7. **Casbin sub 改造（块⑦）**：影响登录 g 绑定、种子策略、存量 `casbin_rule`——迁移采用"启动时清空 + 按 role_menus 重灌"策略，需确认可接受（现网 casbin_rule 仅种子数据，风险低）
 8. **策略生成粒度（块⑦）**：一期 `permission 前缀 → 路由前缀 keyMatch2`（粗粒度、实现快），二期可按路由注册表精确到 method——需要确认接受一期粒度
+9. **无网关的路径分流**：`/api/app/member`、`/api/admin/member` 两个前缀必须在 vite proxy、Ingress、compose 三处保持一致——漂移会导致 404；网关列入二期以后演进
+10. **同库约束**：一期两服务共享一个 MySQL（分进程不分库），`system_oauth2_access_token` 的读写一致性依赖单库；真分库时需把 member 侧校验切到 gRPC introspection（`ValidateToken` 预留）
+11. **gRPC 故障语义**：system-server 不可达时 member-server 登录/刷新 fail-fast 503（有限重试后放弃），**不降级本地签发**——需要确认接受该可用性取舍
 
 ## 10. 里程碑
 
-- M1（一期）：双用户 + Token + 多租户 + 权限管理对齐（块⑦）落地，admin-web 登录适配完成
+- M1（一期）：双微服务骨架（system-server / member-server）+ 双用户 + Token（gRPC 委托签发）+ 多租户 + 权限管理对齐（块⑦）落地，admin-web 分流与登录适配完成
 - M2（二期）：短信登录全链路
 - M3（三期）：三方 + 小程序登录
 - 每个 M 完成即合并 `main` 并更新 README/架构文档对应章节
