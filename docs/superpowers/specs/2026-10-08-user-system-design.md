@@ -128,6 +128,36 @@ const (
 )
 ```
 
+### 2.5 双运行模式（单体一键启动 保留，已确认）
+
+> 本项目立身之本是"模块化单体、统一启动"——开发/CI/demo **不得**被迫起两个进程。
+> 切换机制沿用现有 `fx.Decorate` 模式（与 `UserService` 本地↔gRPC 切换同构），**同一套模块代码，只换注入**。
+
+```
+单体模式（默认，deployment.mode: mono）         双服务模式（部署形态，deployment.mode: micro）
+┌────────────────────────────────────┐   ┌──────────────────────────────────────────┐
+│ alexgo-server 单进程 :8080          │   │ system-server :8080 (+gRPC :50051)        │
+│ system + order + member 全部装配    │   │ member-server :8081（独立二进制）          │
+│ Token：本地签发，不起 gRPC           │   │ Token：member 经 gRPC 委托（Decorate 注入） │
+│ 路由：/api/** 全在 8080             │   │ 分流：vite/Ingress 按前缀                 │
+│ vite proxy：全部指向 8080，不分流    │   │                                            │
+└────────────────────────────────────┘   └──────────────────────────────────────────┘
+```
+
+| | 单体模式（mono，**默认**） | 双服务模式（micro） |
+| --- | --- | --- |
+| 启动 | `make run` 一条命令 | `make run-system` + `make run-member` |
+| gRPC TokenService | 不启动；`fx.Decorate` 把 `TokenIssuer` 换成本地 `pkg/token.Service` | member-server 连 `system_grpc_addr` |
+| 路由 | 全部 `:8080`，`/api/app/member/**` 等无需分流 | 前缀分流（2.3） |
+| 适用 | 本地开发、CI、demo、小规模生产 | 目标部署形态（k8s/helm 默认 micro） |
+
+**接口切分**：`modules/member` 只依赖 `TokenIssuer` 接口——mono 进程注入本地实现，member-server 进程注入 gRPC client（`pkg/client`）。两实现共享 `pkg/token` 的请求/响应结构。
+
+**约定**：
+- `deployment.mode` 默认 `mono`；helm/k8s/compose 显式 `micro`
+- mono 模式下 `modules/member/cmd/main.go` 不参与，但代码始终编译在同一模块内（`go build ./...` 覆盖）
+- 单体模式也跑同一套 Token 表与租户隔离（行为一致，只有进程拓扑不同）
+
 ## 3. 数据模型
 
 > 命名说明：采用参考图中的 yudao 表名（`system_` 前缀、`member_user` 单数）。
@@ -392,9 +422,12 @@ ALTER TABLE `menus`
 ## 5. 配置扩展（config.yaml）
 
 ```yaml
+deployment:
+  mode: mono             # mono=单体一键启动（默认）；micro=双服务（member 独立进程+gRPC）
+
 server:
   http_addr: ":8080"     # member-server 用 ":8081"（modules/member/cmd 独立配置）
-  grpc_addr: ":50051"    # system-server 的 TokenService 监听地址
+  grpc_addr: ":50051"    # system-server 的 TokenService 监听地址（仅 micro 模式启动）
 
 # member-server → system-server 的 gRPC 直连地址（服务发现一期用静态地址，
 # registry consul:// 为演进项）
@@ -452,7 +485,7 @@ social:
 
 | 期 | 内容 | 交付判定 |
 | --- | --- | --- |
-| **一期** | 块①②③⑦ + **双服务骨架**：三表迁移 + member-server 独立进程（cmd/main、:8081、vite/Ingress 分流）+ gRPC TokenService（Issue/Refresh/Revoke）+ Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 + **权限管理对齐（Casbin 策略同步 / data_scope / 租户隔离 / role 补列）** | 双端登录走 Token 表（member 经 gRPC 委托签发）；两服务独立进程各自可启动；两租户数据互不可见且策略不串；踢人立即失效；**新角色分配菜单后端 API 立即可用**；全测试绿 |
+| **一期** | 块①②③⑦ + **双服务骨架 + 双运行模式**：三表迁移 + member 模块 + member-server 独立进程（cmd/main、:8081、vite/Ingress 分流）+ gRPC TokenService（Issue/Refresh/Revoke）+ `TokenIssuer` 接口（mono/micro 双注入）+ Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 + **权限管理对齐（Casbin 策略同步 / data_scope / 租户隔离 / role 补列）** | **单体模式 `make run` 一条命令全起（默认）**；双服务模式两进程各自可启动且 member 经 gRPC 委托签发；双端登录走 Token 表；两租户数据互不可见且策略不串；踢人立即失效；**新角色分配菜单后端 API 立即可用**；全测试绿 |
 | **二期** | 块④：SMS Provider + 验证码 + 短信登录/自动注册 | Mock 下全流程通过；频控生效 |
 | **三期** | 块⑤⑥：social Provider + 绑定/快登录 + 小程序登录 | Mock 下三方与小程序全流程通过 |
 
@@ -468,9 +501,10 @@ social:
 6. **`account_limit` 额度**：只做"创建用户时计数校验"，不做套餐/续费（预留 package_id）
 7. **Casbin sub 改造（块⑦）**：影响登录 g 绑定、种子策略、存量 `casbin_rule`——迁移采用"启动时清空 + 按 role_menus 重灌"策略，需确认可接受（现网 casbin_rule 仅种子数据，风险低）
 8. **策略生成粒度（块⑦）**：一期 `permission 前缀 → 路由前缀 keyMatch2`（粗粒度、实现快），二期可按路由注册表精确到 method——需要确认接受一期粒度
-9. **无网关的路径分流**：`/api/app/member`、`/api/admin/member` 两个前缀必须在 vite proxy、Ingress、compose 三处保持一致——漂移会导致 404；网关列入二期以后演进
-10. **同库约束**：一期两服务共享一个 MySQL（分进程不分库），`system_oauth2_access_token` 的读写一致性依赖单库；真分库时需把 member 侧校验切到 gRPC introspection（`ValidateToken` 预留）
-11. **gRPC 故障语义**：system-server 不可达时 member-server 登录/刷新 fail-fast 503（有限重试后放弃），**不降级本地签发**——需要确认接受该可用性取舍
+9. **无网关的路径分流（仅 micro 模式）**：`/api/app/member`、`/api/admin/member` 两个前缀必须在 vite proxy、Ingress、compose 三处保持一致——漂移会导致 404；**mono 模式不分流故开发期无此风险**；网关列入二期以后演进
+10. **同库约束（仅 micro 模式）**：两服务共享一个 MySQL（分进程不分库），`system_oauth2_access_token` 的读写一致性依赖单库；真分库时需把 member 侧校验切到 gRPC introspection（`ValidateToken` 预留）
+11. **gRPC 故障语义（仅 micro 模式）**：system-server 不可达时 member-server 登录/刷新 fail-fast 503（有限重试后放弃），**不降级本地签发**——需要确认接受该可用性取舍；mono 模式无此问题（本地直调）
+12. **双模式行为一致性**：mono/micro 只许有"进程拓扑"差异，不许有业务行为差异——用同一组测试跑两种注入方式（表驱动/接口 fake）钉住，防止只在一种模式下工作
 
 ## 10. 里程碑
 
