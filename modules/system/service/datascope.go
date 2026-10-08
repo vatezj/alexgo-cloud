@@ -19,22 +19,20 @@ import (
 type DataScopeLoader struct {
 	roleQuery    repository.RoleRepository
 	userRoleRepo repository.UserRoleRepository
-	userRepo     repository.UserRepository
 	deptRepo     repository.DeptRepository
 }
 
 // NewDataScopeLoader 构造加载器（依赖经 modules/system/module.go 提供，
 // 以 tenant.ScopeLoader 接口映射进 Fx 图；member 端不提供 → nil → 不注入）。
+// deptID 由中间件从 token claims 传入，不需要 userRepo 查表——不注入无用依赖。
 func NewDataScopeLoader(
 	roleRepo repository.RoleRepository,
 	userRoleRepo repository.UserRoleRepository,
-	userRepo repository.UserRepository,
 	deptRepo repository.DeptRepository,
 ) *DataScopeLoader {
 	return &DataScopeLoader{
 		roleQuery:    roleRepo,
 		userRoleRepo: userRoleRepo,
-		userRepo:     userRepo,
 		deptRepo:     deptRepo,
 	}
 }
@@ -78,11 +76,8 @@ func (l *DataScopeLoader) Load(ctx context.Context, userID, deptID uint64) (tena
 
 // descendants 从 deptID 出发沿 parent_id 树收集自身+全部后代。
 // depts 全量一次查、内存建树——租户内部门量级小，避免递归 SQL（跨库方言差异）。
-// deptID=0（未挂部门）或查询失败 → nil。
-//
-// 注意空集合语义（brief 原文的非对称，勿"顺手修"）：mode 2 空集合 → 插件显式 1=0
-// （看不到）；mode 4 空集合 → 插件不加部门条件（租户内不限）。
-// 故 dept 查询失败时 mode 4 是 fail-open——该取舍记录在 task-10-report concerns。
+// deptID=0（未挂部门）或查询失败 → nil；插件对 mode 4 空集合做 fail-closed（显式 1=0，
+// 与 mode 2 空集合同处理）——故 dept 树异常时方向是"更少数据"，不会放开成租户内全量。
 func (l *DataScopeLoader) descendants(ctx context.Context, tid, deptID uint64) []uint64 {
 	all, err := l.deptRepo.List(ctx, tid)
 	if err != nil || deptID == 0 {

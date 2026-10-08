@@ -123,6 +123,11 @@ func Register(db *gorm.DB, opts Options) error {
 					st.AddClause(clause.Where{Exprs: []clause.Expression{
 						clause.IN{Column: clause.Column{Name: "dept_id"}, Values: deptValues(ds.DeptIDs)},
 					}})
+				} else {
+					// 本部门及以下但部门未知（dept_id=0 / 树为空）→ 与 mode2 空集合同样 fail-closed。
+					st.AddClause(clause.Where{Exprs: []clause.Expression{
+						clause.Expr{SQL: "1 = 0"},
+					}})
 				}
 			case 5:
 				st.AddClause(clause.Where{Exprs: []clause.Expression{

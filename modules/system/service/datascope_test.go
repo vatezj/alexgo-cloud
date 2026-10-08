@@ -51,19 +51,6 @@ func (m *memDeptRepo) Delete(_ context.Context, _ uint64, _ uint64) error {
 	return nil
 }
 
-// memUserRepo：UserRepository 测试替身（当前加载器不读用户表，仅满足构造签名）。
-type memUserRepo struct{}
-
-func (memUserRepo) List(context.Context, uint64) ([]*model.User, error)   { return nil, nil }
-func (memUserRepo) GetByID(context.Context, uint64, uint64) (*model.User, error) {
-	return nil, errors.New("not found")
-}
-func (memUserRepo) GetByUsername(context.Context, uint64, string) (*model.User, error) {
-	return nil, errors.New("not found")
-}
-func (memUserRepo) Create(context.Context, *model.User) error { return nil }
-func (memUserRepo) Update(context.Context, *model.User) error { return nil }
-
 func scopedCtx() context.Context { return tenant.WithTenantID(context.Background(), 1) }
 
 // seed 超管角色（DataScope=1，见 seed.go）→ 加载器得 Mode 1 全部。
@@ -74,7 +61,7 @@ func TestDataScopeLoader_SeedAdmin_Mode1(t *testing.T) {
 		t.Fatal(err)
 	}
 	ur := &memUserRoleRepo{byUser: map[uint64][]uint64{9: {1}}}
-	l := NewDataScopeLoader(roles, ur, memUserRepo{}, &memDeptRepo{})
+	l := NewDataScopeLoader(roles, ur, &memDeptRepo{})
 
 	ds, err := l.Load(scopedCtx(), 9, 77)
 	if err != nil {
@@ -98,7 +85,7 @@ func TestDataScopeLoader_BestOfRoles_Mode2(t *testing.T) {
 		}
 	}
 	ur := &memUserRoleRepo{byUser: map[uint64][]uint64{9: {1, 2, 3}}}
-	l := NewDataScopeLoader(roles, ur, memUserRepo{}, &memDeptRepo{})
+	l := NewDataScopeLoader(roles, ur, &memDeptRepo{})
 
 	ds, err := l.Load(scopedCtx(), 9, 10)
 	if err != nil {
@@ -127,7 +114,7 @@ func TestDataScopeLoader_Mode4_Descendants(t *testing.T) {
 		{ID: 20, ParentID: 0, TenantID: 1},
 		{ID: 21, ParentID: 20, TenantID: 1},
 	}}
-	l := NewDataScopeLoader(roles, ur, memUserRepo{}, dept)
+	l := NewDataScopeLoader(roles, ur, dept)
 
 	ds, err := l.Load(scopedCtx(), 9, 10)
 	if err != nil {
@@ -157,7 +144,7 @@ func TestDataScopeLoader_Mode4_Descendants(t *testing.T) {
 // 无角色 → Mode 5 仅本人（最严兜底）。
 func TestDataScopeLoader_NoRoles_Mode5(t *testing.T) {
 	l := NewDataScopeLoader(newMemRoleRepo(), &memUserRoleRepo{byUser: map[uint64][]uint64{}},
-		memUserRepo{}, &memDeptRepo{})
+		&memDeptRepo{})
 	ds, err := l.Load(scopedCtx(), 9, 77)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +161,7 @@ func TestDataScopeLoader_Mode2_NoCustomIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	ur := &memUserRoleRepo{byUser: map[uint64][]uint64{9: {1}}}
-	l := NewDataScopeLoader(roles, ur, memUserRepo{}, &memDeptRepo{})
+	l := NewDataScopeLoader(roles, ur, &memDeptRepo{})
 
 	ds, err := l.Load(scopedCtx(), 9, 10)
 	if err != nil {
@@ -185,14 +172,15 @@ func TestDataScopeLoader_Mode2_NoCustomIDs(t *testing.T) {
 	}
 }
 
-// 部门树查询失败 → Mode 4 退化为空集合（插件不加条件/或按空处理），不 panic。
+// 部门树查询失败 → Mode 4 退化为空集合，插件侧 fail-closed（显式 1=0，
+// 见 plugin_test 的 TestDataScope_Mode4Empty_FailsClosed），且不 panic、错误不上抛。
 func TestDataScopeLoader_Mode4_DeptListError(t *testing.T) {
 	roles := newMemRoleRepo()
 	if err := roles.Create(scopedCtx(), &model.Role{ID: 1, Code: "a", DataScope: 4, TenantID: 1}); err != nil {
 		t.Fatal(err)
 	}
 	ur := &memUserRoleRepo{byUser: map[uint64][]uint64{9: {1}}}
-	l := NewDataScopeLoader(roles, ur, memUserRepo{}, &memDeptRepo{err: errors.New("db down")})
+	l := NewDataScopeLoader(roles, ur, &memDeptRepo{err: errors.New("db down")})
 
 	ds, err := l.Load(scopedCtx(), 9, 10)
 	if err != nil {

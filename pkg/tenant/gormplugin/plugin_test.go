@@ -391,6 +391,16 @@ func TestDataScope_Mode2Empty_EmptyResult(t *testing.T) {
 	}
 }
 
+// Mode 4 集合为空（dept_id=0 未挂部门 / 部门树为空）→ 与 mode2 同样 fail-closed：
+// 显式 0 行，绝不允许退化成"租户内全量"（那会在最宽档位上放开范围）。
+func TestDataScope_Mode4Empty_FailsClosed(t *testing.T) {
+	db := setupEmp(t)
+	ctx := tenant.WithDataScope(baseCtx(), tenant.DataScope{Mode: 4, UserID: 1, DeptID: 0, DeptIDs: nil})
+	if got := names(t, db, ctx); len(got) != 0 {
+		t.Errorf("mode4 empty set = %v, want [] (fail-closed)", got)
+	}
+}
+
 // INSERT 回填仅零值：非白名单表上显式赋值的 tenant_id 不得被覆盖。
 func TestInsert_ExplicitTenantIDPreserved(t *testing.T) {
 	db := setup(t, Options{})
