@@ -21,12 +21,13 @@
 
 以 yudao-cloud 用户体系为蓝本，在本项目实现：
 
-1. **双用户架构**：AdminUser / MemberUser 分表存储，`user_type` 统一区分
+1. **双用户架构**（硬性需求，用户明确要求）：AdminUser 与 AppUser（会员）**必须分表**——管理员存 `system_users`、会员存 `member_user`，两表结构各自独立、绝不合并，`user_type` 统一区分
 2. **OAuth2 Token 体系**：统一令牌表签发/刷新/注销，双端 Bearer 认证
 3. **SaaS 多租户**：租户表 + 登录租户解析 + 查询级数据隔离 + 租户管理
 4. **短信登录**：验证码发送（可插拔 Provider）、短信登录 + 未注册自动开通会员
 5. **三方登录**：授权跳转 / code 快登录 / 绑定登录（可插拔 Provider）
 6. **微信小程序登录**：phoneCode + loginCode 一键登录
+7. **权限管理对齐**（块⑦，见 4.7）：role_menus → Casbin 策略同步、`data_scope` 数据权限、Casbin 租户隔离、role 表补列
 
 ### 1.3 非目标（本期不做）
 
@@ -203,6 +204,34 @@ CREATE TABLE IF NOT EXISTS `social_user` (
 
 验证码**存 Redis**（`sms:code:{tenant}:{mobile}`，TTL 5 分钟，含发送频控计数），不建表——与项目现有 Redis 能力对齐；Redis 未启用时降级为进程内 map（开发模式，配置开关 `sms.mode`）。
 
+### 3.7 `roles` 增强（块⑦ 权限管理对齐）
+
+> 现有 `roles` 仅 code/name/status/tenant。对照 yudao `system_role` 补齐（表名是否加 `system_` 前缀随 §9.1 一并决定，本节以 `roles` 现名做 ALTER，重命名只做一次）：
+
+```sql
+ALTER TABLE `roles`
+  ADD COLUMN `sort`                 INT          NOT NULL DEFAULT 0   COMMENT '显示顺序' AFTER `name`,
+  ADD COLUMN `data_scope`           TINYINT      NOT NULL DEFAULT 1   COMMENT '数据范围 1全部 2自定义 3本部门 4本部门及以下 5仅本人' AFTER `sort`,
+  ADD COLUMN `data_scope_dept_ids`  VARCHAR(500) NOT NULL DEFAULT ''  COMMENT '自定义数据范围部门ID数组' AFTER `data_scope`,
+  ADD COLUMN `type`                 TINYINT      NOT NULL DEFAULT 2   COMMENT '角色类型 1系统内置 2自定义' AFTER `data_scope_dept_ids`,
+  ADD COLUMN `remark`               VARCHAR(500) NOT NULL DEFAULT ''  COMMENT '备注' AFTER `type`,
+  ADD COLUMN `deleted`              BIT(1)       NOT NULL DEFAULT 0   COMMENT '是否删除' AFTER `remark`,
+  ADD COLUMN `creator`              VARCHAR(64)  NOT NULL DEFAULT ''  COMMENT '创建者' AFTER `deleted`,
+  ADD COLUMN `updater`              VARCHAR(64)  NOT NULL DEFAULT ''  COMMENT '更新者' AFTER `creator`;
+-- created_at/updated_at 保留现有列名（不改 yudao 的 create_time，减少存量代码改动）
+```
+
+`menus` 已具备 `type`(dir/menu/button) + `permission`，与 yudao `menu_type` 菜单/操作二分语义等价，**不改结构**；仅补审计列：
+
+```sql
+ALTER TABLE `menus`
+  ADD COLUMN `deleted` BIT(1)      NOT NULL DEFAULT 0  COMMENT '是否删除' AFTER `status`,
+  ADD COLUMN `creator` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '创建者' AFTER `deleted`,
+  ADD COLUMN `updater` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '更新者' AFTER `creator`;
+```
+
+`casbin_rule` 结构不变（租户隔离通过策略主体改造实现，见 4.7，无需加列）。
+
 ## 4. 分块设计
 
 ### 4.1 块① 双用户架构
@@ -282,6 +311,28 @@ CREATE TABLE IF NOT EXISTS `social_user` (
 - mobile 已注册 → 登录；未注册 → 自动注册（同 4.4）→ 签发 Token
 - 配置：`wechat.miniapp.appid/secret`；无配置时 Mock（返回固定测试号）
 
+### 4.7 块⑦ 权限管理对齐（一期）
+
+> 现状核查：菜单/按钮树、`permission` 码、前端路由下发均可用；但 **`AssignMenus` 只写 `role_menus` 不同步 Casbin**，种子只给默认 admin 角色一条通配策略——**新建角色后端全 403**；且 `casbin_rule` 无租户维度、角色 code 仅租户内唯一 → 跨租户策略串用。
+
+**三件事**：
+
+1. **role_menus → Casbin 策略同步**（修复断层）
+   - 同步单元：以**菜单的路由模板 + method** 生成 `p`：`v0={roleCode}`、`v1=路由模板`（如 `/api/admin/system/users`，取菜单关联的 API 路由或 `permission` 码映射表）、`v2=GET|POST|...`（`.*` 起步，按路由注册表精确化）
+   - **实现方案（简化且与现有模型匹配）**：Casbin 继续只管**后端 API 强制**，策略由"角色 ↔ 菜单权限码"驱动——`AssignMenus`/角色删除/菜单删除时触发 `rebuildRolePolicies(roleID)`：删旧 `p` → 按当前 `role_menus` 全量重建
+   - **路由映射**：维护 `permission 码 → (route template, method)` 映射（与 `module.go` 路由注册对照生成；一期用"菜单 permission 前缀 → 路由前缀"的 keyMatch2 规则，如 `system:user` → `/api/admin/system/users`），种子/迁移时初始化
+   - 触发点：`AssignMenus`、`Create/Delete Role`、`Create/Delete Menu`（事务提交后）
+2. **`data_scope` 数据权限**（查询层注入，依赖块③ gorm 插件）
+   - 校验顺序：登录后把 `(userID, deptID, roleDataScopes)` 写入 ctx；仓储查询回调按"最宽松角色"拼条件——1 全部不加条件；2 自定义 → `dept_id IN (data_scope_dept_ids)`；3 `dept_id = 我的部门`；4 `dept_id IN (本部门及以下，按 depts.parent 链)`；5 `id = 我`
+   - 白名单：`dept_id` 不存在的表、豁免表（同块③豁免机制追加 `data_exempt` 标记）
+   - 粒度：**只对带 `dept_id` 的业务表生效**（一期=system_users；order 等业务表后续按需挂）
+3. **Casbin 租户隔离**（消除串策略）
+   - 策略主体改造：`sub` 从裸 `username/roleCode` 改为 **`{tenantId}:{username}` / `{tenantId}:{roleCode}`**
+   - 影响点：`EnsureUserRolePolicy`（登录时 g 绑定）、种子 `AddPolicy`、`AuthMiddleware` 组装 sub（从 Token 的 tenant_id + username 拼接）、存量 `casbin_rule` 数据迁移（启动时重建：清空 + 按 role_menus 重灌）
+   - Casbin model 的 matcher 不变（`g`/`keyMatch2`/`regexMatch` 照旧）
+
+**角色表补列**（§3.7 DDL）随本块的迁移一并执行；`type=1` 系统内置角色禁止删除（service 层校验）。
+
 ## 5. 配置扩展（config.yaml）
 
 ```yaml
@@ -314,8 +365,8 @@ social:
 
 | 现有件 | 变化 |
 | --- | --- |
-| `AuthMiddleware` | 校验源 JWT → Token 表（L1 LRU 缓存）；claims 增加 `user_type`；`auth.mode=jwt` 可回滚 |
-| Casbin | 不变（sub 仍是用户名/用户ID，admin 侧才有 RBAC；member 无权限模型，仅登录态） |
+| `AuthMiddleware` | 校验源 JWT → Token 表（L1 LRU 缓存）；claims 增加 `user_type`；`auth.mode=jwt` 可回滚；**sub 改为 `{tenantId}:{username}`（块⑦）** |
+| Casbin | **模型 matcher 不变**，但策略主体带租户前缀；`EnsureUserRolePolicy`、种子、存量 `casbin_rule` 迁移时全量重建；`AssignMenus` 等触发策略同步（块⑦） |
 | `OperateLog` / `Audit` | `creator/updater` 自动注入（补列后可真实落库） |
 | 现有 JWT 测试（pkg/auth 7包之一） | 保留不删；`pkg/token` 新增独立测试包 |
 | admin-web 登录 | 响应结构变化：`{token, refresh_token, expires_in}` → 前端 `stores/auth.ts` 适配 |
@@ -327,13 +378,14 @@ social:
 - `modules/member`：注册/登录/sms-login 自动注册（Mock SMS，Redis 用 miniredis 或进程内降级模式）
 - `pkg/sms`：Mock Provider + 频控；`pkg/social`：Mock Provider 全流程
 - `AuthMiddleware`：Token 模式 401/200/踢人失效/租户不符 403
+- 块⑦：`AssignMenus` 后 Casbin 策略重建断言（角色获得/失去权限立即生效）、跨租户同 code 角色策略不串（sub 前缀）、`data_scope` 五种范围各一条 sqlite 查询断言、系统内置角色删除被拒
 - 全量 `go test ./...`（CI 加 `-race` 已就位）
 
 ## 8. 实施分期（计划按期拆分）
 
 | 期 | 内容 | 交付判定 |
 | --- | --- | --- |
-| **一期** | 块①②③：三表迁移 + member 模块骨架 + Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 | 双端登录走 Token 表；两租户数据互不可见；踢人立即失效；全测试绿 |
+| **一期** | 块①②③⑦：三表迁移 + member 模块骨架 + Token 体系 + 租户表/解析/隔离插件 + 双端登录改造 + 租户/会员管理接口 + **权限管理对齐（Casbin 策略同步 / data_scope / 租户隔离 / role 补列）** | 双端登录走 Token 表；两租户数据互不可见且策略不串；踢人立即失效；**新角色分配菜单后端 API 立即可用**；全测试绿 |
 | **二期** | 块④：SMS Provider + 验证码 + 短信登录/自动注册 | Mock 下全流程通过；频控生效 |
 | **三期** | 块⑤⑥：social Provider + 绑定/快登录 + 小程序登录 | Mock 下三方与小程序全流程通过 |
 
@@ -347,10 +399,12 @@ social:
 4. **gorm 隔离插件误伤面**：白名单/无列跳过的边界要靠测试钉死（一期最高风险点）
 5. **SMS/微信真实凭证**：本期只交付 Provider 接口 + Mock + 通用 HTTP 实现，真实厂商适配留配置接入
 6. **`account_limit` 额度**：只做"创建用户时计数校验"，不做套餐/续费（预留 package_id）
+7. **Casbin sub 改造（块⑦）**：影响登录 g 绑定、种子策略、存量 `casbin_rule`——迁移采用"启动时清空 + 按 role_menus 重灌"策略，需确认可接受（现网 casbin_rule 仅种子数据，风险低）
+8. **策略生成粒度（块⑦）**：一期 `permission 前缀 → 路由前缀 keyMatch2`（粗粒度、实现快），二期可按路由注册表精确到 method——需要确认接受一期粒度
 
 ## 10. 里程碑
 
-- M1（一期）：双用户 + Token + 多租户落地，admin-web 登录适配完成
+- M1（一期）：双用户 + Token + 多租户 + 权限管理对齐（块⑦）落地，admin-web 登录适配完成
 - M2（二期）：短信登录全链路
 - M3（三期）：三方 + 小程序登录
 - 每个 M 完成即合并 `main` 并更新 README/架构文档对应章节
