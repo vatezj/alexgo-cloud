@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"alexGo-cloud/modules/system/model"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
@@ -110,6 +111,45 @@ func TestLogout_Revoke(t *testing.T) {
 	}
 	if len(iss.revoked) != 1 || iss.revoked[0] != "a1" {
 		t.Errorf("revoked = %v", iss.revoked)
+	}
+}
+
+// TestLogin_JwtRollbackMode：回滚开关（spec §4.2.6）端到端——mode=jwt 时
+// 登录必须签发旧静态 JWT（中间件 jwt 分支用 auth.ParseToken 校验），
+// 且绝不触碰 token.Issuer；Refresh 快速拒绝、Logout 幂等 no-op。
+func TestLogin_JwtRollbackMode(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Auth.Mode = "jwt"
+	cfg.System.JWTSecret = "rollback-secret"
+	iss := &fakeIssuer{issued: &token.Issued{AccessToken: "a1", RefreshToken: "r1", ExpiresIn: 7200}}
+	svc := NewAuthService(cfg, &fakeUserRepo{user: enabledUser()}, fakePerm{}, iss)
+
+	res, u, err := svc.Login(context.Background(), "alice", "pw")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if u.ID != 3 {
+		t.Errorf("user = %+v", u)
+	}
+	// 判别性①：jwt 回滚绝不走不透明令牌签发器。
+	if iss.issueCalls != 0 {
+		t.Errorf("Issue calls = %d, want 0（jwt rollback must not use token.Issuer）", iss.issueCalls)
+	}
+	// 判别性②：返回的 token 必须能被中间件 jwt 分支解析且 claims 正确。
+	claims, perr := auth.ParseToken(res.AccessToken, cfg)
+	if perr != nil {
+		t.Fatalf("issued token must parse as legacy static JWT: %v", perr)
+	}
+	if claims.UserID != 3 || claims.Username != "alice" {
+		t.Errorf("claims = %+v", claims)
+	}
+	// 判别性③：jwt 模式下 Refresh 快速拒绝（无轮换语义）。
+	if _, rerr := svc.Refresh(context.Background(), "r1"); rerr == nil {
+		t.Error("Refresh must be rejected in jwt mode")
+	}
+	// 静态 JWT 无状态无法吊销 → logout 幂等成功。
+	if lerr := svc.Logout(context.Background(), res.AccessToken); lerr != nil {
+		t.Errorf("Logout() in jwt mode = %v, want nil", lerr)
 	}
 }
 
