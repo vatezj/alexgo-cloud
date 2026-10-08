@@ -438,7 +438,7 @@ func TestRefresh_Rotates(t *testing.T) {
 }
 
 // 注销后立即失效（无缓存层，直接反映 DB 行删除——踢人立即失效的验收项）。
-func TestRevoke_ImmediateInvalidation(t *testing.T) {
+func TestRevoke_InvalidatesCache(t *testing.T) {
 	s := newTestService(t)
 	issued := mustIssue(t, s)
 	if _, err := s.Validate(context.Background(), issued.AccessToken); err != nil {
