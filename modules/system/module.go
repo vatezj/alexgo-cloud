@@ -11,6 +11,7 @@ import (
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/audit"
 	"alexGo-cloud/pkg/migrate"
+	"alexGo-cloud/pkg/tenant"
 )
 
 var FxModule = fx.Module("system",
@@ -46,6 +47,13 @@ var FxModule = fx.Module("system",
 		admin.NewMenuController,
 		admin.NewAuditController,
 		app.NewAppController,
+		// 租户管理 + 账号额度（Task 7）。
+		repository.NewTenantRepository,
+		service.NewTenantService,
+		admin.NewTenantController,
+		// 窄接口映射：member 模块经 pkg/tenant.AccountLimitChecker 消费，
+		// 实现归 system（唯一 Provide 处，入口不重复）。
+		func(svc service.TenantService) tenant.AccountLimitChecker { return svc },
 	),
 	fx.Invoke(service.StartSeeder),
 	fx.Provide(
@@ -65,14 +73,15 @@ var FxModule = fx.Module("system",
 )
 
 type systemModule struct {
-	adminCtrl *admin.AdminController
-	userCtrl  *admin.UserController
-	authCtrl  *admin.AuthController
-	roleCtrl  *admin.RoleController
-	menuCtrl  *admin.MenuController
-	basicCtrl *admin.BasicController
-	auditCtrl *admin.AuditController
-	appCtrl   *app.AppController
+	adminCtrl  *admin.AdminController
+	userCtrl   *admin.UserController
+	authCtrl   *admin.AuthController
+	roleCtrl   *admin.RoleController
+	menuCtrl   *admin.MenuController
+	basicCtrl  *admin.BasicController
+	auditCtrl  *admin.AuditController
+	appCtrl    *app.AppController
+	tenantCtrl *admin.TenantController
 }
 
 func NewSystemModule(
@@ -84,16 +93,18 @@ func NewSystemModule(
 	basicCtrl *admin.BasicController,
 	auditCtrl *admin.AuditController,
 	appCtrl *app.AppController,
+	tenantCtrl *admin.TenantController,
 ) server.Module {
 	return &systemModule{
-		adminCtrl: adminCtrl,
-		userCtrl:  userCtrl,
-		authCtrl:  authCtrl,
-		roleCtrl:  roleCtrl,
-		menuCtrl:  menuCtrl,
-		basicCtrl: basicCtrl,
-		auditCtrl: auditCtrl,
-		appCtrl:   appCtrl,
+		adminCtrl:  adminCtrl,
+		userCtrl:   userCtrl,
+		authCtrl:   authCtrl,
+		roleCtrl:   roleCtrl,
+		menuCtrl:   menuCtrl,
+		basicCtrl:  basicCtrl,
+		auditCtrl:  auditCtrl,
+		appCtrl:    appCtrl,
+		tenantCtrl: tenantCtrl,
 	}
 }
 
@@ -140,6 +151,10 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup.DELETE("/notices/:id", m.basicCtrl.DeleteNotice)
 	adminGroup.GET("/logs/login", m.auditCtrl.ListLogin)
 	adminGroup.GET("/logs/operate", m.auditCtrl.ListOperate)
+	adminGroup.GET("/tenants", m.tenantCtrl.List)
+	adminGroup.POST("/tenants", m.tenantCtrl.Create)
+	adminGroup.PUT("/tenants/:id", m.tenantCtrl.Update)
+	adminGroup.DELETE("/tenants/:id", m.tenantCtrl.Delete)
 
 	appGroup := r.Group("/app/system")
 	appGroup.POST("/auth/login", m.appCtrl.Login)

@@ -87,7 +87,7 @@ func key(tid uint64, mobile string) string { return fmt.Sprintf("%d:%s", tid, mo
 func TestRegister_ThenLogin(t *testing.T) {
 	repo := newMemRepo()
 	iss := &fakeIssuer{}
-	svc := NewMemberService(repo, iss)
+	svc := NewMemberService(repo, iss, nil) // nil limit：未启用额度检查
 
 	u, err := svc.Register(context.Background(), "13800000000", "pw123456", "", "1.2.3.4")
 	if err != nil {
@@ -108,7 +108,7 @@ func TestRegister_ThenLogin(t *testing.T) {
 
 func TestRegister_DuplicateMobile(t *testing.T) {
 	repo := newMemRepo()
-	svc := NewMemberService(repo, &fakeIssuer{})
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
 	// 注：brief 原文密码为 "pw"，与服务端 min 8 校验冲突（首个 Register 即失败）；
 	// 本测试意图是手机号查重，改用合法密码 pw123456。
 	if _, err := svc.Register(context.Background(), "13800000000", "pw123456", "", ""); err != nil {
@@ -121,7 +121,7 @@ func TestRegister_DuplicateMobile(t *testing.T) {
 
 func TestLogin_WrongPassword(t *testing.T) {
 	repo := newMemRepo()
-	svc := NewMemberService(repo, &fakeIssuer{})
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
 	if _, err := svc.Register(context.Background(), "13800000000", "pw123456", "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -132,11 +132,33 @@ func TestLogin_WrongPassword(t *testing.T) {
 
 func TestLogout_Revoke(t *testing.T) {
 	iss := &fakeIssuer{}
-	svc := NewMemberService(newMemRepo(), iss)
+	svc := NewMemberService(newMemRepo(), iss, nil)
 	if err := svc.Logout(context.Background(), "ma"); err != nil {
 		t.Fatal(err)
 	}
 	if len(iss.revoked) != 1 {
 		t.Errorf("revoked = %v", iss.revoked)
+	}
+}
+
+// fakeLimit 额度检查器（pkg/tenant.AccountLimitChecker 的测试替身）。
+type fakeLimit struct{ err error }
+
+func (f *fakeLimit) CheckAccountLimit(context.Context, uint64) error { return f.err }
+
+// 注册触额必须被拒——额度错误原样返回，且不落库（system 建用户走同一检查）。
+func TestRegister_AccountLimitReached(t *testing.T) {
+	repo := newMemRepo()
+	want := errors.New("account limit reached (2)")
+	svc := NewMemberService(repo, &fakeIssuer{}, &fakeLimit{err: want})
+
+	_, err := svc.Register(context.Background(), "13800000000", "pw123456", "", "1.2.3.4")
+	if !errors.Is(err, want) {
+		t.Fatalf("Register() err = %v, want %v", err, want)
+	}
+	// 被拒的注册不得落库：同手机号应仍可注册（额度放行后成功）。
+	svc2 := NewMemberService(repo, &fakeIssuer{}, &fakeLimit{err: nil})
+	if _, err := svc2.Register(context.Background(), "13800000000", "pw123456", "", "1.2.3.4"); err != nil {
+		t.Fatalf("Register() under limit error = %v", err)
 	}
 }

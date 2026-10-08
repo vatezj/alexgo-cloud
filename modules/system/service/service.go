@@ -28,19 +28,23 @@ type userService struct {
 	userRoleRepo repository.UserRoleRepository
 	roleRepo     repository.RoleRepository
 	permSvc      PermissionService
+	tenantSvc    TenantService // 账号额度检查（触额拒绝建号）
 }
 
+// NewService 构造服务；tenantSvc 由同模块 NewTenantService 解析（FX 自动注入）。
 func NewService(
 	repo repository.UserRepository,
 	userRoleRepo repository.UserRoleRepository,
 	roleRepo repository.RoleRepository,
 	permSvc PermissionService,
+	tenantSvc TenantService,
 ) UserService {
 	return &userService{
 		repo:         repo,
 		userRoleRepo: userRoleRepo,
 		roleRepo:     roleRepo,
 		permSvc:      permSvc,
+		tenantSvc:    tenantSvc,
 	}
 }
 
@@ -61,6 +65,11 @@ func (s *userService) CreateUser(ctx context.Context, username, nickname, passwo
 	if _, err := s.repo.GetByUsername(ctx, tid, username); err == nil {
 		return nil, fmt.Errorf("username already exists")
 	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// 账号额度闸门（与 member 注册共用 TenantService.CheckAccountLimit），写库前拦截。
+	if err := s.tenantSvc.CheckAccountLimit(ctx, tid); err != nil {
 		return nil, err
 	}
 

@@ -37,18 +37,22 @@ type MemberService interface {
 type memberService struct {
 	repo   repository.MemberRepository
 	issuer token.Issuer
+	// limit 账号额度检查（实现由 system 模块 Provide，FX 按 pkg/tenant 窄接口注入）；
+	// 可为 nil（未装配额度）→ Register 跳过检查。
+	limit tenant.AccountLimitChecker
 }
 
-// NewMemberService 构造服务；token.Issuer 由入口（cmd/main.go）映射提供，不在模块内重复 Provide。
-func NewMemberService(repo repository.MemberRepository, issuer token.Issuer) MemberService {
-	return &memberService{repo: repo, issuer: issuer}
+// NewMemberService 构造服务；token.Issuer 由入口（cmd/main.go）映射提供、
+// tenant.AccountLimitChecker 由 system 模块 FxModule 映射提供，均不在本模块内重复 Provide。
+func NewMemberService(repo repository.MemberRepository, issuer token.Issuer, limit tenant.AccountLimitChecker) MemberService {
+	return &memberService{repo: repo, issuer: issuer, limit: limit}
 }
 
 func toResult(i *token.Issued) *LoginResult {
 	return &LoginResult{AccessToken: i.AccessToken, RefreshToken: i.RefreshToken, ExpiresIn: i.ExpiresIn}
 }
 
-// Register 校验手机号/密码 → 查重 → bcrypt 落库；昵称缺省用手机号尾 4 位占位。
+// Register 校验手机号/密码 → 查重 → 账号额度 → bcrypt 落库；昵称缺省用手机号尾 4 位占位。
 func (s *memberService) Register(ctx context.Context, mobile, password, nickname, ip string) (*model.MemberUser, error) {
 	if !mobileRe.MatchString(mobile) {
 		return nil, fmt.Errorf("invalid mobile")
@@ -59,6 +63,12 @@ func (s *memberService) Register(ctx context.Context, mobile, password, nickname
 	tid := tenant.TenantIDFromContext(ctx)
 	if _, err := s.repo.GetByMobile(ctx, tid, mobile); err == nil {
 		return nil, fmt.Errorf("mobile already registered")
+	}
+	// 账号额度闸门（system 建用户同款检查），触额原样返回 error、不落库；limit 未装配时跳过。
+	if s.limit != nil {
+		if err := s.limit.CheckAccountLimit(ctx, tid); err != nil {
+			return nil, err
+		}
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
