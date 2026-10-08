@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/casbin/casbin/v2"
-	"golang.org/x/crypto/bcrypt"
 	"go.uber.org/fx"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/model"
@@ -75,8 +75,10 @@ func seed(ctx context.Context, p SeederParams) error {
 		r = &model.Role{
 			Code:      roleCode,
 			Name:      "管理员",
+			Type:      1, // 系统内置：删除守卫（type=1 不可删）依赖此值
+			DataScope: 1, // 全部数据范围：T10 加载器只认 1-5，0 会退化为仅本人
 			Status:    1,
-			TenantID:   tid,
+			TenantID:  tid,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
