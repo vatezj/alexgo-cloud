@@ -749,7 +749,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, er
 }
 ```
 
-**注意**：Refresh 里 `_ = s.Revoke(...)` 的丢弃要注释理由（Revoke 失败仅影响缓存一致性，行级删除由下面的 Delete 保证）——**更好的实现**：Refresh 内直接 `s.db.Where("id = ?", row.ID).Delete` 旧行 + `s.cache.Delete(row.AccessToken)`，再 Issue。采用后者（不依赖 Revoke 的错误处理）：
+Refresh 的最终形态（直接删旧行再签新行，不经过 Revoke，错误路径单一）：
 
 ```go
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, error) {
