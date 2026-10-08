@@ -27,5 +27,5 @@ if [ "$found" -eq 0 ]; then
   exit 0
 fi
 
-# CRUD 生成器（scripts/crud_generator.go）与现有手写模块代码存在类型冲突，
-# 修复前不在此串联；用法：go run ./scripts/crud_generator.go（生成 *_gen.go，需人工检查）。
+echo "Proto generation completed. Now running CRUD generator..."
+go run ./scripts/crud_generator.go

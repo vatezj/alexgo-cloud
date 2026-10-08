@@ -167,6 +167,19 @@ func generate(d CrudData, force bool) error {
 		return nil
 	}
 
+	// 实体级门控：模块内已存在该实体类型（手写或已生成）时，整体跳过该实体的全部输出。
+	//
+	// 为什么不能只靠逐输出的符号检查：手写代码的命名与模板假设不一致
+	// （例如不存在 Admin{Entity}Controller、请求结构体散落在别的文件），
+	// 逐输出检查会“部分生成”，产生 redeclared 与调用不存在方法的编译错误。
+	// 要么全跳过、要么全生成，才有一致性。
+	// 需要重新生成时：先删除对应 *_gen.go（手写类型不应删除，此类实体本就该跳过）。
+	if !force && hasTypeInModule(d.Module, d.ServiceName) {
+		fmt.Printf("skip %s.%s: type %s already exists in modules/%s (delete *_gen.go to regenerate)\n",
+			d.Module, d.ServiceName, d.ServiceName, d.Module)
+		return nil
+	}
+
 	type output struct {
 		targetPath string
 		tplName    string

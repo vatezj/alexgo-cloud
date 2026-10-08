@@ -18,7 +18,7 @@ generate-crud:
 generate-db-crud:
 	go run ./tools/dbgen --module=$(MODULE) --tables=$(TABLES)
 
-generate-all: proto
+generate-all: proto generate-crud
 
 migrate:
 	go run ./alexgo-server/cmd/main.go --migrate-only
