@@ -16,9 +16,21 @@ import (
 
 type RoleService interface {
 	List(ctx context.Context) ([]*model.Role, error)
-	Create(ctx context.Context, code, name string) (*model.Role, error)
+	Create(ctx context.Context, p RoleCreateParams) (*model.Role, error)
 	Delete(ctx context.Context, id uint64) error
 	AssignMenus(ctx context.Context, roleID uint64, menuIDs []uint64) error
+}
+
+// RoleCreateParams 角色创建参数。
+// DataScope 合法域 1-5（1全部 2自定义 3本部门 4本部门及以下 5仅本人），0 → 默认 1；
+// Type 一律 2=自定义（一期不开放系统内置角色的创建）；Status 恒 1。
+type RoleCreateParams struct {
+	Code             string
+	Name             string
+	Remark           string
+	Sort             int
+	DataScope        int
+	DataScopeDeptIDs string
 }
 
 type MenuService interface {
@@ -82,21 +94,46 @@ func (s *roleService) List(ctx context.Context) ([]*model.Role, error) {
 	return s.roleRepo.List(ctx, tid)
 }
 
-func (s *roleService) Create(ctx context.Context, code, name string) (*model.Role, error) {
-	if code == "" || name == "" {
-		return nil, fmt.Errorf("code or name empty")
+func (s *roleService) Create(ctx context.Context, p RoleCreateParams) (*model.Role, error) {
+	if p.Code == "" || p.Name == "" {
+		return nil, fmt.Errorf("code/name required")
+	}
+	// data_scope 默认 1（全部），超出 1-5 合法域则拒绝
+	if p.DataScope == 0 {
+		p.DataScope = 1
+	}
+	if p.DataScope < 1 || p.DataScope > 5 {
+		return nil, fmt.Errorf("invalid data_scope: %d", p.DataScope)
 	}
 	tid := tenant.TenantIDFromContext(ctx)
+	// 同租户内 code 唯一
+	if _, err := s.roleRepo.GetByCode(ctx, tid, p.Code); err == nil {
+		return nil, fmt.Errorf("role code already exists")
+	}
 	now := time.Now()
-	r := &model.Role{Code: code, Name: name, Status: 1, TenantID: tid, CreatedAt: now, UpdatedAt: now}
+	// type 恒 2=自定义，status 恒 1=启用
+	r := &model.Role{
+		Code: p.Code, Name: p.Name, Remark: p.Remark, Sort: p.Sort,
+		DataScope: p.DataScope, DataScopeDeptIDs: p.DataScopeDeptIDs,
+		Type: 2, Status: 1, TenantID: tid,
+		CreatedAt: now, UpdatedAt: now,
+	}
 	if err := s.roleRepo.Create(ctx, r); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
+// Delete 删除角色；系统内置角色（type=1）禁止删除。
 func (s *roleService) Delete(ctx context.Context, id uint64) error {
 	tid := tenant.TenantIDFromContext(ctx)
+	r, err := s.roleRepo.GetByID(ctx, tid, id)
+	if err != nil {
+		return err
+	}
+	if r.Type == 1 {
+		return fmt.Errorf("system role (type=1) cannot be deleted")
+	}
 	return s.roleRepo.Delete(ctx, tid, id)
 }
 

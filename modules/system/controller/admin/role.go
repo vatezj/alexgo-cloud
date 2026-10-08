@@ -18,8 +18,12 @@ func NewRoleController(roleSvc service.RoleService) *RoleController {
 }
 
 type createRoleRequest struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	Code             string `json:"code"`
+	Name             string `json:"name"`
+	Remark           string `json:"remark"`
+	Sort             int    `json:"sort"`
+	DataScope        int    `json:"data_scope"`
+	DataScopeDeptIDs string `json:"data_scope_dept_ids"`
 }
 
 type assignMenusRequest struct {
@@ -41,7 +45,10 @@ func (c *RoleController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	item, err := c.roleSvc.Create(ctx.Request.Context(), req.Code, req.Name)
+	item, err := c.roleSvc.Create(ctx.Request.Context(), service.RoleCreateParams{
+		Code: req.Code, Name: req.Name, Remark: req.Remark, Sort: req.Sort,
+		DataScope: req.DataScope, DataScopeDeptIDs: req.DataScopeDeptIDs,
+	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
