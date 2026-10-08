@@ -24,6 +24,7 @@ type accessToken struct {
 	ClientID     string    `gorm:"column:client_id;size:64"`
 	Scopes       string    `gorm:"column:scopes;size:255"`
 	ExpiresTime  time.Time `gorm:"column:expires_time"`
+	CreatedAt    time.Time `gorm:"column:create_time"` // 刷新窗口基准（表 DEFAULT CURRENT_TIMESTAMP）
 	TenantID     uint64    `gorm:"column:tenant_id"`
 }
 
@@ -173,11 +174,12 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 	return claims, nil
 }
 
-// Refresh 轮换：删旧行、签新行（同 user/tenant），保证 refresh 单次使用。
+// Refresh 轮换：刷新窗口 = create_time + refreshExpireDay（不是 access 的 expires_time——
+// access 过期后 7 天内仍可刷新，与 SweepExpired 的 7 天保留期对齐），旧 refresh 单次使用。
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, error) {
 	var row accessToken
 	err := s.db.WithContext(ctx).Where("refresh_token = ?", refreshToken).First(&row).Error
-	if err != nil || time.Now().After(row.ExpiresTime) {
+	if err != nil || time.Since(row.CreatedAt) > s.refreshExpire() {
 		return nil, fmt.Errorf("token: invalid refresh token")
 	}
 	// 单次使用：旧 access 立即失效（清缓存 + 删行），旧 refresh 随行删除一并作废。

@@ -20,28 +20,16 @@ func newTestService(t *testing.T) *Service {
 	if err := db.AutoMigrate(&accessToken{}); err != nil {
 		t.Fatal(err)
 	}
-	// 夹具：Issue 的租户状态检查与 Validate 的用户回填用 raw SQL 查 tenants/system_users
-	//（均为 Task 1 表），此处按生产 SQL 形状最小建表并种子数据，保证 6 个测试可过。
-	if err := db.Exec(`CREATE TABLE tenants (
-		id INTEGER PRIMARY KEY,
-		status INTEGER NOT NULL DEFAULT 1,
-		deleted INTEGER NOT NULL DEFAULT 0
-	)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO tenants (id, status, deleted) VALUES (1, 1, 0)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE system_users (
-		id INTEGER PRIMARY KEY,
-		username TEXT NOT NULL DEFAULT '',
-		dept_id INTEGER NOT NULL DEFAULT 0,
-		deleted INTEGER NOT NULL DEFAULT 0
-	)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO system_users (id, username, dept_id, deleted) VALUES (9, 'admin', 0, 0)`).Error; err != nil {
-		t.Fatal(err)
+	// 夹具补最小维表：Issue 查 tenants.status，Validate 回填查 system_users。
+	for _, ddl := range []string{
+		`CREATE TABLE tenants (id INTEGER PRIMARY KEY, status INTEGER NOT NULL DEFAULT 1, deleted INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO tenants (id, status) VALUES (1, 1), (2, 0)`,
+		`CREATE TABLE system_users (id INTEGER PRIMARY KEY, username TEXT, dept_id INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO system_users (id, username, dept_id) VALUES (9, 'alice', 7)`,
+	} {
+		if err := db.Exec(ddl).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	cfg := &config.Config{}
 	cfg.Auth.AccessExpireHour = 2
@@ -148,3 +136,28 @@ func TestValidate_Expired(t *testing.T) {
 		t.Error("expired token must fail")
 	}
 }
+
+// 刷新窗口按 create_time+refreshExpireDay：access 已过期但创建时间在 7 天内 → 仍可刷新。
+// （若实现误用 expires_time 校验，本测试必须变红。）
+func TestRefresh_AccessExpiredButWithinWindow(t *testing.T) {
+	s := newTestService(t)
+	issued := mustIssue(t, s)
+	past := time.Now().Add(-time.Minute)
+	if err := s.db.Model(&accessToken{}).
+		Where("access_token = ?", issued.AccessToken).
+		Update("expires_time", past).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Validate(context.Background(), issued.AccessToken); err == nil {
+		t.Fatal("access must be invalid")
+	}
+	next, err := s.Refresh(context.Background(), issued.RefreshToken)
+	if err != nil {
+		t.Fatalf("refresh must still work within %d-day window: %v", cfgRefreshDays, err)
+	}
+	if next.AccessToken == "" {
+		t.Error("empty new token")
+	}
+}
+
+const cfgRefreshDays = 7
