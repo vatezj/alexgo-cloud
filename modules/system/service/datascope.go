@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"strings"
 
 	"alexGo-cloud/modules/system/repository"
@@ -76,23 +76,35 @@ func (l *DataScopeLoader) Load(ctx context.Context, userID, deptID uint64) (tena
 
 // descendants 从 deptID 出发沿 parent_id 树收集自身+全部后代。
 // depts 全量一次查、内存建树——租户内部门量级小，避免递归 SQL（跨库方言差异）。
-// deptID=0（未挂部门）或查询失败 → nil；插件对 mode 4 空集合做 fail-closed（显式 1=0，
-// 与 mode 2 空集合同处理）——故 dept 树异常时方向是"更少数据"，不会放开成租户内全量。
+// deptID=0（未挂部门）在查库**之前**短路：dept-less 用户每请求不应白付一次全表查询；
+// 查询失败 → nil。插件对 mode 4 空集合做 fail-closed（显式 1=0，与 mode 2 空集合同处理）——
+// 故 dept 树异常时方向是"更少数据"，不会放开成租户内全量。
+//
+// seen 判重（环安全）：parent_id 数据可能成环（自指 10→10、互指 20↔21），
+// 无 visited 集会让 out/queue 无限增长——mode4 用户的每次请求都会卡死在中间件。
 func (l *DataScopeLoader) descendants(ctx context.Context, tid, deptID uint64) []uint64 {
+	if deptID == 0 {
+		return nil
+	}
 	all, err := l.deptRepo.List(ctx, tid)
-	if err != nil || deptID == 0 {
+	if err != nil {
 		return nil
 	}
 	children := map[uint64][]uint64{}
 	for _, d := range all {
 		children[d.ParentID] = append(children[d.ParentID], d.ID)
 	}
+	seen := map[uint64]bool{deptID: true}
 	out := []uint64{deptID}
 	queue := []uint64{deptID}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
 		for _, ch := range children[cur] {
+			if seen[ch] {
+				continue // 环（含自指/互指）判重，防止中间件死循环
+			}
+			seen[ch] = true
 			out = append(out, ch)
 			queue = append(queue, ch)
 		}
@@ -100,7 +112,8 @@ func (l *DataScopeLoader) descendants(ctx context.Context, tid, deptID uint64) [
 	return out
 }
 
-// parseUintList 解析逗号分隔的部门编号串（容忍空格/空段/非法段/非正数，一律丢弃）。
+// parseUintList 解析逗号分隔的部门编号串（容忍空格/空段；严格整段解析——
+// "1abc"/"1.5"/溢出 一律整段拒绝，不做前缀部分解析；非正数丢弃）。
 func parseUintList(s string) []uint64 {
 	var out []uint64
 	for _, p := range strings.Split(s, ",") {
@@ -108,8 +121,8 @@ func parseUintList(s string) []uint64 {
 		if p == "" {
 			continue
 		}
-		var v uint64
-		if _, err := fmt.Sscanf(p, "%d", &v); err == nil && v > 0 {
+		v, err := strconv.ParseUint(p, 10, 64)
+		if err == nil && v > 0 {
 			out = append(out, v)
 		}
 	}

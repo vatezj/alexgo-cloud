@@ -28,7 +28,8 @@ type DataScope struct {
 //
 // 放在 pkg/tenant 与 DataScope 同处：middleware（注入方）与系统模块（实现方）
 // 都消费它，避免 system 反向依赖 pkg/middleware 造成依赖方向问题。
-// 实现方为 modules/system 的 dataScopeLoader；不提供该依赖时（member 端/未启用）
+// 实现方为 modules/system/service 的 *DataScopeLoader（构造器 NewDataScopeLoader，
+// 经 module.go 映射成本接口）；不提供该依赖时（member 端/未启用）
 // 上游以 optional nil 装配，中间件不注入 scope。
 type ScopeLoader interface {
 	Load(ctx context.Context, userID, deptID uint64) (DataScope, error)

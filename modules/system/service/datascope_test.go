@@ -24,13 +24,16 @@ func (m *memUserRoleRepo) ListRoleIDsByUser(_ context.Context, _, userID uint64)
 	return m.byUser[userID], nil
 }
 
-// memDeptRepo：DeptRepository 测试替身。
+// memDeptRepo：DeptRepository 测试替身（calls 记录 List 调用次数，用于断言
+// deptID=0 短路时不再打库）。
 type memDeptRepo struct {
 	depts []*model.Dept
 	err   error
+	calls int
 }
 
 func (m *memDeptRepo) List(_ context.Context, tid uint64) ([]*model.Dept, error) {
+	m.calls++
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -141,6 +144,69 @@ func TestDataScopeLoader_Mode4_Descendants(t *testing.T) {
 	}
 }
 
+// 环形 parent_id（自指：10 的 parent 也是 10）：BFS 必须判重终止并去重返回 {10,11}。
+// 无 visited 集时 children[10] 含 10 自身 → out/queue 无限增长，
+// mode4 用户的**每一次请求**都会卡死在中间件（死循环 + 内存增长）。
+func TestDataScopeLoader_Descendants_SelfCycle(t *testing.T) {
+	dept := &memDeptRepo{depts: []*model.Dept{
+		{ID: 10, ParentID: 10, TenantID: 1}, // 自指环
+		{ID: 11, ParentID: 10, TenantID: 1}, // 正常子节点
+	}}
+	l := NewDataScopeLoader(newMemRoleRepo(), &memUserRoleRepo{byUser: map[uint64][]uint64{}}, dept)
+
+	got := l.descendants(scopedCtx(), 1, 10)
+	want := []uint64{10, 11}
+	set := map[uint64]bool{}
+	for _, id := range got {
+		set[id] = true
+	}
+	if len(got) != len(want) { // 长度断言 = 同时抓"重复入队"（去重失效）
+		t.Fatalf("descendants(self-cycle) = %v, want exactly %v (deduped, terminated)", got, want)
+	}
+	for _, id := range want {
+		if !set[id] {
+			t.Errorf("descendants(self-cycle) = %v, missing %d", got, id)
+		}
+	}
+}
+
+// 环形 parent_id（互指：20↔21）：同样必须终止并去重返回 {20,21}。
+func TestDataScopeLoader_Descendants_MutualCycle(t *testing.T) {
+	dept := &memDeptRepo{depts: []*model.Dept{
+		{ID: 20, ParentID: 21, TenantID: 1},
+		{ID: 21, ParentID: 20, TenantID: 1},
+	}}
+	l := NewDataScopeLoader(newMemRoleRepo(), &memUserRoleRepo{byUser: map[uint64][]uint64{}}, dept)
+
+	got := l.descendants(scopedCtx(), 1, 20)
+	want := []uint64{20, 21}
+	set := map[uint64]bool{}
+	for _, id := range got {
+		set[id] = true
+	}
+	if len(got) != len(want) {
+		t.Fatalf("descendants(mutual-cycle) = %v, want exactly %v (deduped, terminated)", got, want)
+	}
+	for _, id := range want {
+		if !set[id] {
+			t.Errorf("descendants(mutual-cycle) = %v, missing %d", got, id)
+		}
+	}
+}
+
+// deptID=0（未挂部门）必须在查库**之前**短路：dept-less 用户每请求白付一次全表查询。
+func TestDataScopeLoader_Descendants_DeptZero_SkipsQuery(t *testing.T) {
+	dept := &memDeptRepo{depts: []*model.Dept{{ID: 1, ParentID: 0, TenantID: 1}}}
+	l := NewDataScopeLoader(newMemRoleRepo(), &memUserRoleRepo{byUser: map[uint64][]uint64{}}, dept)
+
+	if got := l.descendants(scopedCtx(), 1, 0); got != nil {
+		t.Errorf("descendants(deptID=0) = %v, want nil", got)
+	}
+	if dept.calls != 0 {
+		t.Errorf("deptRepo.List called %d time(s) for deptID=0, want 0 (short-circuit before query)", dept.calls)
+	}
+}
+
 // 无角色 → Mode 5 仅本人（最严兜底）。
 func TestDataScopeLoader_NoRoles_Mode5(t *testing.T) {
 	l := NewDataScopeLoader(newMemRoleRepo(), &memUserRoleRepo{byUser: map[uint64][]uint64{}},
@@ -200,6 +266,10 @@ func TestParseUintList(t *testing.T) {
 		{" 1 , 2 ,x, ,3 ", []uint64{1, 2, 3}},
 		{"", nil},
 		{"0,-1,abc", nil},
+		// 严格解析：部分垃圾必须整段拒绝（Sscanf("%d") 会把 "1abc" 部分解析成 1）。
+		{"1abc,2", []uint64{2}},
+		{"1.5,3", []uint64{3}},
+		{"999999999999999999999999,4", []uint64{4}}, // 溢出 → 整段拒绝
 	} {
 		got := parseUintList(tc.in)
 		if !reflect.DeepEqual(got, tc.want) {

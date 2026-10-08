@@ -8,9 +8,11 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -62,6 +64,9 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			ds := tenant.DataScope{Mode: 5, UserID: claims.UserID, DeptID: claims.DeptID} // 默认最严
 			if loaded, err := d.ScopeLoader.Load(c.Request.Context(), claims.UserID, claims.DeptID); err == nil {
 				ds = loaded
+			} else if logger.Log != nil {
+				// 静默降级会掩盖装配/DB 故障：兜底照做，但至少留一条告警。
+				logger.Log.Warn("data scope load failed, fallback mode 5", zap.Error(err))
 			}
 			c.Request = c.Request.WithContext(tenant.WithDataScope(c.Request.Context(), ds))
 		}
