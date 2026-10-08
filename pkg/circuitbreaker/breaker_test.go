@@ -109,7 +109,7 @@ func TestNewCircuitBreaker_Defaults(t *testing.T) {
 }
 
 // 直接驱动 allow()/after()，钉住 Open→HalfOpen 转换与 halfInUse 单探测守卫
-//（若回归跳过 HalfOpen 直转 Closed，本测试必须变红）。
+// （若回归跳过 HalfOpen 直转 Closed，本测试必须变红）。
 func TestAllow_HalfOpenTransitionAndProbeGuard(t *testing.T) {
 	cb := NewCircuitBreaker(1, 50*time.Millisecond)
 	_ = cb.Do(fail) // → Open

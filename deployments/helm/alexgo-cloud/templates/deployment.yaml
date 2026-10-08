@@ -45,12 +45,14 @@ spec:
               port: {{ .Values.service.port }}
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health/ready
               port: {{ .Values.service.port }}
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: config
           configMap:

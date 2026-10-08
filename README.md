@@ -98,6 +98,9 @@ npm run dev
 kubectl apply -k deployments/kubernetes
 ```
 
+> 部署前必须覆盖 `deployments/kubernetes/secret.yaml` 的占位值（或改用 Sealed Secrets /
+> External Secrets），否则 readiness 探活会失败。
+
 ## 压测
 
 ```bash

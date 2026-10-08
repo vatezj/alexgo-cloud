@@ -50,8 +50,8 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 5. 仅当**非** `--migrate-only` 时才追加 `fx.Invoke(server.StartHTTPServer)`；最后
    `fx.New(opts...).Run()` 阻塞运行直至收到退出信号，由 FX Lifecycle 完成 HTTP/DB 的优雅关闭。
 
-`--migrate-only`：跳过 HTTP Server 装配，只做迁移与后台初始化，用于 K8s initJob / 发布前迁移
-（`make migrate`）。
+`--migrate-only`：跳过 HTTP Server 装配，只做迁移与后台初始化。仓库当前**没有** K8s Job
+清单，它用于发布前手动执行（`make migrate` 或直接跑二进制），未来也可挂成 init Job。
 
 ## 4. 单体 → 微服务切换
 
@@ -123,15 +123,19 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 
 1. **环境变量显式覆盖（密钥类，最终生效）**：`v.Unmarshal(&cfg)` **之后**调用
    `applyEnvOverrides`，把 `DB_DSN` → `database.dsn`、`JWT_SECRET` → `system.jwt_secret`、
-   `REDIS_PASSWORD` → `redis.password`（仅非空时覆盖）。必须放在 Unmarshal 之后的原因见函数
-   注释：`viper.AutomaticEnv` 的隐式映射不参与 Unmarshal（viper 已知行为），且模块配置合并用的
-   `v.Set()` 在 viper 中优先级高于 env——不经这一步，密钥 env 永远输给模块 yaml。
+   `REDIS_PASSWORD` → `redis.password`（仅非空时覆盖）。必须在这一步做显式覆盖的原因见函数
+   注释：没有显式绑定且名字对不上（AutomaticEnv 按 key 转写查的是 `DATABASE_DSN` 而非
+   `DB_DSN`），且模块配置合并用的 `v.Set()` 在 viper 中优先级高于 env——不经这一步，
+   密钥 env 永远输给模块 yaml。
 2. **模块 yaml（`v.Set` 命名空间合并）**：读入全局配置后检查 `modules.<name>` 开关，为 true 的
    模块加载 `modules/<name>/configs/config.yaml`，并以 `模块名.` 为前缀 `v.Set` 合并
    （如 `modules/system/configs/config.yaml` 的 `jwt_secret` → `system.jwt_secret`）。
-3. **全局 `alexgo-server/configs/config.yaml`**；另有 `BindEnv` 的常用映射
-   `HTTP_ADDR` / `GRPC_ADDR` / `NATS_URL` / `REDIS_ADDR`（`server.http_addr` 等经
-   `EnvKeyReplacer` 把 `.` 转 `_`），按 viper 原生优先级高于配置文件。
+3. **全局 `alexgo-server/configs/config.yaml`**；另有显式 `BindEnv` 的常用别名映射
+   `HTTP_ADDR` / `GRPC_ADDR` / `NATS_URL` / `REDIS_ADDR`（→ `server.http_addr` /
+   `mq.nats.url` / `redis.addr`），按 viper 原生优先级高于配置文件。注意区分：
+   `EnvKeyReplacer`（`.`→`_`）服务于 `AutomaticEnv` 的 **`SERVER_HTTP_ADDR` 这类
+   “viper key 转写”** 的隐式 env 查找；`HTTP_ADDR` 这类短名是 `BindEnv` 的显式绑定，
+   `DB_DSN` 这类则走 Unmarshal 后的 `applyEnvOverrides` 显式覆盖，三者不要混为一谈。
 4. **代码默认值**：`SetDefault(...)`，如 `server.pprof_enabled=false`、`migrate.auto=true`、
    `outbox.enabled=true`、`outbox.interval_second=5`、`limiter.enabled=false`、
    `mq.nats.enabled=false`、`redis.enabled=false` 等，保证无配置文件也能启动。
@@ -171,12 +175,18 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
     `values-dev.yaml` / `values-gray.yaml` / `values-prod.yaml` 覆盖差异（副本数、镜像 tag、
     `pprofEnabled`、域名、HPA）；`deployments/argocd/` 提供 dev/gray/prod 三个 Application
     （`valueFiles: [values.yaml, values-<env>.yaml]`，自动 sync + prune + CreateNamespace）。
-- **配置与密钥注入**：清单把 `config.yaml` 以 volume 挂载进容器，同时提供 env 注入通道——
-  kustomize 清单用 `envFrom` ConfigMap 注入 `DB_DSN`/`HTTP_ADDR`，compose 用 `environment:`；
-  由于 `applyEnvOverrides` 在 Unmarshal **之后**覆盖，**env 始终压过配置文件**。仓库当前没有
-  K8s Secret 清单（DSN/JWT secret 暂放在 ConfigMap 或 Helm values 渲染的 config.yaml 里），
-  生产应把 `DB_DSN` / `JWT_SECRET` / `REDIS_PASSWORD` 放入 Secret 后以 env 注入，代码无需改动。
+- **配置与密钥注入**：清单把 `config.yaml` 以 volume 挂载进容器作为兜底，密钥类走 env 通道
+  且**由 K8s Secret 注入、压过 ConfigMap 里的 config.yaml**（`applyEnvOverrides` 在 Unmarshal
+  **之后**覆盖，env 始终生效）：
+  - kustomize：`deployments/kubernetes/secret.yaml` 提供 **占位值** 的 `alexgo-secrets`
+    （`DB_DSN`/`JWT_SECRET`），deployment 经 `env` + `secretKeyRef` 注入；ConfigMap 顶层的
+    明文 `DB_DSN` 已删除，config.yaml 只保留 `database.dsn` 兜底。compose 用 `environment:`。
+  - Helm：`values.yaml` 的 `secrets.dbDsn` / `secrets.jwtSecret` 控制——**为空则不渲染 Secret**
+    （`templates/secret.yaml` 有条件生成），deployment 的 `secretKeyRef` 标了 `optional: true`，
+    Secret 缺失时回退到 ConfigMap 渲染的 config.yaml。
+  - 生产务必覆盖占位值：推荐用 **Sealed Secrets / External Secrets / kubectl create secret**
+    覆盖 `secret.yaml` 的占位值（切勿把真实 DSN/JWT secret 提交进 git），代码无需改动。
 - **探针**：liveness → `/health`，readiness → `/health/ready`（kustomize 与 Helm 模板均已配置）。
 - **CI/CD**：`.github/workflows/ci.yml`（push `main`/`develop` 与 PR）：依赖安装 → golangci-lint
-  → proto/CRUD 生成 → `go test ./... -v` → `make build` → `helm lint` → docker build；
+  → proto 生成 → `go test ./... -v -race` → `make build` → `helm lint` → docker build；
   `cd.yml`（tag `v*`）：docker build-push → Helm 升级部署。

@@ -126,7 +126,9 @@ func TestAuthMiddleware_CasbinDeny_403(t *testing.T) {
 	cfg := testCfg()
 	enf := newEnforcer(t)
 	// 只给 bob 授权；alice 请求 → 403。
-	enf.AddPolicy("bob", "/api/admin/system/users", "GET")
+	if _, err := enf.AddPolicy("bob", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
 
 	token, err := auth.GenerateToken(1, "alice", 1, cfg)
 	if err != nil {
@@ -141,7 +143,9 @@ func TestAuthMiddleware_CasbinDeny_403(t *testing.T) {
 func TestAuthMiddleware_CasbinAllow_200(t *testing.T) {
 	cfg := testCfg()
 	enf := newEnforcer(t)
-	enf.AddPolicy("alice", "/api/admin/system/users", "GET")
+	if _, err := enf.AddPolicy("alice", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
 
 	token, err := auth.GenerateToken(1, "alice", 1, cfg)
 	if err != nil {

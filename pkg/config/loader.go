@@ -105,9 +105,11 @@ func LoadGlobalConfig() (*Config, error) {
 
 // applyEnvOverrides 在 Unmarshal 之后用显式环境变量覆盖安全敏感配置。
 //
-// 为什么不用 viper.AutomaticEnv / BindEnv：
-// 1) AutomaticEnv 的隐式映射不会参与 Unmarshal（viper 已知行为）；
-// 2) 模块配置合并使用 v.Set()，其优先级高于 env，会导致 env 永远输给模块 yaml。
+// 为什么 DB_DSN 这类密钥 env 光靠 AutomaticEnv/BindEnv 不生效：
+//  1. 没有显式绑定，且名字对不上——AutomaticEnv + EnvKeyReplacer 是按 viper key 做
+//     “`.`→`_`” 转写来查 env 的（database.dsn → DATABASE_DSN），并不会查 DB_DSN；
+//  2. 模块配置合并使用 v.Set()，其优先级高于 env，即使绑定了名字，env 也会输给模块 yaml。
+//
 // 因此对 K8s Secret / Compose 注入的密钥变量，在这里做最终覆盖（仅非空时生效）。
 func applyEnvOverrides(cfg *Config) {
 	pairs := []struct {
