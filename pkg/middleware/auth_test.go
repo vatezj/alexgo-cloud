@@ -14,6 +14,7 @@ import (
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/middleware"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
 
@@ -333,5 +334,120 @@ func TestAuthMiddleware_EmptyUsername_SubUserIDFallback(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("empty-username sub {tid}:{userid} status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---- Task 10：数据权限 ScopeLoader 注入 ----
+
+// fakeScope：tenant.ScopeLoader 测试替身（记录调用与入参）。
+type fakeScope struct {
+	ds       tenant.DataScope
+	err      error
+	calls    int
+	lastUser uint64
+	lastDept uint64
+}
+
+func (f *fakeScope) Load(_ context.Context, userID, deptID uint64) (tenant.DataScope, error) {
+	f.calls++
+	f.lastUser, f.lastDept = userID, deptID
+	if f.err != nil {
+		return tenant.DataScope{}, f.err
+	}
+	return f.ds, nil
+}
+
+// scopeRouter：token 模式 + 指定 claims/加载器；handler 回报 DataScope 是否注入及档位。
+func scopeRouter(cfg *config.Config, claims *token.Claims, sl tenant.ScopeLoader) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{
+		Cfg: cfg, Validator: fakeValidator{claims: claims}, ScopeLoader: sl,
+	}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) {
+		ds, ok := tenant.DataContext(c.Request.Context())
+		c.JSON(http.StatusOK, gin.H{"ok": ok, "mode": ds.Mode, "user": ds.UserID, "dept": ds.DeptID})
+	})
+	return r
+}
+
+func scopeReq(r *gin.Engine) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// 管理员：加载器结果注入请求 ctx（入参为 claims 的 userID/deptID）。
+func TestAuthMiddleware_ScopeInjected_ForAdmin(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	loader := &fakeScope{ds: tenant.DataScope{Mode: 3, UserID: 9, DeptID: 77}}
+	claims := &token.Claims{
+		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1, DeptID: 77,
+	}
+	w := scopeReq(scopeRouter(cfg, claims, loader))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"dept":77,"mode":3,"ok":true,"user":9}` {
+		t.Errorf("body = %s, want scope injected (mode 3)", w.Body.String())
+	}
+	if loader.calls != 1 || loader.lastUser != 9 || loader.lastDept != 77 {
+		t.Errorf("loader calls=%d user=%d dept=%d, want 1 call with (9,77)", loader.calls, loader.lastUser, loader.lastDept)
+	}
+}
+
+// 加载器失败 → 注入 Mode 5（仅本人，最严方向），请求不被阻断。
+func TestAuthMiddleware_ScopeLoadError_FallbackMode5(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	loader := &fakeScope{err: errors.New("db down")}
+	claims := &token.Claims{
+		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1, DeptID: 77,
+	}
+	w := scopeReq(scopeRouter(cfg, claims, loader))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"dept":77,"mode":5,"ok":true,"user":9}` {
+		t.Errorf("body = %s, want fallback Mode 5", w.Body.String())
+	}
+}
+
+// member token 不加载（也不注入 scope）：加载器零调用。
+func TestAuthMiddleware_ScopeSkipped_ForMember(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	loader := &fakeScope{ds: tenant.DataScope{Mode: 1}}
+	claims := &token.Claims{
+		UserID: 5, Username: "bob", UserType: token.UserTypeMember, TenantID: 1, DeptID: 77,
+	}
+	w := scopeReq(scopeRouter(cfg, claims, loader))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"dept":0,"mode":0,"ok":false,"user":0}` {
+		t.Errorf("body = %s, want no scope injected for member", w.Body.String())
+	}
+	if loader.calls != 0 {
+		t.Errorf("loader called %d times for member, want 0", loader.calls)
+	}
+}
+
+// ScopeLoader 为 nil（member 端/未启用装配）→ 不注入、不 panic。
+func TestAuthMiddleware_ScopeLoaderNil(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	claims := &token.Claims{
+		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1, DeptID: 77,
+	}
+	w := scopeReq(scopeRouter(cfg, claims, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"dept":0,"mode":0,"ok":false,"user":0}` {
+		t.Errorf("body = %s, want no scope when loader nil", w.Body.String())
 	}
 }

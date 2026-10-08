@@ -5,7 +5,9 @@
 // - tid=0 不注入：平台/未解析租户保持历史行为（仓库层已有显式过滤，插件是隔离下限不是唯一手段）；
 // - 无 TenantID 字段的模型跳过：存量表零影响；
 // - 白名单（tenants/casbin_rule 等全局表）跳过；
-// - IgnoreTenant 显式放行：平台侧全量查询的唯一通道。
+// - IgnoreTenant 显式放行：平台侧全量查询的唯一通道；
+// - data_scope（T10）：仅 Query 回调、且模型带 DeptID 字段时叠加可见性条件，
+//   Update/Delete 只做租户过滤；ctx 未注入 scope 则保持老行为（不过滤）。
 //
 // ctx key 约定：租户编号一律复用 pkg/tenant 的 key（WithTenantID/TenantIDFromContext），
 // 避免出现两套互不相认的 key；本包只定义自己的 ignoreKey。
@@ -47,7 +49,8 @@ func ignored(ctx context.Context) bool {
 }
 
 // Register 给 db 挂 Create/Query/Update/Delete 回调：
-// Create 仅在 tenant_id 为零值时回填；Query/Update/Delete 追加 tenant_id 等值条件。
+// Create 仅在 tenant_id 为零值时回填；Query/Update/Delete 追加 tenant_id 等值条件；
+// Query 另按 ctx 中的 DataScope 叠加数据权限条件（T10，Update/Delete 不叠加）。
 func Register(db *gorm.DB, opts Options) error {
 	exempt := map[string]bool{}
 	for _, t := range opts.ExemptTables {
@@ -80,9 +83,12 @@ func Register(db *gorm.DB, opts Options) error {
 		return f
 	}
 
-	// SELECT/UPDATE/DELETE：追加 tenant_id 条件。
+	// SELECT/UPDATE/DELETE：追加 tenant_id 条件；Query 额外叠加 data_scope。
 	// 回调时机选 Before("gorm:query/update/delete")：此时 Statement.Schema 已解析、SQL 尚未构建。
-	addFilter := func(db *gorm.DB) {
+	//
+	// withScope：只有 Query 回调传 true——scope 是"列表可见性下限"，
+	// Update/Delete 只做租户过滤（管理端按主键的维护操作不被 scope 误杀）。
+	addFilter := func(db *gorm.DB, withScope bool) {
 		st := db.Statement
 		if tenantField(st) == nil {
 			return
@@ -91,6 +97,40 @@ func Register(db *gorm.DB, opts Options) error {
 		st.AddClause(clause.Where{Exprs: []clause.Expression{
 			clause.Eq{Column: clause.Column{Name: "tenant_id"}, Value: tid},
 		}})
+		if !withScope {
+			return
+		}
+		// data_scope：仅对带 dept_id 字段的模型生效；无 scope 注入则保持现状（老行为）。
+		if ds, ok := tenant.DataContext(st.Context); ok && st.Schema.LookUpField("DeptID") != nil {
+			switch ds.Mode {
+			case 2:
+				if len(ds.DeptIDs) > 0 {
+					st.AddClause(clause.Where{Exprs: []clause.Expression{
+						clause.IN{Column: clause.Column{Name: "dept_id"}, Values: deptValues(ds.DeptIDs)},
+					}})
+				} else {
+					// 自定义集合为空 → 按"看不到"处理（显式 false 条件）。
+					st.AddClause(clause.Where{Exprs: []clause.Expression{
+						clause.Expr{SQL: "1 = 0"},
+					}})
+				}
+			case 3:
+				st.AddClause(clause.Where{Exprs: []clause.Expression{
+					clause.Eq{Column: clause.Column{Name: "dept_id"}, Value: ds.DeptID},
+				}})
+			case 4:
+				if len(ds.DeptIDs) > 0 {
+					st.AddClause(clause.Where{Exprs: []clause.Expression{
+						clause.IN{Column: clause.Column{Name: "dept_id"}, Values: deptValues(ds.DeptIDs)},
+					}})
+				}
+			case 5:
+				st.AddClause(clause.Where{Exprs: []clause.Expression{
+					clause.Eq{Column: clause.Column{Name: "id"}, Value: ds.UserID},
+				}})
+			}
+			// Mode 1 / 0：不加条件
+		}
 	}
 
 	// INSERT：tenant_id 为零值时回填（显式赋值的租户编号不覆盖）。
@@ -115,19 +155,31 @@ func Register(db *gorm.DB, opts Options) error {
 		}
 	}
 
-	if err := db.Callback().Query().Before("gorm:query").Register("tenant:filter_query", addFilter); err != nil {
+	if err := db.Callback().Query().Before("gorm:query").Register("tenant:filter_query",
+		func(db *gorm.DB) { addFilter(db, true) }); err != nil {
 		return fmt.Errorf("tenant plugin query: %w", err)
 	}
-	if err := db.Callback().Update().Before("gorm:update").Register("tenant:filter_update", addFilter); err != nil {
+	if err := db.Callback().Update().Before("gorm:update").Register("tenant:filter_update",
+		func(db *gorm.DB) { addFilter(db, false) }); err != nil {
 		return fmt.Errorf("tenant plugin update: %w", err)
 	}
-	if err := db.Callback().Delete().Before("gorm:delete").Register("tenant:filter_delete", addFilter); err != nil {
+	if err := db.Callback().Delete().Before("gorm:delete").Register("tenant:filter_delete",
+		func(db *gorm.DB) { addFilter(db, false) }); err != nil {
 		return fmt.Errorf("tenant plugin delete: %w", err)
 	}
 	if err := db.Callback().Create().Before("gorm:create").Register("tenant:fill_create", fillInsert); err != nil {
 		return fmt.Errorf("tenant plugin create: %w", err)
 	}
 	return nil
+}
+
+// deptValues 把部门编号切片展开为 clause.IN 的参数列表。
+func deptValues(ids []uint64) []interface{} {
+	out := make([]interface{}, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id)
+	}
+	return out
 }
 
 // setIfZero 仅当字段当前为零值时写入 v（显式赋值的 tenant_id 不覆盖）。

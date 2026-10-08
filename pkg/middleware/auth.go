@@ -11,6 +11,7 @@ import (
 
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
 
@@ -25,6 +26,10 @@ type AuthDeps struct {
 	Cfg       *config.Config
 	Enforcer  *casbin.Enforcer
 	Validator token.Validator
+	// ScopeLoader：数据权限加载器（T10，每请求按用户计算"最宽松"档，不缓存）。
+	// nil = 不注入数据范围——member 端与未启用时的安全缺省：
+	// gorm 插件只剩租户隔离，保持老行为。
+	ScopeLoader tenant.ScopeLoader
 }
 
 func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
@@ -49,6 +54,17 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			return
 		}
 		c.Set("claims", claims)
+
+		// 数据范围注入（T10）：仅管理端用户加载；member token 不加载（ScopeLoader 调用为 0）。
+		// 失败方向 = 最严：Load 出错时按 Mode 5（仅本人）兜底注入，不阻断请求——
+		// 加载失败不能退化成"看到更多数据"。
+		if d.ScopeLoader != nil && claims.UserType == int(token.UserTypeAdmin) {
+			ds := tenant.DataScope{Mode: 5, UserID: claims.UserID, DeptID: claims.DeptID} // 默认最严
+			if loaded, err := d.ScopeLoader.Load(c.Request.Context(), claims.UserID, claims.DeptID); err == nil {
+				ds = loaded
+			}
+			c.Request = c.Request.WithContext(tenant.WithDataScope(c.Request.Context(), ds))
+		}
 
 		if d.Enforcer != nil {
 			// sub 带租户前缀：{tenantId}:{username}，杜绝跨租户同名角色串策略（块⑦）。

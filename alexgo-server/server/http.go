@@ -54,6 +54,9 @@ type HTTPServerParams struct {
 	TokenValidator token.Validator `optional:"true"`
 	// TenantDomainLookup：域名→租户解析（nil 则只认 X-Tenant-ID 头；fx 由 tenant.NewDomainLookup 提供）。
 	TenantDomainLookup tenant.DomainLookup `optional:"true"`
+	// ScopeLoader：数据权限加载器（T10，fx 由 system 模块的 NewDataScopeLoader 映射提供）。
+	// optional：member 端不提供 → nil → AuthMiddleware 不注入 scope（只剩租户隔离，安全缺省）。
+	ScopeLoader tenant.ScopeLoader `optional:"true"`
 	// DB：用于 /health/ready 探活（fx 由 database.NewDB 注入）。
 	DB *gorm.DB
 	// Modules：模块列表（group 聚合）。
@@ -77,7 +80,9 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		// RateLimitAndBreaker：入口防护，避免高并发/故障导致雪崩。
 		middleware.RateLimitAndBreaker(p.Cfg, p.RateLimiter, p.Breaker),
 		// AuthMiddleware：对 /api/admin/**（及 member 登出/刷新）做 Token/JWT 双模式校验 + 可选 Casbin。
-		middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: p.Cfg, Enforcer: p.Enforcer, Validator: p.TokenValidator}),
+		middleware.NewAuthMiddleware(middleware.AuthDeps{
+			Cfg: p.Cfg, Enforcer: p.Enforcer, Validator: p.TokenValidator, ScopeLoader: p.ScopeLoader,
+		}),
 		middleware.OperateLogMiddleware(p.OperateRecorder),
 		// OTELMiddleware：OpenTelemetry trace，支持把链路导出到 Jaeger/Tempo/OTLP Collector。
 		trace.OTELMiddleware(),

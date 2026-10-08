@@ -54,6 +54,10 @@ var FxModule = fx.Module("system",
 		// 窄接口映射：member 模块经 pkg/tenant.AccountLimitChecker 消费，
 		// 实现归 system（唯一 Provide 处，入口不重复）。
 		func(svc service.TenantService) tenant.AccountLimitChecker { return svc },
+		// 数据权限加载器（T10）：concrete → tenant.ScopeLoader 窄接口映射，
+		// AuthDeps 经 HTTPServerParams(optional) 消费；member 端不提供该实现。
+		service.NewDataScopeLoader,
+		func(l *service.DataScopeLoader) tenant.ScopeLoader { return l },
 	),
 	fx.Invoke(service.StartSeeder),
 	fx.Provide(
