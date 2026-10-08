@@ -79,7 +79,13 @@ func appAuthRequired(path string) bool {
 
 func parseClaims(d AuthDeps, tokenStr string) (*auth.Claims, error) {
 	if d.Cfg != nil && d.Cfg.Auth.Mode == "jwt" {
-		return auth.ParseToken(tokenStr, d.Cfg) // 旧路径：Bearer JWT
+		claims, err := auth.ParseToken(tokenStr, d.Cfg)
+		if err != nil {
+			return nil, err
+		}
+		// 旧静态 JWT 仅管理端登录签发 → 恒为管理员类型（数据权限加载器依赖此值）。
+		claims.UserType = int(token.UserTypeAdmin)
+		return claims, nil
 	}
 	// token 模式（默认）
 	if d.Validator == nil {

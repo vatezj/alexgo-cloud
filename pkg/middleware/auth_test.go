@@ -186,6 +186,33 @@ func TestAuthMiddleware_CasbinAllow_200(t *testing.T) {
 	}
 }
 
+// jwt 模式：旧静态 JWT 的 claims 恒为管理员类型（Task 10 数据权限加载器依赖 UserType==1）。
+func TestAuthMiddleware_JwtMode_UserTypeAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg() // Auth.Mode = "jwt"
+	legacy, err := auth.GenerateToken(9, "alice", 1, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Validator: fakeValidator{claims: &token.Claims{UserType: token.UserTypeMember}}}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) {
+		a, _ := c.Get("claims")
+		c.JSON(200, gin.H{"ut": a.(*auth.Claims).UserType})
+	})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer "+legacy)
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	// Validator 被忽略（jwt 模式）且 UserType 被盖成 1，而非 validator 的 2。
+	if w.Body.String() != `{"ut":1}` {
+		t.Errorf("body = %s, want {\"ut\":1}", w.Body.String())
+	}
+}
+
 // token 模式：合法 validator → 200 且 claims 注入（含 user_type/dept_id）；
 // validator 报错 → 401。
 func TestAuthMiddleware_TokenMode(t *testing.T) {
