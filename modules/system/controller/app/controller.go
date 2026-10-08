@@ -28,7 +28,7 @@ func (ctrl *AppController) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, u, err := ctrl.authSvc.Login(c.Request.Context(), req.Username, req.Password)
+	res, u, err := ctrl.authSvc.Login(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
 		if ctrl.auditSvc != nil {
 			_ = ctrl.auditSvc.RecordLogin(c.Request.Context(), req.Username, 0, c.ClientIP(), c.GetHeader("User-Agent"), false, err.Error())
@@ -39,5 +39,8 @@ func (ctrl *AppController) Login(c *gin.Context) {
 	if ctrl.auditSvc != nil && u != nil {
 		_ = ctrl.auditSvc.RecordLogin(c.Request.Context(), u.Username, u.ID, c.ClientIP(), c.GetHeader("User-Agent"), true, "ok")
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	// 响应新增 refresh_token/expires_in 向后兼容：token 字段名与旧版一致（前端读 res.token 不变）。
+	c.JSON(http.StatusOK, gin.H{
+		"token": res.AccessToken, "refresh_token": res.RefreshToken, "expires_in": res.ExpiresIn,
+	})
 }

@@ -105,6 +105,8 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup.POST("/users/:id/reset-password", m.userCtrl.ResetPassword)
 	adminGroup.POST("/users/:id/roles", m.userCtrl.SetRoles)
 	adminGroup.GET("/auth/profile", m.authCtrl.Profile)
+	adminGroup.POST("/auth/refresh", m.authCtrl.Refresh)
+	adminGroup.POST("/auth/logout", m.authCtrl.Logout)
 	adminGroup.GET("/roles", m.roleCtrl.List)
 	adminGroup.POST("/roles", m.roleCtrl.Create)
 	adminGroup.DELETE("/roles/:id", m.roleCtrl.Delete)
@@ -141,4 +143,6 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 
 	appGroup := r.Group("/app/system")
 	appGroup.POST("/auth/login", m.appCtrl.Login)
+	appGroup.POST("/auth/refresh", m.authCtrl.Refresh)
+	appGroup.POST("/auth/logout", m.authCtrl.Logout)
 }

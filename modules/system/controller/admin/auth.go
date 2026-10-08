@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,10 +12,11 @@ import (
 
 type AuthController struct {
 	permSvc service.PermissionService
+	authSvc service.AuthService
 }
 
-func NewAuthController(permSvc service.PermissionService) *AuthController {
-	return &AuthController{permSvc: permSvc}
+func NewAuthController(permSvc service.PermissionService, authSvc service.AuthService) *AuthController {
+	return &AuthController{permSvc: permSvc, authSvc: authSvc}
 }
 
 type profileResponse struct {
@@ -72,4 +74,39 @@ func (c *AuthController) Profile(ctx *gin.Context) {
 		Menus: menus,
 		Routes: routes,
 	})
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// Refresh 用 refresh_token 换取新令牌对。
+func (c *AuthController) Refresh(ctx *gin.Context) {
+	var req refreshRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token required"})
+		return
+	}
+	res, err := c.authSvc.Refresh(ctx.Request.Context(), req.RefreshToken)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"token": res.AccessToken, "refresh_token": res.RefreshToken, "expires_in": res.ExpiresIn,
+	})
+}
+
+// Logout 注销当前 access token（从 Authorization 头取）。
+func (c *AuthController) Logout(ctx *gin.Context) {
+	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
+	if raw == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "token required"})
+		return
+	}
+	if err := c.authSvc.Logout(ctx.Request.Context(), raw); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

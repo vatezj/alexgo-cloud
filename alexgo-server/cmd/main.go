@@ -60,6 +60,10 @@ func main() {
 			database.NewDB,
 			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）。
 			token.NewService,
+			// 接口映射（fx 按具体类型 *token.Service 提供，不会自动满足接口依赖，
+			// 故显式 Provide 一次、全局唯一）：登录签发 / 中间件校验分别消费。
+			func(s *token.Service) token.Issuer { return s },
+			func(s *token.Service) token.Validator { return s },
 			// 当 microservice.enabled=true 时可能需要创建 gRPC 连接（否则返回 nil）。
 			client.NewGRPCConn,
 			// Casbin Enforcer：用于 RBAC 权限校验（AuthMiddleware 内可选启用）。
