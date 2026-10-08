@@ -4,6 +4,8 @@ image:
   tag: "dev-latest"
 
 config:
+  server:
+    pprofEnabled: true
   database:
     dsn: "root:password@tcp(mysql-dev:3306)/alexgo_dev?charset=utf8mb4&parseTime=True&loc=Local"
   modules:

@@ -31,6 +31,7 @@ func LoadGlobalConfig() (*Config, error) {
 	// 默认值：保证“开箱即用”（即使没有配置文件/没有 env）。
 	v.SetDefault("server.http_addr", ":8080")
 	v.SetDefault("server.grpc_addr", ":50051")
+	v.SetDefault("server.pprof_enabled", false)
 	v.SetDefault("migrate.auto", true)
 	v.SetDefault("outbox.enabled", true)
 	v.SetDefault("outbox.batch_size", 100)

@@ -7,6 +7,7 @@ data:
     server:
       http_addr: {{ .Values.config.server.httpAddr | quote }}
       grpc_addr: {{ .Values.config.server.grpcAddr | quote }}
+      pprof_enabled: {{ .Values.config.server.pprofEnabled }}
     database:
       dsn: {{ .Values.config.database.dsn | quote }}
     migrate:

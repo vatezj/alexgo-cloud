@@ -50,14 +50,9 @@ type HTTPServerParams struct {
 	Modules []Module `group:"modules"`
 }
 
-// StartHTTPServer 构建 Gin Router、挂载全局中间件、聚合注册模块路由，并通过 Fx Lifecycle 托管 http.Server。
-//
-// 路由结构约定：
-// - /api/**：业务 API（模块自己注册）
-// - /health：健康检查（liveness/readiness 探针）
-// - /metrics：Prometheus 指标
-// - /debug/pprof/**：pprof 性能分析（生产建议加网络隔离或鉴权）
-func StartHTTPServer(p HTTPServerParams) {
+// newRouter 构建完整的 Gin 路由（中间件链 + 模块路由 + 运维端点）。
+// 抽出为独立函数以便在单测中直接构造路由（pprof 开关、health 行为等）。
+func newRouter(p HTTPServerParams) *gin.Engine {
 	r := gin.New()
 	r.Use(
 		// Recovery：防止 panic 直接把进程打挂（对外返回 500）。
@@ -91,12 +86,27 @@ func StartHTTPServer(p HTTPServerParams) {
 	})
 	// /metrics：Prometheus 拉取点（Prometheus server scrape）。
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	// pprof：CPU/内存/阻塞分析入口（生产建议仅内网访问或单独端口）。
-	r.GET("/debug/pprof/", gin.WrapF(pprof.Index))
-	r.GET("/debug/pprof/cmdline", gin.WrapF(pprof.Cmdline))
-	r.GET("/debug/pprof/profile", gin.WrapF(pprof.Profile))
-	r.GET("/debug/pprof/symbol", gin.WrapF(pprof.Symbol))
-	r.GET("/debug/pprof/trace", gin.WrapF(pprof.Trace))
+	// pprof：默认关闭（server.pprof_enabled=true 才挂载），
+	// 避免生产环境通过业务端口泄露运行时信息。
+	if p.Cfg.Server.PprofEnabled {
+		r.GET("/debug/pprof/", gin.WrapF(pprof.Index))
+		r.GET("/debug/pprof/cmdline", gin.WrapF(pprof.Cmdline))
+		r.GET("/debug/pprof/profile", gin.WrapF(pprof.Profile))
+		r.GET("/debug/pprof/symbol", gin.WrapF(pprof.Symbol))
+		r.GET("/debug/pprof/trace", gin.WrapF(pprof.Trace))
+	}
+	return r
+}
+
+// StartHTTPServer 构建 Gin Router、挂载全局中间件、聚合注册模块路由，并通过 Fx Lifecycle 托管 http.Server。
+//
+// 路由结构约定：
+// - /api/**：业务 API（模块自己注册）
+// - /health：健康检查（liveness/readiness 探针）
+// - /metrics：Prometheus 指标
+// - /debug/pprof/**：pprof 性能分析（默认关闭，由 server.pprof_enabled 控制）
+func StartHTTPServer(p HTTPServerParams) {
+	r := newRouter(p)
 
 	srv := &http.Server{Addr: p.Cfg.Server.HTTPAddr, Handler: r}
 
