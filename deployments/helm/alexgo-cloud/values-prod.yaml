@@ -19,3 +19,9 @@ ingress:
   enabled: true
   host: alexgo.example.com
 
+# 密钥：部署时通过 --set / 外部密钥系统注入（Sealed Secrets / External Secrets），勿写进本文件提交 git。
+# 留空则不创建 Secret，回退 config.yaml 兜底（不推荐用于生产）。
+secrets:
+  dbDsn: ""
+  jwtSecret: ""
+

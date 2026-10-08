@@ -20,6 +20,19 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.port }}
+          env:
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "alexgo-cloud.fullname" . }}-secrets
+                  key: DB_DSN
+                  optional: true
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "alexgo-cloud.fullname" . }}-secrets
+                  key: JWT_SECRET
+                  optional: true
           volumeMounts:
             - name: config
               mountPath: /app/alexgo-server/configs

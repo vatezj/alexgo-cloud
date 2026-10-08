@@ -23,6 +23,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: alexgo-config
+          env:
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: DB_DSN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: JWT_SECRET
           volumeMounts:
             - name: alexgo-config
               mountPath: /app/alexgo-server/configs

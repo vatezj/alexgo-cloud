@@ -19,3 +19,9 @@ ingress:
 autoscaling:
   enabled: false
 
+# 密钥：dev 仅用 change-me 占位值方便本地联调；真实值部署时注入，勿提交真实密码进 git。
+# 留空则不创建 Secret，回退 config.yaml 兜底。
+secrets:
+  dbDsn: "root:change-me@tcp(mysql-dev:3306)/alexgo_dev?charset=utf8mb4&parseTime=True&loc=Local"
+  jwtSecret: "change-me"
+

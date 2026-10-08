@@ -4,12 +4,14 @@ metadata:
   name: alexgo-config
   namespace: alexgo-cloud
 data:
+  # 顶层 DB_DSN（明文死变量）已移除：DB_DSN 改由 Secret alexgo-secrets 以 env（secretKeyRef）注入，
+  # 见 deployment.yaml；ConfigMap 不是密钥的正确载体。
   HTTP_ADDR: ":8080"
-  DB_DSN: "root:password@tcp(mysql.alexgo-cloud.svc.cluster.local:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
   config.yaml: |
     server:
       http_addr: ":8080"
     database:
+      # dsn 兜底：生产应由环境变量 DB_DSN（Secret）覆盖
       dsn: "root:password@tcp(mysql.alexgo-cloud.svc.cluster.local:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
     migrate:
       auto: true

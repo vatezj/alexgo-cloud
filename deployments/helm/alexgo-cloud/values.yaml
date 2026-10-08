@@ -71,3 +71,9 @@ autoscaling:
   minReplicas: 3
   maxReplicas: 20
   targetCPUUtilizationPercentage: 65
+
+# 密钥：强烈建议部署时通过 --set / -f <外部密钥文件> / Sealed Secrets 注入，
+# 不要把真实值写进本文件提交 git。留空则不创建 Secret，回退 config.yaml 兜底（不推荐用于生产）。
+secrets:
+  dbDsn: ""
+  jwtSecret: ""
