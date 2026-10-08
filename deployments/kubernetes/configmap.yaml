@@ -11,8 +11,9 @@ data:
     server:
       http_addr: ":8080"
     database:
-      # dsn 兜底：生产应由环境变量 DB_DSN（Secret）覆盖
-      dsn: "root:password@tcp(mysql.alexgo-cloud.svc.cluster.local:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
+      # dsn 兜底占位值（非真实密码）：生产必须由环境变量 DB_DSN（Secret alexgo-secrets）覆盖，
+      # 见 deployment.yaml env secretKeyRef；未覆盖时 readiness 探活会失败。
+      dsn: "root:change-me@tcp(mysql.alexgo-cloud.svc.cluster.local:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
     migrate:
       auto: true
     microservice:

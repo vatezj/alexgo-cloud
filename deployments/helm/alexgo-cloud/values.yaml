@@ -23,7 +23,9 @@ config:
     grpcAddr: ":50051"
     pprofEnabled: false
   database:
-    dsn: "root:password@tcp(mysql:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
+    # 兜底占位值（非真实密码）：生产必须通过 secrets.dbDsn（Secret env）覆盖，
+    # 环境变量 DB_DSN 经 applyEnvOverrides 压过本文件。
+    dsn: "root:change-me@tcp(mysql:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
   migrate:
     auto: true
   microservice:
@@ -53,7 +55,8 @@ config:
     threshold: 10
     openSecond: 30
   system:
-    jwtSecret: "alexgo-super-secret-key-2026"
+    # 兜底占位值（非真实密钥）：生产必须通过 secrets.jwtSecret（Secret env JWT_SECRET）覆盖。
+    jwtSecret: "change-me"
     defaultAdminRole: "admin"
     defaultAdminUsername: "admin"
     defaultAdminPassword: "admin123"
