@@ -107,3 +107,47 @@ func TestNewCircuitBreaker_Defaults(t *testing.T) {
 		t.Errorf("defaults = (%d, %v), want (10, 30s)", cb.threshold, cb.openFor)
 	}
 }
+
+// 直接驱动 allow()/after()，钉住 Open→HalfOpen 转换与 halfInUse 单探测守卫
+//（若回归跳过 HalfOpen 直转 Closed，本测试必须变红）。
+func TestAllow_HalfOpenTransitionAndProbeGuard(t *testing.T) {
+	cb := NewCircuitBreaker(1, 50*time.Millisecond)
+	_ = cb.Do(fail) // → Open
+	if cb.state != Open {
+		t.Fatalf("state = %v, want Open", cb.state)
+	}
+	time.Sleep(60 * time.Millisecond)
+
+	// 到期后第一次 allow：放行探测并占用 halfInUse。
+	if !cb.allow() {
+		t.Fatal("after openFor elapsed, allow() must admit a probe")
+	}
+	if cb.state != HalfOpen {
+		t.Errorf("state = %v, want HalfOpen (regression: expired Open must enter HalfOpen, not Closed)", cb.state)
+	}
+	if !cb.halfInUse {
+		t.Error("halfInUse must be set while probe is in flight")
+	}
+
+	// 探测占用期间，第二个请求必须被拒（单探测守卫）。
+	if cb.allow() {
+		t.Error("second request must be rejected while half-open probe in flight")
+	}
+
+	// 探测成功 → Closed + 计数清零。
+	cb.after(true)
+	if cb.state != Closed {
+		t.Errorf("state = %v, want Closed after successful probe", cb.state)
+	}
+	if cb.failures != 0 {
+		t.Errorf("failures = %d, want 0", cb.failures)
+	}
+
+	// Closed 下放行正常请求（不占用探测位）。
+	if !cb.allow() {
+		t.Error("allow() must admit requests in Closed state")
+	}
+	if cb.halfInUse {
+		t.Error("halfInUse must not be set in Closed state")
+	}
+}
