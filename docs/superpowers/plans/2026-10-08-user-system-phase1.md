@@ -1543,8 +1543,9 @@ type MemberUser struct {
 	LoginDate  *time.Time `json:"login_date"`
 	Deleted    bool      `gorm:"column:deleted" json:"-"`
 	TenantID   uint64    `json:"tenant_id"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	// DDL 用 yudao 风格 create_time/update_time（非 gorm 默认 created_at/updated_at）→ 显式列标签。
+	CreatedAt  time.Time `gorm:"column:create_time" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"column:update_time" json:"updated_at"`
 }
 func (MemberUser) TableName() string { return "member_user" }
 
@@ -1670,10 +1671,10 @@ func TestRegister_ThenLogin(t *testing.T) {
 func TestRegister_DuplicateMobile(t *testing.T) {
 	repo := newMemRepo()
 	svc := NewMemberService(repo, &fakeIssuer{})
-	if _, err := svc.Register(context.Background(), "13800000000", "pw", "", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "13800000000", "pw123456", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Register(context.Background(), "13800000000", "pw", "", ""); err == nil {
+	if _, err := svc.Register(context.Background(), "13800000000", "pw123456", "", ""); err == nil {
 		t.Error("duplicate mobile must fail")
 	}
 }
