@@ -20,6 +20,7 @@ import (
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/middleware"
 	"alexGo-cloud/pkg/monitor"
+	"alexGo-cloud/pkg/token"
 	"alexGo-cloud/pkg/trace"
 )
 
@@ -48,6 +49,8 @@ type HTTPServerParams struct {
 	// Breaker：熔断器；nil 表示禁用熔断（请求不会因熔断提前失败）。
 	Breaker         *circuitbreaker.CircuitBreaker `optional:"true"`
 	OperateRecorder audit.OperateRecorder          `optional:"true"`
+	// TokenValidator：mode=token 时的令牌校验器（fx 由 token.NewService 提供）。
+	TokenValidator token.Validator `optional:"true"`
 	// DB：用于 /health/ready 探活（fx 由 database.NewDB 注入）。
 	DB *gorm.DB
 	// Modules：模块列表（group 聚合）。
@@ -69,8 +72,8 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		monitor.PrometheusMiddleware(),
 		// RateLimitAndBreaker：入口防护，避免高并发/故障导致雪崩。
 		middleware.RateLimitAndBreaker(p.Cfg, p.RateLimiter, p.Breaker),
-		// AuthMiddleware：对 /api/admin/** 进行 JWT + Casbin 校验（可通过 enforcer=nil 或配置禁用）。
-		middleware.AuthMiddleware(p.Cfg, p.Enforcer),
+		// AuthMiddleware：对 /api/admin/**（及 member 登出/刷新）做 Token/JWT 双模式校验 + 可选 Casbin。
+		middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: p.Cfg, Enforcer: p.Enforcer, Validator: p.TokenValidator}),
 		middleware.OperateLogMiddleware(p.OperateRecorder),
 		// OTELMiddleware：OpenTelemetry trace，支持把链路导出到 Jaeger/Tempo/OTLP Collector。
 		trace.OTELMiddleware(),

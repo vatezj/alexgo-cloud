@@ -23,6 +23,7 @@ import (
 	"alexGo-cloud/pkg/mq"
 	"alexGo-cloud/pkg/outbox"
 	appredis "alexGo-cloud/pkg/redis"
+	"alexGo-cloud/pkg/token"
 	"alexGo-cloud/pkg/trace"
 )
 
@@ -57,6 +58,8 @@ func main() {
 			config.LoadGlobalConfig,
 			// 数据库连接：GORM + 连接池 + Fx OnStop 优雅关闭。
 			database.NewDB,
+			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）。
+			token.NewService,
 			// 当 microservice.enabled=true 时可能需要创建 gRPC 连接（否则返回 nil）。
 			client.NewGRPCConn,
 			// Casbin Enforcer：用于 RBAC 权限校验（AuthMiddleware 内可选启用）。
