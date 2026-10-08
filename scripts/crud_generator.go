@@ -74,6 +74,11 @@ func main() {
 		if !strings.HasSuffix(path, ".proto") {
 			return nil
 		}
+		// gRPC 契约（如 api/rpc/token.proto）不是 CRUD 实体——跳过，
+		// 否则 make proto/generate-crud 会为 TokenService 生成无业务语义的脚手架。
+		if strings.Contains(filepath.ToSlash(path), "/rpc/") {
+			return nil
+		}
 
 		mod := moduleName(path)
 		if *moduleFlag != "" && mod != *moduleFlag {
