@@ -283,7 +283,7 @@ git commit -m "feat(system): rename users->system_users, add token/tenants table
 
 ---
 
-### Task 2: pkg/token 核心（签发/校验/刷新/注销 + 缓存 + 清扫）
+### Task 2: pkg/token 核心（签发/校验/刷新/注销 + 清扫）
 
 **Files:**
 - Create: `pkg/token/token.go`（类型与接口）、`pkg/token/service.go`（实现）、`pkg/token/service_test.go`
@@ -438,7 +438,7 @@ func TestRefresh_Rotates(t *testing.T) {
 }
 
 // 注销后立即失效（无缓存层，直接反映 DB 行删除——踢人立即失效的验收项）。
-func TestRevoke_InvalidatesCache(t *testing.T) {
+func TestRevoke_ImmediateInvalidation(t *testing.T) {
 	s := newTestService(t)
 	issued := mustIssue(t, s)
 	if _, err := s.Validate(context.Background(), issued.AccessToken); err != nil {
@@ -749,13 +749,13 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, er
 }
 ```
 
-Refresh 的最终形态（直接删旧行再签新行，不经过 Revoke，错误路径单一）：
+Refresh 的最终形态（窗口校验按 create_time + refreshExpireDay；直接删旧行再签新行，不经过 Revoke，错误路径单一）：
 
 ```go
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, error) {
 	var row accessToken
 	err := s.db.WithContext(ctx).Where("refresh_token = ?", refreshToken).First(&row).Error
-	if err != nil || time.Now().After(row.ExpiresTime) {
+	if err != nil || time.Since(row.CreatedAt) > s.refreshExpire() {
 		return nil, fmt.Errorf("token: invalid refresh token")
 	}
 	// 单次使用：旧 access 立即失效（删行），旧 refresh 随行删除一并作废。
