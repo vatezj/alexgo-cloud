@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package order.admin.v1;
+
+option go_package = "alexGo-cloud/modules/order/api/admin/v1;v1";
+
+service OrderService {
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+}
+
+message ListOrdersRequest {}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+}
+
+message CreateOrderRequest {
+  uint64 user_id = 1;
+  uint64 product_id = 2;
+  int64 amount = 3;
+  int32 status = 4;
+  string order_no = 5;
+}
+
+message CreateOrderResponse {
+  uint64 id = 1;
+}
+
+message Order {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  uint64 product_id = 3;
+  int64 amount = 4;
+  int32 status = 5;
+  string order_no = 6;
+}
+

@@ -1,0 +1,19 @@
+replicaCount: 1
+
+image:
+  tag: "dev-latest"
+
+config:
+  database:
+    dsn: "root:password@tcp(mysql-dev:3306)/alexgo_dev?charset=utf8mb4&parseTime=True&loc=Local"
+  modules:
+    system: true
+    order: true
+
+ingress:
+  enabled: true
+  host: alexgo-dev.example.com
+
+autoscaling:
+  enabled: false
+

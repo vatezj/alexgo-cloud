@@ -1,0 +1,4 @@
+jwt_secret: "alexgo-super-secret-key-2026"
+default_admin_role: "admin"
+default_admin_username: "admin"
+default_admin_password: "admin123"

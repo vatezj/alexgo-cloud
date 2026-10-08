@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alexgo-cloud-gray
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://example.com/your-repo.git
+    targetRevision: main
+    path: deployments/helm/alexgo-cloud
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-gray.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: alexgo-gray
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

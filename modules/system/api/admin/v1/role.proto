@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package system.admin.v1;
+
+option go_package = "alexGo-cloud/modules/system/api/admin/v1;v1";
+
+service RoleService {
+  rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
+}
+
+message ListRolesRequest {}
+
+message ListRolesResponse {
+  repeated Role roles = 1;
+}
+
+message Role {
+  uint64 id = 1;
+  string name = 2;
+}
+

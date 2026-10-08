@@ -1,0 +1,72 @@
+replicaCount: 3
+
+image:
+  repository: alexgo-cloud
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 800m
+    memory: 1Gi
+
+config:
+  server:
+    httpAddr: ":8080"
+    grpcAddr: ":50051"
+  database:
+    dsn: "root:password@tcp(mysql:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
+  migrate:
+    auto: true
+  microservice:
+    enabled: false
+    registry: "consul://127.0.0.1:8500"
+  mq:
+    nats:
+      enabled: false
+      url: "nats://127.0.0.1:4222"
+      stream: "ALEXGO"
+      subjectPrefix: "alexgo.>"
+  outbox:
+    enabled: true
+    intervalSecond: 5
+    batchSize: 100
+  redis:
+    enabled: false
+    addr: "127.0.0.1:6379"
+    password: ""
+    db: 0
+  limiter:
+    enabled: false
+    rate: 100
+    burst: 200
+  breaker:
+    enabled: false
+    threshold: 10
+    openSecond: 30
+  system:
+    jwtSecret: "alexgo-super-secret-key-2026"
+    defaultAdminRole: "admin"
+    defaultAdminUsername: "admin"
+    defaultAdminPassword: "admin123"
+  modules:
+    system: true
+    order: false
+
+ingress:
+  enabled: true
+  host: alexgo.example.com
+  className: nginx
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65

@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "alexgo-cloud.fullname" . }}-config
+data:
+  config.yaml: |
+    server:
+      http_addr: {{ .Values.config.server.httpAddr | quote }}
+      grpc_addr: {{ .Values.config.server.grpcAddr | quote }}
+    database:
+      dsn: {{ .Values.config.database.dsn | quote }}
+    migrate:
+      auto: {{ .Values.config.migrate.auto }}
+    microservice:
+      enabled: {{ .Values.config.microservice.enabled }}
+      registry: {{ .Values.config.microservice.registry | quote }}
+    mq:
+      nats:
+        enabled: {{ .Values.config.mq.nats.enabled }}
+        url: {{ .Values.config.mq.nats.url | quote }}
+        stream: {{ .Values.config.mq.nats.stream | quote }}
+        subject_prefix: {{ .Values.config.mq.nats.subjectPrefix | quote }}
+    outbox:
+      enabled: {{ .Values.config.outbox.enabled }}
+      interval_second: {{ .Values.config.outbox.intervalSecond }}
+      batch_size: {{ .Values.config.outbox.batchSize }}
+    redis:
+      enabled: {{ .Values.config.redis.enabled }}
+      addr: {{ .Values.config.redis.addr | quote }}
+      password: {{ .Values.config.redis.password | quote }}
+      db: {{ .Values.config.redis.db }}
+    limiter:
+      enabled: {{ .Values.config.limiter.enabled }}
+      rate: {{ .Values.config.limiter.rate }}
+      burst: {{ .Values.config.limiter.burst }}
+    breaker:
+      enabled: {{ .Values.config.breaker.enabled }}
+      threshold: {{ .Values.config.breaker.threshold }}
+      open_second: {{ .Values.config.breaker.openSecond }}
+    system:
+      jwt_secret: {{ .Values.config.system.jwtSecret | quote }}
+      default_admin_role: {{ .Values.config.system.defaultAdminRole | quote }}
+      default_admin_username: {{ .Values.config.system.defaultAdminUsername | quote }}
+      default_admin_password: {{ .Values.config.system.defaultAdminPassword | quote }}
+    modules:
+      system: {{ .Values.config.modules.system }}
+      order: {{ .Values.config.modules.order }}

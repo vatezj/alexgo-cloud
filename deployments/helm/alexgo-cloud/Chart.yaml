@@ -1,0 +1,7 @@
+apiVersion: v2
+name: alexgo-cloud
+description: alexGo-cloud 模块化单体架构 Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+

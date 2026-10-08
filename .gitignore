@@ -1,0 +1,16 @@
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+*.test
+*.out
+
+.DS_Store
+.idea/
+.vscode/
+
+node_modules/
+.ccto/
+coverage.out

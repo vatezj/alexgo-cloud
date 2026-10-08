@@ -1,0 +1,9 @@
+replicaCount: 2
+
+image:
+  tag: "gray-latest"
+
+ingress:
+  enabled: true
+  host: alexgo-gray.example.com
+

@@ -1,0 +1,5 @@
+访问:
+  HTTP: {{ .Values.service.port }}
+  /health
+  /metrics
+

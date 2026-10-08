@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package system.admin.v1;
+
+option go_package = "alexGo-cloud/modules/system/api/admin/v1;v1";
+
+service UserService {
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message User {
+  uint64 id = 1;
+  string username = 2;
+}

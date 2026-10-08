@@ -1,0 +1,45 @@
+server:
+  http_addr: ":8080"
+  grpc_addr: ":50051"
+
+database:
+  dsn: "root:root@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
+
+migrate:
+  auto: true
+
+microservice:
+  enabled: false
+  registry: "consul://127.0.0.1:8500"
+
+mq:
+  nats:
+    enabled: false
+    url: "nats://127.0.0.1:4222"
+    stream: "ALEXGO"
+    subject_prefix: "alexgo.>"
+
+outbox:
+  enabled: true
+  interval_second: 5
+  batch_size: 100
+
+redis:
+  enabled: false
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+limiter:
+  enabled: false
+  rate: 100
+  burst: 200
+
+breaker:
+  enabled: false
+  threshold: 10
+  open_second: 30
+
+modules:
+  system: true
+  order: false
