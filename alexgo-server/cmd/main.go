@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/member"
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/system"
 	systemservice "alexGo-cloud/modules/system/service"
@@ -113,6 +114,8 @@ func main() {
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
 		system.FxModule,
 		order.FxModule,
+		// member 模块先无条件装入（Task 12 才按部署模式拆分）。
+		member.FxModule,
 	}
 
 	if !*migrateOnly {
