@@ -17,7 +17,7 @@
 - **测试零外部依赖**：sqlite 内存库（glebarez，已在 go.mod）、内存 Casbin、fake Issuer/Validator、bufconn gRPC；**不依赖 MySQL/Redis/网络**
 - 中文注释、解释"为什么"；文件级 doc comment 与现有风格一致
 - **状态位统一 `1=启用 0=停用`**（与现有 `users.Status==1` 才可登录一致；spec DDL 注释里"0开启1停用"以此为准改写）
-- **`deleted bit(1)` 列一期仅落库、不启用 gorm 软删**（避免全仓储加 WHERE 的大改；Delete 保持现状）——对 spec "gorm.DeletedAt" 的记录性偏差
+- **`deleted` 列一律 `TINYINT(1)`（不是 TINYINT(1)）**、一期仅落库不启用 gorm 软删——TINYINT(1) 经 go-sql-driver 返回原始字节，GORM bool 字段扫描必然报错（T1 审查源码级证实）；对 spec "bit(1)+gorm.DeletedAt" 的记录性偏差
 - 环境变量经 `applyEnvOverrides` 显式覆盖（viper Unmarshal 不读隐式 env）：新增 `DEPLOYMENT_MODE`、`SYSTEM_GRPC_ADDR`
 - `protoc` 本机未装：Task 11 用 `brew install protobuf` + `go install protoc-gen-go protoc-gen-go-grpc`（**brew 为工作区外系统改动，执行时向用户披露**）
 - 新命名：spec 的 `TokenIssuer` → 代码接口 `token.Issuer`；gRPC 服务名 `TokenService`
@@ -98,7 +98,7 @@ ALTER TABLE `system_users`
   ADD COLUMN `avatar`     VARCHAR(100) NOT NULL DEFAULT '' COMMENT '头像' AFTER `sex`,
   ADD COLUMN `login_ip`   VARCHAR(50)  NOT NULL DEFAULT '' COMMENT '最近登录IP' AFTER `status`,
   ADD COLUMN `login_date` DATETIME     NULL COMMENT '最近登录时间' AFTER `login_ip`,
-  ADD COLUMN `deleted`    BIT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删，仅落列）' AFTER `login_date`,
+  ADD COLUMN `deleted`    TINYINT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删，仅落列）' AFTER `login_date`,
   ADD COLUMN `creator`    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '创建者' AFTER `deleted`,
   ADD COLUMN `updater`    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '更新者' AFTER `creator`;
 ```
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS `system_oauth2_access_token` (
   `client_id`     VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '客户端编号',
   `scopes`        VARCHAR(255) NOT NULL DEFAULT '' COMMENT '授权范围',
   `expires_time`  DATETIME     NOT NULL COMMENT '过期时间',
-  `deleted`       BIT(1)       NOT NULL DEFAULT 0,
+  `deleted`       TINYINT(1)       NOT NULL DEFAULT 0,
   `creator`       VARCHAR(64)  NOT NULL DEFAULT '',
   `create_time`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updater`       VARCHAR(64)  NOT NULL DEFAULT '',
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `expire_time`   DATETIME    NULL COMMENT '过期时间（NULL=永久）',
   `account_limit` INT         NOT NULL DEFAULT -1 COMMENT '账号额度 -1不限',
   `domain`        VARCHAR(64) NOT NULL DEFAULT '' COMMENT '绑定域名（登录解析用，可空）',
-  `deleted`       BIT(1)      NOT NULL DEFAULT 0,
+  `deleted`       TINYINT(1)      NOT NULL DEFAULT 0,
   `creator`       VARCHAR(64) NOT NULL DEFAULT '',
   `create_time`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updater`       VARCHAR(64) NOT NULL DEFAULT '',
@@ -181,12 +181,12 @@ ALTER TABLE `roles`
   ADD COLUMN `data_scope_dept_ids` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '自定义数据范围部门ID数组' AFTER `data_scope`,
   ADD COLUMN `type`                TINYINT      NOT NULL DEFAULT 2  COMMENT '角色类型 1系统内置 2自定义' AFTER `data_scope_dept_ids`,
   ADD COLUMN `remark`              VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注' AFTER `type`,
-  ADD COLUMN `deleted`             BIT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除' AFTER `remark`,
+  ADD COLUMN `deleted`             TINYINT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除' AFTER `remark`,
   ADD COLUMN `creator`             VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '创建者' AFTER `deleted`,
   ADD COLUMN `updater`             VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '更新者' AFTER `creator`;
 
 ALTER TABLE `menus`
-  ADD COLUMN `deleted` BIT(1)      NOT NULL DEFAULT 0  COMMENT '是否删除' AFTER `status`,
+  ADD COLUMN `deleted` TINYINT(1)      NOT NULL DEFAULT 0  COMMENT '是否删除' AFTER `status`,
   ADD COLUMN `creator` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '创建者' AFTER `deleted`,
   ADD COLUMN `updater` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '更新者' AFTER `creator`;
 ```
@@ -365,6 +365,17 @@ func newTestService(t *testing.T) *Service {
 	if err := db.AutoMigrate(&accessToken{}); err != nil {
 		t.Fatal(err)
 	}
+	// 夹具补最小维表：Issue 查 tenants.status，Validate 回填查 system_users。
+	for _, ddl := range []string{
+		`CREATE TABLE tenants (id INTEGER PRIMARY KEY, status INTEGER NOT NULL DEFAULT 1, deleted INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO tenants (id, status) VALUES (1, 1), (2, 0)`,
+		`CREATE TABLE system_users (id INTEGER PRIMARY KEY, username TEXT, dept_id INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO system_users (id, username, dept_id) VALUES (9, 'alice', 7)`,
+	} {
+		if err := db.Exec(ddl).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	cfg := &config.Config{}
 	cfg.Auth.AccessExpireHour = 2
 	cfg.Auth.RefreshExpireDay = 7
@@ -470,6 +481,31 @@ func TestValidate_Expired(t *testing.T) {
 		t.Error("expired token must fail")
 	}
 }
+
+// 刷新窗口按 create_time+refreshExpireDay：access 已过期但创建时间在 7 天内 → 仍可刷新。
+// （若实现误用 expires_time 校验，本测试必须变红。）
+func TestRefresh_AccessExpiredButWithinWindow(t *testing.T) {
+	s := newTestService(t)
+	issued := mustIssue(t, s)
+	past := time.Now().Add(-time.Minute)
+	if err := s.db.Model(&accessToken{}).
+		Where("access_token = ?", issued.AccessToken).
+		Update("expires_time", past).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Validate(context.Background(), issued.AccessToken); err == nil {
+		t.Fatal("access must be invalid")
+	}
+	next, err := s.Refresh(context.Background(), issued.RefreshToken)
+	if err != nil {
+		t.Fatalf("refresh must still work within %d-day window: %v", cfgRefreshDays, err)
+	}
+	if next.AccessToken == "" {
+		t.Error("empty new token")
+	}
+}
+
+const cfgRefreshDays = 7
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -519,6 +555,7 @@ type accessToken struct {
 	ClientID     string    `gorm:"column:client_id;size:64"`
 	Scopes       string    `gorm:"column:scopes;size:255"`
 	ExpiresTime  time.Time `gorm:"column:expires_time"`
+	CreatedAt    time.Time `gorm:"column:create_time"` // 刷新窗口基准（表 DEFAULT CURRENT_TIMESTAMP）
 	TenantID     uint64    `gorm:"column:tenant_id"`
 }
 
@@ -693,11 +730,12 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 	return claims, nil
 }
 
-// Refresh 轮换：删旧行、签新行（同 user/tenant），保证 refresh 单次使用。
+// Refresh 轮换：刷新窗口 = create_time + refreshExpireDay（不是 access 的 expires_time——
+// access 过期后 7 天内仍可刷新，与 SweepExpired 的 7 天保留期对齐），旧 refresh 单次使用。
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, error) {
 	var row accessToken
 	err := s.db.WithContext(ctx).Where("refresh_token = ?", refreshToken).First(&row).Error
-	if err != nil || time.Now().After(row.ExpiresTime) {
+	if err != nil || time.Since(row.CreatedAt) > s.refreshExpire() {
 		return nil, fmt.Errorf("token: invalid refresh token")
 	}
 	_ = s.Revoke(ctx, row.AccessToken)
@@ -1696,7 +1734,7 @@ CREATE TABLE IF NOT EXISTS `member_user` (
   `register_ip` VARCHAR(32)  NOT NULL DEFAULT '' COMMENT '注册IP',
   `login_ip`    VARCHAR(50)  NOT NULL DEFAULT '' COMMENT '最近登录IP',
   `login_date`  DATETIME     NULL COMMENT '最近登录时间',
-  `deleted`     BIT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删）',
+  `deleted`     TINYINT(1)       NOT NULL DEFAULT 0  COMMENT '是否删除（一期不启用软删）',
   `creator`     VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '创建者',
   `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updater`     VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '更新者',
