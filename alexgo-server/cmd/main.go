@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
+	"gorm.io/gorm"
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/member"
@@ -24,6 +25,8 @@ import (
 	"alexGo-cloud/pkg/mq"
 	"alexGo-cloud/pkg/outbox"
 	appredis "alexGo-cloud/pkg/redis"
+	"alexGo-cloud/pkg/tenant"
+	"alexGo-cloud/pkg/tenant/gormplugin"
 	"alexGo-cloud/pkg/token"
 	"alexGo-cloud/pkg/trace"
 )
@@ -59,6 +62,8 @@ func main() {
 			config.LoadGlobalConfig,
 			// 数据库连接：GORM + 连接池 + Fx OnStop 优雅关闭。
 			database.NewDB,
+			// 租户域名解析（Host → tenant_id），供 TenantMiddleware 注入（可选，nil 时只认 X-Tenant-ID 头）。
+			tenant.NewDomainLookup,
 			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）。
 			token.NewService,
 			// 接口映射（fx 按具体类型 *token.Service 提供，不会自动满足接口依赖，
@@ -91,6 +96,16 @@ func main() {
 				fx.ParamTags("", "", `group:"migration_sources"`),
 			),
 		),
+		// 租户字段隔离插件：对 DB 挂 INSERT 填充/查询过滤回调。
+		// 必须用 fx.Invoke 而不是再 Provide 一个 *gorm.DB——同一类型两个 provider 会与
+		// database.NewDB 冲突（FX 直接报错）。Invoke 在依赖图构建后执行，
+		// 放在 Provide 之后、server.StartHTTPServer 的 Invoke 之前，
+		// 保证任何 HTTP 请求进入前插件已挂载。
+		fx.Invoke(func(db *gorm.DB) error {
+			return gormplugin.Register(db, gormplugin.Options{
+				ExemptTables: []string{"tenants", "casbin_rule"},
+			})
+		}),
 		// 启动 Outbox Relay（后台 goroutine + ticker）。是否启用由配置 outbox.enabled 控制。
 		fx.Invoke(outbox.StartRelay),
 		// Decorate：在依赖图构建完成后“替换某个类型的最终实现”。

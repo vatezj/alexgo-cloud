@@ -20,6 +20,7 @@ import (
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/middleware"
 	"alexGo-cloud/pkg/monitor"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 	"alexGo-cloud/pkg/trace"
 )
@@ -51,6 +52,8 @@ type HTTPServerParams struct {
 	OperateRecorder audit.OperateRecorder          `optional:"true"`
 	// TokenValidator：mode=token 时的令牌校验器（fx 由 token.NewService 提供）。
 	TokenValidator token.Validator `optional:"true"`
+	// TenantDomainLookup：域名→租户解析（nil 则只认 X-Tenant-ID 头；fx 由 tenant.NewDomainLookup 提供）。
+	TenantDomainLookup tenant.DomainLookup `optional:"true"`
 	// DB：用于 /health/ready 探活（fx 由 database.NewDB 注入）。
 	DB *gorm.DB
 	// Modules：模块列表（group 聚合）。
@@ -64,8 +67,9 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 	r.Use(
 		// Recovery：防止 panic 直接把进程打挂（对外返回 500）。
 		middleware.Recovery(),
-		// Tenant：从 Header 注入租户上下文（X-Tenant-ID），用于 SaaS 多租户隔离/审计/限流维度等。
-		middleware.TenantMiddleware(),
+		// Tenant：解析租户并注入 context（X-Tenant-ID 头优先，其次 Host 域名 → tenant_id），
+		// 供 SaaS 多租户隔离（gorm 插件）/审计/限流维度使用。
+		middleware.NewTenantMiddleware(p.TenantDomainLookup),
 		// Logger：结构化日志（可在这里对接 trace id / request id）。
 		middleware.Logger(),
 		// PrometheusMiddleware：记录 http_requests_total（method/path/status），用于错误率/流量监控。

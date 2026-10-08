@@ -23,6 +23,10 @@ func TenantIDFromContext(ctx context.Context) uint64 {
 	return 0
 }
 
+// DomainLookup 按请求域名解析租户编号（未命中/失败由实现返回 0, err；
+// 中间件仅在 err == nil 时采用结果，故未命中应返回 0, nil）。
+type DomainLookup func(ctx context.Context, host string) (uint64, error)
+
 // ParseTenantID 把 Header 文本解析为 uint64。
 // 解析失败返回 0。
 func ParseTenantID(s string) uint64 {
