@@ -46,15 +46,21 @@ type PermissionService interface {
 	UserPermCodes(ctx context.Context, userID uint64) ([]string, error)
 	UserRoutes(ctx context.Context, userID uint64) ([]*VbenRoute, error)
 	EnsureUserRolePolicy(ctx context.Context, username string, roles []*model.Role) error
+	// RebuildPolicies：按当前 role_menus 全量重建 Casbin p 策略（启动/菜单变更用）。
+	RebuildPolicies(ctx context.Context) error
+	// RebuildRolePolicies：单角色重建（AssignMenus/Delete 触发）。
+	RebuildRolePolicies(ctx context.Context, roleID uint64) error
 }
 
 type roleService struct {
 	roleRepo     repository.RoleRepository
 	roleMenuRepo repository.RoleMenuRepository
+	permSvc      PermissionService
 }
 
 type menuService struct {
 	menuRepo repository.MenuRepository
+	permSvc  PermissionService
 }
 
 type permissionService struct {
@@ -65,12 +71,14 @@ type permissionService struct {
 	enforcer     *casbin.Enforcer
 }
 
-func NewRoleService(roleRepo repository.RoleRepository, roleMenuRepo repository.RoleMenuRepository) RoleService {
-	return &roleService{roleRepo: roleRepo, roleMenuRepo: roleMenuRepo}
+// NewRoleService 注入 permSvc 用于角色变更后重建 Casbin 策略。
+// 无环：NewPermissionService 依赖仓储与 enforcer，不依赖 roleService。
+func NewRoleService(roleRepo repository.RoleRepository, roleMenuRepo repository.RoleMenuRepository, permSvc PermissionService) RoleService {
+	return &roleService{roleRepo: roleRepo, roleMenuRepo: roleMenuRepo, permSvc: permSvc}
 }
 
-func NewMenuService(menuRepo repository.MenuRepository) MenuService {
-	return &menuService{menuRepo: menuRepo}
+func NewMenuService(menuRepo repository.MenuRepository, permSvc PermissionService) MenuService {
+	return &menuService{menuRepo: menuRepo, permSvc: permSvc}
 }
 
 func NewPermissionService(
@@ -125,6 +133,7 @@ func (s *roleService) Create(ctx context.Context, p RoleCreateParams) (*model.Ro
 }
 
 // Delete 删除角色；系统内置角色（type=1）禁止删除。
+// 删除成功后全量重建 Casbin 策略（角色已没，其 p 策略随 RemoveFilteredPolicy 清除）。
 func (s *roleService) Delete(ctx context.Context, id uint64) error {
 	tid := tenant.TenantIDFromContext(ctx)
 	r, err := s.roleRepo.GetByID(ctx, tid, id)
@@ -134,12 +143,25 @@ func (s *roleService) Delete(ctx context.Context, id uint64) error {
 	if r.Type == 1 {
 		return fmt.Errorf("system role (type=1) cannot be deleted")
 	}
-	return s.roleRepo.Delete(ctx, tid, id)
+	if err := s.roleRepo.Delete(ctx, tid, id); err != nil {
+		return err
+	}
+	if s.permSvc != nil {
+		return s.permSvc.RebuildPolicies(ctx)
+	}
+	return nil
 }
 
+// AssignMenus 分配菜单后单角色重建 Casbin 策略（菜单增减立即反映到路由权限）。
 func (s *roleService) AssignMenus(ctx context.Context, roleID uint64, menuIDs []uint64) error {
 	tid := tenant.TenantIDFromContext(ctx)
-	return s.roleMenuRepo.SetRoleMenus(ctx, tid, roleID, menuIDs)
+	if err := s.roleMenuRepo.SetRoleMenus(ctx, tid, roleID, menuIDs); err != nil {
+		return err
+	}
+	if s.permSvc != nil {
+		return s.permSvc.RebuildRolePolicies(ctx, roleID)
+	}
+	return nil
 }
 
 func (s *menuService) List(ctx context.Context) ([]*model.Menu, error) {
@@ -162,12 +184,24 @@ func (s *menuService) Create(ctx context.Context, m *model.Menu) (*model.Menu, e
 	if err := s.menuRepo.Create(ctx, m); err != nil {
 		return nil, err
 	}
+	if s.permSvc != nil {
+		if err := s.permSvc.RebuildPolicies(ctx); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
 }
 
+// Delete 删除菜单后全量重建 Casbin 策略（被删菜单的权限随之失效，防残留）。
 func (s *menuService) Delete(ctx context.Context, id uint64) error {
 	tid := tenant.TenantIDFromContext(ctx)
-	return s.menuRepo.Delete(ctx, tid, id)
+	if err := s.menuRepo.Delete(ctx, tid, id); err != nil {
+		return err
+	}
+	if s.permSvc != nil {
+		return s.permSvc.RebuildPolicies(ctx)
+	}
+	return nil
 }
 
 func (s *menuService) Tree(ctx context.Context, menus []*model.Menu) []*model.Menu {
@@ -335,19 +369,132 @@ func (s *permissionService) UserRoutes(ctx context.Context, userID uint64) ([]*V
 	return build(0), nil
 }
 
+// RebuildPolicies 按当前 role_menus 全量重建 Casbin p 策略。
+// tid=0（启动/seed）拉全部租户角色，否则仅当前租户；逐角色装配其菜单后统一重建。
+// 注：ListMenuIDsByRoleIDs 现签名为聚合扁平切片（非 roleID→menuIDs 映射），
+// 故按角色自身租户逐角色查询以获得精确的 role→menus 映射。
+func (s *permissionService) RebuildPolicies(ctx context.Context) error {
+	if s.enforcer == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	var roles []*model.Role
+	var err error
+	if tid == 0 {
+		roles, err = s.roleRepo.ListAll(ctx)
+	} else {
+		roles, err = s.roleRepo.List(ctx, tid)
+	}
+	if err != nil {
+		return err
+	}
+	if len(roles) == 0 {
+		// 无角色也要清空旧策略（防止残留）。
+		return RebuildAllPolicies(ctx, s.enforcer, nil, nil)
+	}
+
+	// 菜单按租户缓存，避免逐角色重复查询。
+	menusByTenant := make(map[uint64][]*model.Menu, 4)
+	roleMenus := make(map[uint64][]*model.Menu, len(roles))
+	for _, r := range roles {
+		ms, ok := menusByTenant[r.TenantID]
+		if !ok {
+			ms, err = s.menuRepo.List(ctx, r.TenantID)
+			if err != nil {
+				return err
+			}
+			menusByTenant[r.TenantID] = ms
+		}
+		menuIDs, merr := s.roleMenuRepo.ListMenuIDsByRoleIDs(ctx, r.TenantID, []uint64{r.ID})
+		if merr != nil {
+			return merr
+		}
+		if len(menuIDs) == 0 {
+			continue
+		}
+		idset := make(map[uint64]bool, len(menuIDs))
+		for _, mid := range menuIDs {
+			idset[mid] = true
+		}
+		var bound []*model.Menu
+		for _, m := range ms {
+			if m != nil && idset[m.ID] {
+				bound = append(bound, m)
+			}
+		}
+		roleMenus[r.ID] = bound
+	}
+	return RebuildAllPolicies(ctx, s.enforcer, roles, roleMenus)
+}
+
+// RebuildRolePolicies 单角色重建（AssignMenus/Delete 触发）。
+func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint64) error {
+	if s.enforcer == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	r, err := s.roleRepo.GetByID(ctx, tid, roleID)
+	if err != nil {
+		return err
+	}
+	menuIDs, err := s.roleMenuRepo.ListMenuIDsByRoleIDs(ctx, r.TenantID, []uint64{r.ID})
+	if err != nil {
+		return err
+	}
+	var menus []*model.Menu
+	if len(menuIDs) > 0 {
+		all, merr := s.menuRepo.List(ctx, r.TenantID)
+		if merr != nil {
+			return merr
+		}
+		idset := make(map[uint64]bool, len(menuIDs))
+		for _, mid := range menuIDs {
+			idset[mid] = true
+		}
+		for _, m := range all {
+			if m != nil && idset[m.ID] {
+				menus = append(menus, m)
+			}
+		}
+	}
+	return rebuildRolePolicies(ctx, s.enforcer, r, menus)
+}
+
+// EnsureUserRolePolicy 绑定用户→角色的 g 关系，主体与角色 sub 均带租户前缀
+//（{tid}:{username} → {tid}:{roleCode}），与中间件 sub 构造一致。
 func (s *permissionService) EnsureUserRolePolicy(ctx context.Context, username string, roles []*model.Role) error {
 	if s.enforcer == nil || username == "" {
 		return nil
 	}
-	_ = s.enforcer.LoadPolicy()
-	existing, _ := s.enforcer.GetRolesForUser(username)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := loadPolicy(s.enforcer); err != nil {
+		return err
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	userSub := fmt.Sprintf("%d:%s", tid, username)
+	existing, err := s.enforcer.GetRolesForUser(userSub)
+	if err != nil {
+		return err
+	}
 	for _, r := range existing {
-		_, _ = s.enforcer.DeleteRoleForUser(username, r)
+		if _, err := s.enforcer.DeleteRoleForUser(userSub, r); err != nil {
+			return err
+		}
 	}
 	for _, r := range roles {
-		_, _ = s.enforcer.AddRoleForUser(username, r.Code)
+		if _, err := s.enforcer.AddRoleForUser(userSub, roleSub(r.TenantID, r.Code)); err != nil {
+			return err
+		}
 	}
-	return s.enforcer.SavePolicy()
+	return savePolicy(s.enforcer)
 }
 
 type VbenRoute struct {

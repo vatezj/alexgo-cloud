@@ -3,12 +3,16 @@ package repository
 import (
 	"context"
 
-	"alexGo-cloud/modules/system/model"
 	"gorm.io/gorm"
+
+	"alexGo-cloud/modules/system/model"
+	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
 type RoleRepository interface {
 	List(ctx context.Context, tenantID uint64) ([]*model.Role, error)
+	// ListAll 返回全部租户的角色（平台侧全量重建 Casbin 策略用，tid=0 入口）。
+	ListAll(ctx context.Context) ([]*model.Role, error)
 	GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.Role, error)
 	GetByCode(ctx context.Context, tenantID uint64, code string) (*model.Role, error)
 	Create(ctx context.Context, r *model.Role) error
@@ -47,6 +51,14 @@ func NewRoleMenuRepository(db *gorm.DB) RoleMenuRepository { return &roleMenuRep
 func (r *roleRepo) List(ctx context.Context, tenantID uint64) ([]*model.Role, error) {
 	var items []*model.Role
 	err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Order("id desc").Find(&items).Error
+	return items, err
+}
+
+// ListAll 返回全部租户的角色。IgnoreTenant 确保即便 ctx 带租户编号也不被隔离插件过滤，
+// 保证“全量”语义（平台侧重建 Casbin 策略用）。
+func (r *roleRepo) ListAll(ctx context.Context) ([]*model.Role, error) {
+	var items []*model.Role
+	err := r.db.WithContext(gormplugin.IgnoreTenant(ctx)).Find(&items).Error
 	return items, err
 }
 

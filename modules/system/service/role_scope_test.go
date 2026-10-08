@@ -24,6 +24,13 @@ func (m *memRoleRepo) List(_ context.Context, tid uint64) ([]*model.Role, error)
 	}
 	return out, nil
 }
+func (m *memRoleRepo) ListAll(context.Context) ([]*model.Role, error) {
+	var out []*model.Role
+	for _, r := range m.byID {
+		out = append(out, r)
+	}
+	return out, nil
+}
 func (m *memRoleRepo) GetByID(_ context.Context, tid, id uint64) (*model.Role, error) {
 	r, ok := m.byID[id]
 	if !ok || r.TenantID != tid {
@@ -60,7 +67,7 @@ func (memRoleMenuRepo) ListMenuIDsByRoleIDs(context.Context, uint64, []uint64) (
 
 func TestRoleCreate_DefaultsAndParams(t *testing.T) {
 	repo := newMemRoleRepo()
-	svc := NewRoleService(repo, memRoleMenuRepo{})
+	svc := NewRoleService(repo, memRoleMenuRepo{}, nil)
 
 	r, err := svc.Create(context.Background(), RoleCreateParams{
 		Code: "sales", Name: "销售", DataScope: 3, Sort: 5, Remark: "r",
@@ -92,7 +99,7 @@ func TestRoleCreate_DefaultsAndParams(t *testing.T) {
 // 系统内置角色（type=1）禁止删除。
 func TestRoleDelete_SystemRoleGuard(t *testing.T) {
 	repo := newMemRoleRepo()
-	svc := NewRoleService(repo, memRoleMenuRepo{})
+	svc := NewRoleService(repo, memRoleMenuRepo{}, nil)
 	r, _ := svc.Create(context.Background(), RoleCreateParams{Code: "sys", Name: "系统"})
 	r.Type = 1
 	repo.byID[r.ID] = r

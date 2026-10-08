@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/casbin/casbin/v2"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
@@ -26,7 +29,9 @@ type SeederParams struct {
 	Menus    repository.MenuRepository
 	UserRole repository.UserRoleRepository
 	RoleMenu repository.RoleMenuRepository
-	Enforcer *casbin.Enforcer `optional:"true"`
+	// Perm 用于把种子角色/菜单按统一路径重灌 Casbin p 策略（与 AssignMenus 同源，避免两套逻辑漂移）。
+	Perm     PermissionService `optional:"true"`
+	Enforcer *casbin.Enforcer  `optional:"true"`
 }
 
 func StartSeeder(p SeederParams) {
@@ -267,6 +272,44 @@ func seed(ctx context.Context, p SeederParams) error {
 	}
 
 	allMenus, _ := p.Menus.List(ctx, tid)
+
+	// system:auth 按钮菜单（T9 移交）：permissionRoutes 含 profile/refresh/logout 三条
+	// /auth 路由；若无任何菜单 permission 前缀命中 system:auth，启动重灌后这三条路由会全员 403。
+	// 幂等：已存在（任一菜单 permPrefix=="system:auth"）则跳过，兼容已播种过菜单的库。
+	hasAuthMenu := false
+	for _, m := range allMenus {
+		if permPrefix(m.Permission) == "system:auth" {
+			hasAuthMenu = true
+			break
+		}
+	}
+	if !hasAuthMenu {
+		var rootID uint64
+		for _, m := range allMenus {
+			if m.ParentID == 0 && strings.EqualFold(m.Type, "dir") {
+				rootID = m.ID
+				break
+			}
+		}
+		authBtn := &model.Menu{
+			ParentID:   rootID,
+			Type:       "button",
+			Name:       "登录鉴权",
+			Path:       "",
+			Component:  "",
+			Icon:       "key",
+			Permission: "system:auth:profile",
+			Sort:       11,
+			Status:     1,
+			TenantID:   tid,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		if err := p.Menus.Create(ctx, authBtn); err == nil {
+			allMenus = append(allMenus, authBtn)
+		}
+	}
+
 	menuIDs := make([]uint64, 0, len(allMenus))
 	for _, m := range allMenus {
 		menuIDs = append(menuIDs, m.ID)
@@ -275,9 +318,23 @@ func seed(ctx context.Context, p SeederParams) error {
 
 	if p.Enforcer != nil {
 		_ = p.Enforcer.LoadPolicy()
-		_, _ = p.Enforcer.AddPolicy(roleCode, "/api/admin/*", ".*")
-		_, _ = p.Enforcer.AddRoleForUser(username, roleCode)
-		_ = p.Enforcer.SavePolicy()
+		// 种子角色策略走统一重建（与 AssignMenus 同一路径，避免两套逻辑漂移）；
+		// 移除旧的裸 sub 通配策略 roleCode|"/api/admin/*"（会绕过前缀隔离）。
+		if p.Perm != nil {
+			if rerr := p.Perm.RebuildPolicies(ctx); rerr != nil && logger.Log != nil {
+				logger.Log.Warn("rebuild policies failed", zap.Error(rerr))
+			}
+		}
+		// 用户→角色 g 绑定带租户前缀（{tid}:{username} → {tid}:{roleCode}），与中间件 sub 同构。
+		if _, aerr := p.Enforcer.AddRoleForUser(
+			fmt.Sprintf("%d:%s", tid, username),
+			roleSub(tid, roleCode),
+		); aerr != nil && logger.Log != nil {
+			logger.Log.Warn("seed role link failed", zap.Error(aerr))
+		}
+		if serr := p.Enforcer.SavePolicy(); serr != nil && logger.Log != nil {
+			logger.Log.Warn("save policy failed", zap.Error(serr))
+		}
 	}
 
 	if logger.Log != nil {

@@ -59,6 +59,8 @@ func (fakePerm) UserMenus(context.Context, uint64) ([]*model.Menu, error)       
 func (fakePerm) UserPermCodes(context.Context, uint64) ([]string, error)           { return nil, nil }
 func (fakePerm) UserRoutes(context.Context, uint64) ([]*VbenRoute, error)          { return nil, nil }
 func (fakePerm) EnsureUserRolePolicy(context.Context, string, []*model.Role) error { return nil }
+func (fakePerm) RebuildPolicies(context.Context) error                             { return nil }
+func (fakePerm) RebuildRolePolicies(context.Context, uint64) error                 { return nil }
 
 func enabledUser() *model.User {
 	return &model.User{ID: 3, Username: "alice", Status: 1, PasswordHash: hashOf("pw")}

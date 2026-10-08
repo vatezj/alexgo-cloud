@@ -266,3 +266,72 @@ func TestAuthMiddleware_TokenMode(t *testing.T) {
 		t.Errorf("no-validator status = %d, want 401 (fail-closed)", w3.Code)
 	}
 }
+
+// T3 移交①：token 模式下 Casbin sub 同样带 {tenantId}:{username} 前缀。
+// 策略 subject 为 "1:alice"；若中间件不加前缀（sub="alice"）则不命中 → 403，
+// 因此 200 判别前缀已参与 Enforce；再用跨租户 claims 断言前缀确实隔离。
+func TestAuthMiddleware_TokenMode_CasbinPrefix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	enf := newEnforcer(t)
+	if _, err := enf.AddPolicy("1:alice", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
+
+	build := func(tid uint64) *gin.Engine {
+		v := fakeValidator{claims: &token.Claims{
+			UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: tid,
+		}}
+		r := gin.New()
+		r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Enforcer: enf, Validator: v}))
+		r.GET("/api/admin/system/users", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+		return r
+	}
+	doAuth := func(r *gin.Engine) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+		req.Header.Set("Authorization", "Bearer t")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	// 同租户：sub "1:alice" 命中带前缀策略 → 200。
+	if w := doAuth(build(1)); w.Code != http.StatusOK {
+		t.Errorf("token-mode prefixed sub status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	// 跨租户：sub "2:alice" 不命中 "1:alice" → 403（判别：前缀参与 Enforce 且隔离）。
+	if w := doAuth(build(2)); w.Code != http.StatusForbidden {
+		t.Errorf("cross-tenant sub status = %d, want 403", w.Code)
+	}
+}
+
+// T3 移交②：claims.Username 为空 → sub 退化为 {tid}:{userid}，仍能命中以 userid 为
+// sub 的 g 绑定（g("1:9","1:editor") → p("1:editor",…)）。若未退化则 sub="1:" 不命中。
+func TestAuthMiddleware_EmptyUsername_SubUserIDFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	enf := newEnforcer(t)
+	if _, err := enf.AddGroupingPolicy("1:9", "1:editor"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enf.AddPolicy("1:editor", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
+
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 9, Username: "", UserType: token.UserTypeAdmin, TenantID: 1,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Enforcer: enf, Validator: v}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("empty-username sub {tid}:{userid} status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+}
