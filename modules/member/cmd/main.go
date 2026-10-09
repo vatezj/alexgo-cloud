@@ -72,7 +72,8 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		fx.Provide(
 			// 数据库连接：GORM + 连接池 + Fx OnStop 优雅关闭。
 			database.NewDB,
-			// gRPC 连接（microservice.enabled 才真正拨号，否则 nil → nilIssuer fail-fast）。
+			// gRPC 连接：deployment.mode=micro 或 microservice.enabled 任一开启即拨号
+			// （地址解析 system_grpc_addr 优先）；两开关皆关 → nil conn → nilIssuer fail-fast。
 			client.NewGRPCConn,
 			// 租户域名解析（Host → tenant_id）：HTTPServerParams.TenantDomainLookup
 			// optional 可为 nil，但仍 Provide 以支持域名解析（与 system-server 同款）。
@@ -112,8 +113,8 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 	return opts
 }
 
-// tokenIssuerProvider 产出签发器：conn 为 nil（microservice 未启用/拨号配置缺失）时
-// 返回 nilIssuer fail-fast，否则包装 gRPC 客户端委托 system-server 签发。
+// tokenIssuerProvider 产出签发器：conn 为 nil（mono 形态两开关皆关）时返回
+// nilIssuer fail-fast，否则包装 gRPC 客户端委托 system-server 签发。
 func tokenIssuerProvider(conn *grpc.ClientConn) token.Issuer {
 	if conn == nil {
 		return nilIssuer{}

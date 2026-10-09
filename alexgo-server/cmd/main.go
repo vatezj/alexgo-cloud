@@ -105,7 +105,8 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）；
 			// 接口映射见 ifaceOptions。
 			token.NewService,
-			// 当 microservice.enabled=true 时可能需要创建 gRPC 连接（否则返回 nil）。
+			// gRPC 连接：deployment.mode=micro 或 microservice.enabled 任一开启即拨号
+			// （地址解析 system_grpc_addr 优先，见 pkg/client.GetServiceAddress），否则返回 nil。
 			client.NewGRPCConn,
 			// Casbin Enforcer：用于 RBAC 权限校验（AuthMiddleware 内可选启用）。
 			auth.NewCasbinEnforcer,

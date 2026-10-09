@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"alexGo-cloud/pkg/client"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
@@ -78,5 +79,42 @@ func TestTokenIssuerProvider_WrapsRealConn(t *testing.T) {
 	got := tokenIssuerProvider(conn)
 	if _, ok := got.(nilIssuer); ok {
 		t.Fatal("非 nil conn 不应返回 nilIssuer")
+	}
+}
+
+// TestIssuerWiredOverGRPCInMicroMode 双服务形态主路径（验收判据“member 经 gRPC
+// 委托签发”）：deployment.mode=micro + 显式地址 → NewGRPCConn 必须拨号（非 nil），
+// tokenIssuerProvider 包装为真实 gRPC Issuer——即便 microservice.enabled=false。
+func TestIssuerWiredOverGRPCInMicroMode(t *testing.T) {
+	cfg := &config.Config{SystemGRPCAddr: "127.0.0.1:50051"}
+	cfg.Deployment.Mode = "micro"
+
+	conn, err := client.NewGRPCConn(client.GRPCConnParams{Cfg: cfg})
+	if err != nil {
+		t.Fatalf("NewGRPCConn err = %v, want nil", err)
+	}
+	if conn == nil {
+		t.Fatal("micro 模式必须拨号：conn 不能为 nil（否则恒 nilIssuer → 登录 503）")
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	if _, ok := tokenIssuerProvider(conn).(nilIssuer); ok {
+		t.Fatal("micro 模式 Issuer 必须是 gRPC 客户端而非 nilIssuer")
+	}
+}
+
+// TestIssuerNilConnWhenBothFlagsOff mono 默认（两开关皆关、无地址）→ NewGRPCConn
+// 返回 typed-nil conn → tokenIssuerProvider 判空命中 nilIssuer（生产同路径）。
+func TestIssuerNilConnWhenBothFlagsOff(t *testing.T) {
+	conn, err := client.NewGRPCConn(client.GRPCConnParams{Cfg: &config.Config{}})
+	if err != nil {
+		t.Fatalf("NewGRPCConn err = %v, want nil", err)
+	}
+	if conn != nil {
+		_ = conn.Close()
+		t.Fatal("mono 默认必须返回 nil conn")
+	}
+	if _, ok := tokenIssuerProvider(conn).(nilIssuer); !ok {
+		t.Fatalf("typed-nil conn 必须得到 nilIssuer, got %T", tokenIssuerProvider(conn))
 	}
 }
