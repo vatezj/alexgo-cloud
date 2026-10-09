@@ -7,7 +7,12 @@ spec:
   selector:
     app: alexgo-server
   ports:
-    - port: 8080
+    # 多端口必须逐个命名（K8s 校验）：http=业务端口，grpc=TokenService（member 拨 50051）
+    - name: http
+      port: 8080
       targetPort: 8080
+    - name: grpc
+      port: 50051
+      targetPort: 50051
   type: ClusterIP
 

@@ -14,6 +14,7 @@ import (
 	"alexGo-cloud/modules/member"
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/system"
+	"alexGo-cloud/modules/system/grpcserver"
 	systemservice "alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/circuitbreaker"
@@ -164,6 +165,9 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		fx.Invoke(trace.InitTracer),
 		// 迁移：默认启动时执行；生产可通过 migrate.auto 配置控制是否启用。
 		fx.Invoke(func(r *migrate.Runner) error { return r.Run() }),
+		// gRPC TokenService：仅 micro 模式实际监听（StartGRPCServer 内部按 deployment.mode 门控，
+		// mono 直接 return——单进程模式 Token 走本地直调，无需监听）。
+		fx.Invoke(grpcserver.StartGRPCServer),
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
 		system.FxModule,
 		order.FxModule,

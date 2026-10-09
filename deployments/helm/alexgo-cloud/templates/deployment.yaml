@@ -19,7 +19,11 @@ spec:
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.port }}
+            - name: http
+              containerPort: {{ .Values.service.port }}
+            # TokenService gRPC（仅 micro 模式监听，StartGRPCServer 按 deployment.mode 门控）
+            - name: grpc
+              containerPort: 50051
           env:
             - name: DB_DSN
               valueFrom:

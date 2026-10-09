@@ -7,5 +7,10 @@ spec:
   selector:
     app: {{ include "alexgo-cloud.fullname" . }}
   ports:
-    - port: {{ .Values.service.port }}
+    # 多端口必须逐个命名（K8s 校验）：http=业务端口，grpc=TokenService（member 拨 50051）
+    - name: http
+      port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.port }}
+    - name: grpc
+      port: 50051
+      targetPort: 50051

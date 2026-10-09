@@ -19,7 +19,11 @@ spec:
         - name: alexgo-server
           image: alexgo-cloud:latest
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
+            # TokenService gRPC（仅 micro 模式监听，StartGRPCServer 按 deployment.mode 门控）
+            - name: grpc
+              containerPort: 50051
           envFrom:
             - configMapRef:
                 name: alexgo-config

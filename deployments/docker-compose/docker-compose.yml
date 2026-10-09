@@ -2,7 +2,11 @@ version: "3.8"
 
 services:
   alexgo:
-    build: .
+    # Dockerfile 在仓库根的 alexgo-server/ 下：context 必须是仓库根（compose 文件目录内没有 Dockerfile，
+    # 且 builder 需要 go.mod/modules/pkg 全量源码）；dockerfile 路径相对 context。
+    build:
+      context: ../..
+      dockerfile: alexgo-server/Dockerfile
     ports:
       - "8080:8080"
     depends_on:
@@ -17,7 +21,9 @@ services:
 
   # member-server 独立二进制（:8081）：vite/ingress 按 /api/app/member、/api/admin/member 前缀分流到此
   member:
-    build: .
+    build:
+      context: ../..
+      dockerfile: alexgo-server/Dockerfile
     command: ["/app/member-server"]
     ports:
       - "8081:8081"
