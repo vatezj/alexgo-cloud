@@ -7,6 +7,7 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/token"
 )
 
 // TestMono_GraphValidates 正向干跑：mono 模式（默认，非 micro）装配
@@ -47,5 +48,29 @@ func TestBaseOptions_RequiresTokenIssuer(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "token.Issuer") {
 		t.Fatalf("error = %v, want missing token.Issuer", err)
+	}
+}
+
+// TestBaseOptions_RequiresTokenValidator 反向干跑（与 Issuer 成对）：
+// token.Validator 的生产消费方 HTTPServerParams.TokenValidator 是 optional——
+// 图缺该映射也能成立，故用测试内真实消费者（fx.Invoke 消费 token.Validator）
+// 构造根。反向用 migrate-only 图（不起 HTTP → 模块链非根，避免模块链上的
+// token.Issuer 先被报缺而遮蔽 Validator 判别）：剔除 ifaceOptions → 必须报缺
+// token.Validator；正向用完整生产图 + 消费者 → 必须可满足——证明映射真实产出
+// 接口类型（fx 按具体类型 *token.Service 提供、不自动满足接口）。
+func TestBaseOptions_RequiresTokenValidator(t *testing.T) {
+	consumeValidator := fx.Invoke(func(v token.Validator) { _ = v })
+
+	err := fx.ValidateApp(append(baseOptions(&config.Config{}, true), consumeValidator, fx.NopLogger)...)
+	if err == nil {
+		t.Fatal("剔除接口映射且存在 Validator 消费者时必须不可满足")
+	}
+	if !strings.Contains(err.Error(), "token.Validator") {
+		t.Fatalf("error = %v, want missing token.Validator", err)
+	}
+
+	full := append(append(options(&config.Config{}, false), consumeValidator), fx.NopLogger)
+	if err := fx.ValidateApp(full...); err != nil {
+		t.Fatalf("带接口映射的完整图必须可满足: %v", err)
 	}
 }

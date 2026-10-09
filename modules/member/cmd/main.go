@@ -41,16 +41,28 @@ func main() {
 	}
 
 	// 配置提前加载 + fx.Supply（与 system-server 入口同一模式）。
-	cfg, err := config.LoadGlobalConfig()
+	cfg, err := loadConfig()
 	if err != nil {
 		panic(err)
 	}
-	if cfg.Deployment.Mode == "" {
-		// member-server 只在 micro 形态独立部署；缺省即 micro。
-		cfg.Deployment.Mode = "micro"
-	}
 
 	fx.New(options(cfg, *migrateOnly)...).Run()
+}
+
+// loadConfig 加载配置并固化 member-server 的形态身份；
+// 入口与接线测试（TestRunMemberRecipeEnv_Wiring）共用同一路径，防"测试手动置
+// Mode 绕过真实默认值"的漂移。
+func loadConfig() (*config.Config, error) {
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		return nil, err
+	}
+	// member-server 二进制的身份就是 micro 形态：无论配置文件/环境写什么，
+	// 本进程必然按双服务模式运行（mono 模式该入口不参与）。
+	// 必须无条件覆盖：loader 对 deployment.mode 有 viper 默认值 "mono"，
+	// `Mode == ""` 空值回退是死代码（config 加载永远返回 "mono"）——review 已判。
+	cfg.Deployment.Mode = "micro"
+	return cfg, nil
 }
 
 // options 装配 member-server fx 清单（正/反向干跑测试复用同一清单，防止测试与入口漂移）。

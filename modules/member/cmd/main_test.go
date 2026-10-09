@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -117,4 +118,62 @@ func TestIssuerNilConnWhenBothFlagsOff(t *testing.T) {
 	if _, ok := tokenIssuerProvider(conn).(nilIssuer); !ok {
 		t.Fatalf("typed-nil conn 必须得到 nilIssuer, got %T", tokenIssuerProvider(conn))
 	}
+}
+
+// TestRunMemberRecipeEnv_Wiring Makefile run-member 开箱路径（review 判定的 503 链路）：
+// 仅 recipe 环境（HTTP_ADDR/SYSTEM_GRPC_ADDR，DEPLOYMENT_MODE 置空等效 unset——
+// 连 recipe 的 DEPLOYMENT_MODE 都不给，只靠入口强制）、loader 默认 deployment.mode=
+// "mono" 的真实默认值下，走入口自身的 loadConfig()（加载+无条件强制 micro）后
+// NewGRPCConn 必须拨号。测试不得手动置 Mode="micro"（只允许复用入口的强制逻辑）。
+func TestRunMemberRecipeEnv_Wiring(t *testing.T) {
+	// 隔离环境：applyEnvOverrides 忽略空值 → DEPLOYMENT_MODE="" 等效未设置；
+	// HTTP_ADDR/SYSTEM_GRPC_ADDR 与 Makefile run-member recipe 逐字一致。
+	t.Setenv("DEPLOYMENT_MODE", "")
+	t.Setenv("HTTP_ADDR", ":8081")
+	t.Setenv("SYSTEM_GRPC_ADDR", "127.0.0.1:50051")
+
+	// config.yaml 是仓内相对路径：make 运行目录即仓库根，测试切到同目录
+	//（LoadGlobalConfig 在包目录下会因相对路径读不到配置而报错）。
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir("../../.."); err != nil {
+		t.Fatal(err)
+	}
+
+	// 缺陷前提锚点：入口强制之前，loader 默认 deployment.mode 恒为 "mono"
+	//（viper SetDefault；stock config.yaml 亦无 deployment 段）——空值回退即死代码。
+	raw, err := config.LoadGlobalConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw.Deployment.Mode != "mono" {
+		t.Fatalf("loader 默认应为 mono（本用例前提，若变更需重审入口强制逻辑）, got %q", raw.Deployment.Mode)
+	}
+
+	// 入口同款路径（loadConfig = LoadGlobalConfig + 无条件强制 micro）。
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Deployment.Mode != "micro" {
+		t.Fatalf("入口必须固化 micro, got %q", cfg.Deployment.Mode)
+	}
+	if cfg.Server.HTTPAddr != ":8081" {
+		t.Fatalf("recipe HTTP_ADDR 未生效: %q", cfg.Server.HTTPAddr)
+	}
+	if cfg.SystemGRPCAddr != "127.0.0.1:50051" {
+		t.Fatalf("recipe SYSTEM_GRPC_ADDR 未生效: %q", cfg.SystemGRPCAddr)
+	}
+
+	conn, err := client.NewGRPCConn(client.GRPCConnParams{Cfg: cfg})
+	if err != nil {
+		t.Fatalf("NewGRPCConn err = %v, want nil", err)
+	}
+	if conn == nil {
+		t.Fatal("开箱 run-member 必须拨号：nil conn → nilIssuer → 登录 503（review Important）")
+	}
+	t.Cleanup(func() { _ = conn.Close() })
 }

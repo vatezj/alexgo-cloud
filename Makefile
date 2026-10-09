@@ -10,7 +10,7 @@ run-system: ## micro 模式 system-server（含 gRPC TokenService）
 	DEPLOYMENT_MODE=micro go run ./alexgo-server/cmd/main.go
 
 run-member: ## micro 模式 member-server（:8081，委托 system 签发）
-	HTTP_ADDR=:8081 SYSTEM_GRPC_ADDR=127.0.0.1:50051 go run ./modules/member/cmd/main.go
+	DEPLOYMENT_MODE=micro HTTP_ADDR=:8081 SYSTEM_GRPC_ADDR=127.0.0.1:50051 go run ./modules/member/cmd/main.go
 
 build:
 	go build -o bin/alexgo-server ./alexgo-server/cmd

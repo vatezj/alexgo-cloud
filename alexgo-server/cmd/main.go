@@ -70,7 +70,9 @@ func main() {
 }
 
 // options 装配入口 fx 清单（正/反向干跑测试复用同一清单，防止测试与入口漂移）。
-// 接口映射单独切片（ifaceOptions）：反向干跑测试剔除之，证明模块真实消费 token.Issuer/Validator。
+// 接口映射单独切片（ifaceOptions）：反向干跑测试剔除之——token.Issuer 由模块
+// 非 optional 消费直接报缺；token.Validator 的生产消费方是 optional 参数（缺了图仍成立），
+// 故其反向判别用测试内真实消费者构造（见 TestBaseOptions_RequiresTokenValidator）。
 func options(cfg *config.Config, migrateOnly bool) []fx.Option {
 	return append(baseOptions(cfg, migrateOnly), ifaceOptions()...)
 }
