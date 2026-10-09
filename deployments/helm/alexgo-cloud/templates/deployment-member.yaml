@@ -1,26 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "alexgo-cloud.fullname" . }}
+  # member-server（micro 形态的会员侧服务，:8081；镜像同 system，command 换二进制）
+  name: {{ include "alexgo-cloud.fullname" . }}-member
   labels:
-    app: {{ include "alexgo-cloud.fullname" . }}
+    app: {{ include "alexgo-cloud.fullname" . }}-member
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.member.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "alexgo-cloud.fullname" . }}
+      app: {{ include "alexgo-cloud.fullname" . }}-member
   template:
     metadata:
       labels:
-        app: {{ include "alexgo-cloud.fullname" . }}
+        app: {{ include "alexgo-cloud.fullname" . }}-member
     spec:
       containers:
-        - name: alexgo-server
+        - name: member
           image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/member-server"]
           ports:
-            - containerPort: {{ .Values.service.port }}
+            - containerPort: 8081
           env:
+            - name: HTTP_ADDR
+              value: ":8081"
             - name: DB_DSN
               valueFrom:
                 secretKeyRef:
@@ -33,26 +37,28 @@ spec:
                   name: {{ include "alexgo-cloud.fullname" . }}-secrets
                   key: JWT_SECRET
                   optional: true
-            # micro 形态：本进程只装 system+order，member 路由由 -member deployment 承载（spec §2.5）
+            # micro 形态：member 经 gRPC 委托 system 签发（地址 = system service 的 fullname，见 service.yaml）
             - name: DEPLOYMENT_MODE
               value: "micro"
+            - name: SYSTEM_GRPC_ADDR
+              value: "{{ include "alexgo-cloud.fullname" . }}:50051"
           volumeMounts:
             - name: config
               mountPath: /app/alexgo-server/configs
               readOnly: true
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.member.resources | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /health
-              port: {{ .Values.service.port }}
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: {{ .Values.service.port }}
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5

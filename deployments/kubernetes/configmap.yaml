@@ -10,6 +10,9 @@ data:
   config.yaml: |
     server:
       http_addr: ":8080"
+    # 双服务部署形态（k8s/compose/helm 显式 micro，默认 mono 仅本地/CI，spec §2.5）
+    deployment:
+      mode: micro
     database:
       # dsn 兜底占位值（非真实密码）：生产必须由环境变量 DB_DSN（Secret alexgo-secrets）覆盖，
       # 见 deployment.yaml env secretKeyRef；未覆盖时 readiness 探活会失败。

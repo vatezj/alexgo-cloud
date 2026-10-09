@@ -4,10 +4,27 @@ metadata:
   name: alexgo-ingress
   namespace: alexgo-cloud
 spec:
+  ingressClassName: nginx
   rules:
     - host: alexgo.yourdomain.com
       http:
         paths:
+          # member 前缀分流（spec §2.3）：两条 member 前缀必须排在 / 之前（nginx-ingress 按最长前缀匹配）
+          - path: /api/app/member
+            pathType: Prefix
+            backend:
+              service:
+                name: alexgo-member
+                port:
+                  number: 8080
+          - path: /api/admin/member
+            pathType: Prefix
+            backend:
+              service:
+                name: alexgo-member
+                port:
+                  number: 8080
+          # 其余全部 → system（既有默认行为保持不变）
           - path: /
             pathType: Prefix
             backend:
@@ -15,4 +32,3 @@ spec:
                 name: alexgo-server
                 port:
                   number: 8080
-

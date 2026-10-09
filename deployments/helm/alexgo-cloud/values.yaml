@@ -9,6 +9,11 @@ service:
   type: ClusterIP
   port: 8080
 
+# 部署形态（spec §2.5）：micro = 双服务（system :8080 + member :8081，路径前缀分流）；
+# 本地/单机演示可覆盖为 mono（单进程全模块，vite 不分流）。
+deployment:
+  mode: micro   # 本地/单机演示可改 mono
+
 resources:
   requests:
     cpu: 200m
@@ -16,6 +21,17 @@ resources:
   limits:
     cpu: 800m
     memory: 1Gi
+
+# member-server（micro 形态的会员侧服务，:8081，command=/app/member-server）
+member:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 400m
+      memory: 512Mi
 
 config:
   server:

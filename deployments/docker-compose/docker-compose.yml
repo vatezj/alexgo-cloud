@@ -9,6 +9,27 @@ services:
       - mysql
     environment:
       - DB_DSN=root:password@tcp(mysql:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local
+      # micro 形态：system-server 独立进程（member 路由不再装入本进程，spec §2.5）
+      - DEPLOYMENT_MODE=micro
+      # member → system 的 gRPC TokenService 地址（compose 服务名 alexgo）
+      - SYSTEM_GRPC_ADDR=alexgo:50051
+    # grpc_addr 默认 :50051 已监听，micro 模式自动开启
+
+  # member-server 独立二进制（:8081）：vite/ingress 按 /api/app/member、/api/admin/member 前缀分流到此
+  member:
+    build: .
+    command: ["/app/member-server"]
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql
+      - alexgo
+    environment:
+      - DB_DSN=root:password@tcp(mysql:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local
+      # member-server 入口强制 micro 形态；HTTP_ADDR 指到 8081（同库约束，spec §9.10）
+      - HTTP_ADDR=:8081
+      - DEPLOYMENT_MODE=micro
+      - SYSTEM_GRPC_ADDR=alexgo:50051
 
   mysql:
     image: mysql:8.0
@@ -17,4 +38,3 @@ services:
       MYSQL_DATABASE: alexgo
     ports:
       - "3306:3306"
-

@@ -9,6 +9,8 @@ resources:
   - secret.yaml
   - deployment.yaml
   - service.yaml
+  - deployment-member.yaml
+  - service-member.yaml
   - hpa.yaml
   - ingress.yaml
 

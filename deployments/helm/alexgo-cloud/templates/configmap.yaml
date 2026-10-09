@@ -8,6 +8,9 @@ data:
       http_addr: {{ .Values.config.server.httpAddr | quote }}
       grpc_addr: {{ .Values.config.server.grpcAddr | quote }}
       pprof_enabled: {{ .Values.config.server.pprofEnabled }}
+    # 双服务部署形态：默认 micro（k8s/helm/compose 显式 micro），单机演示可 values 覆盖为 mono（spec §2.5）
+    deployment:
+      mode: {{ .Values.deployment.mode | default "micro" }}
     database:
       # dsn 兜底：仅作 Secret 未配置时的回退，生产应由环境变量 DB_DSN（Secret）覆盖
       dsn: {{ .Values.config.database.dsn | quote }}

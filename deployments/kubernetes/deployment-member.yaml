@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # member-server（micro 形态的会员侧服务，:8081；入口 /app/member-server）
+  name: alexgo-member
+  namespace: alexgo-cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alexgo-member
+  template:
+    metadata:
+      labels:
+        app: alexgo-member
+    spec:
+      containers:
+        - name: member
+          image: alexgo-cloud:latest
+          command: ["/app/member-server"]
+          ports:
+            - containerPort: 8081
+          env:
+            - name: HTTP_ADDR
+              value: ":8081"
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: DB_DSN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: alexgo-secrets
+                  key: JWT_SECRET
+            # micro 形态：member 经 gRPC 委托 system 签发（地址即 service.yaml 的 metadata.name）
+            - name: DEPLOYMENT_MODE
+              value: "micro"
+            - name: SYSTEM_GRPC_ADDR
+              value: "alexgo-server:50051"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: alexgo-config
+              mountPath: /app/alexgo-server/configs
+              readOnly: true
+      volumes:
+        - name: alexgo-config
+          configMap:
+            name: alexgo-config

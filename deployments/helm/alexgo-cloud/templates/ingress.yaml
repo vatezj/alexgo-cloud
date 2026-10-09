@@ -11,6 +11,22 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
+          # member 前缀分流（spec §2.3）：两条 member 前缀必须排在 / 之前（nginx-ingress 按最长前缀匹配）
+          - path: /api/app/member
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "alexgo-cloud.fullname" . }}-member
+                port:
+                  number: {{ .Values.service.port }}
+          - path: /api/admin/member
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "alexgo-cloud.fullname" . }}-member
+                port:
+                  number: {{ .Values.service.port }}
+          # 其余全部 → system（既有默认行为保持不变）
           - path: /
             pathType: Prefix
             backend:

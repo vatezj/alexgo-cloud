@@ -1,5 +1,12 @@
 replicaCount: 2
 
+# 灰度与 system 同倍数
+deployment:
+  mode: micro   # 双服务形态（system :8080 + member :8081，前缀分流，spec §2.5）
+
+member:
+  replicaCount: 2
+
 image:
   tag: "gray-latest"
 

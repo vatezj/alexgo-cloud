@@ -1,5 +1,13 @@
 replicaCount: 5
 
+# 双服务形态（system :8080 + member :8081，前缀分流，spec §2.5）
+deployment:
+  mode: micro
+
+# member-server 生产副本（system 的 member 对偶资源）
+member:
+  replicaCount: 3
+
 resources:
   requests:
     cpu: 500m

@@ -34,6 +34,9 @@ spec:
                 secretKeyRef:
                   name: alexgo-secrets
                   key: JWT_SECRET
+            # micro 形态：本进程只装 system+order，member 路由由 alexgo-member 承载（spec §2.5）
+            - name: DEPLOYMENT_MODE
+              value: "micro"
           volumeMounts:
             - name: alexgo-config
               mountPath: /app/alexgo-server/configs

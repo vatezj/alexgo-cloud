@@ -1,5 +1,12 @@
 replicaCount: 1
 
+# dev 资源最省：member 单副本即可联调前缀分流
+deployment:
+  mode: micro   # 双服务形态（system :8080 + member :8081，前缀分流，spec §2.5）
+
+member:
+  replicaCount: 1
+
 image:
   tag: "dev-latest"
 
