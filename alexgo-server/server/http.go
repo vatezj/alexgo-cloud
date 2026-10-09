@@ -79,7 +79,8 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		monitor.PrometheusMiddleware(),
 		// RateLimitAndBreaker：入口防护，避免高并发/故障导致雪崩。
 		middleware.RateLimitAndBreaker(p.Cfg, p.RateLimiter, p.Breaker),
-		// AuthMiddleware：对 /api/admin/**（及 member 登出/刷新）做 Token/JWT 双模式校验 + 可选 Casbin。
+		// AuthMiddleware：对 /api/admin/** 做 Token/JWT 双模式校验 + 管理员门槛 + 可选 Casbin
+		// （/api/app/** 全部公开：member refresh/logout 是 possession-based，controller 自行校验）。
 		middleware.NewAuthMiddleware(middleware.AuthDeps{
 			Cfg: p.Cfg, Enforcer: p.Enforcer, Validator: p.TokenValidator, ScopeLoader: p.ScopeLoader,
 		}),

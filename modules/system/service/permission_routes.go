@@ -45,10 +45,11 @@ func permPrefix(permission string) string {
 }
 
 // roleSub：Casbin 角色主体带租户前缀 + 独立命名空间（"{tid}:role:{code}"），
-// 杜绝跨租户同 code 串策略，并避免与用户 sub（"{tid}:{username}"）命名空间撞车——
+// 杜绝跨租户同 code 串策略，并避免与用户 sub 命名空间撞车——
 // casbin g(x,x)=true 恒等，若二者同命名空间，成员自注册昵称 "admin" 即得到
 // "{tid}:admin"，与管理员角色 sub 相等 → 继承其全部策略（提权）。
-// 用户 sub 格式不变（"{tid}:{username}" / 空 username 退化 "{tid}:{userid}"）。
+// 用户 sub 走 auth.UserSub（"{tid}:{ut}:{username}" / 空 username 退化 "{tid}:{ut}:{userid}"）：
+// user_type 维度使 member 昵称与管理员用户名永不同 sub（C1），roleSub 段位"role"同样不可达。
 func roleSub(tenantID uint64, roleCode string) string {
 	return fmt.Sprintf("%d:role:%s", tenantID, roleCode)
 }

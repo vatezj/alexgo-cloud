@@ -8,6 +8,8 @@ import (
 	casbinmodel "github.com/casbin/casbin/v2/model"
 
 	"alexGo-cloud/modules/system/model"
+	"alexGo-cloud/pkg/auth"
+	"alexGo-cloud/pkg/tenant"
 )
 
 // 内存 Casbin（与 pkg/auth/casbin.go 同款 matcher），无 DB adapter。
@@ -122,7 +124,8 @@ func TestRebuildAllPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 预置一条 g 绑定：p-only clear 证明（重建后必须仍在）。
-	if _, err := e.AddRoleForUser("1:alice", "1:role:admin"); err != nil {
+	// 用户 sub 带 user_type 维度（C1）：{tid}:{ut}:{username}，与中间件/EnsureUserRolePolicy 同构。
+	if _, err := e.AddRoleForUser("1:1:alice", "1:role:admin"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -162,7 +165,69 @@ func TestRebuildAllPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g) != 1 || g[0][0] != "1:alice" || g[0][1] != "1:role:admin" {
+	if len(g) != 1 || g[0][0] != "1:1:alice" || g[0][1] != "1:role:admin" {
 		t.Errorf("g links must survive rebuild, got %v", g)
+	}
+}
+
+// C3：种子补齐的两组按钮菜单（system:tenant / member:user）必须真的落到 admin 角色的
+// p 策略上——此前种子缺这两组 → 租户/会员管理接口开箱全员 403。
+// 不跑 seed（unit）：构造与 seed 同形的菜单列 + admin 角色 + g 绑定 → rebuildRolePolicies。
+func TestRebuild_TenantAndMemberManageMenus(t *testing.T) {
+	e := newMemEnforcer(t)
+	role := &model.Role{ID: 1, Code: "admin", TenantID: 1}
+	menus := []*model.Menu{
+		{ID: 1, Permission: "system:tenant:manage", Type: "button"},
+		{ID: 2, Permission: "member:user:manage", Type: "button"},
+	}
+	if err := rebuildRolePolicies(context.Background(), e, role, menus); err != nil {
+		t.Fatalf("rebuild error = %v", err)
+	}
+	// 管理员用户 sub（user_type=1）经 g 绑定走角色策略，与中间件/seed 同构。
+	if _, err := e.AddRoleForUser("1:1:admin", "1:role:admin"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, obj := range []string{"/api/admin/system/tenants", "/api/admin/member/users"} {
+		ok, err := e.Enforce("1:1:admin", obj, "GET")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("admin must GET %s after seed menus assigned", obj)
+		}
+	}
+	// 集合路径的 item 子路径同样放行（keyMatch2 的 /* 变体）。
+	if ok, _ := e.Enforce("1:1:admin", "/api/admin/system/tenants/2", "PUT"); !ok {
+		t.Error("tenant item route must be covered by /* variant")
+	}
+	// 只给了这两组菜单 → 未覆盖的路由仍拒（判别：不是通配放行）。
+	if ok, _ := e.Enforce("1:1:admin", "/api/admin/system/menus", "GET"); ok {
+		t.Error("unassigned route must be denied")
+	}
+}
+
+// C1：EnsureUserRolePolicy 的用户 sub 必须带 user_type 维度（管理员 ut=1），
+// 与中间件 auth.UserSub 同构；否则 member 昵称撞管理员用户名即经 g(x,x) 提权。
+func TestEnsureUserRolePolicy_SubHasUserType(t *testing.T) {
+	e := newMemEnforcer(t)
+	// 仓储在本用例不触达（Ensure 只消费 enforcer + ctx tenant），nil 即可。
+	svc := NewPermissionService(nil, nil, nil, nil, e)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	roles := []*model.Role{{ID: 1, Code: "admin", TenantID: 1}}
+
+	if err := svc.EnsureUserRolePolicy(ctx, "alice", roles); err != nil {
+		t.Fatalf("EnsureUserRolePolicy error = %v", err)
+	}
+	g, err := e.GetGroupingPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 1 || g[0][0] != "1:1:alice" || g[0][1] != "1:role:admin" {
+		t.Errorf("g = %v, want [[1:1:alice 1:role:admin]]", g)
+	}
+	// member 形态（ut=2）与管理员 sub 永不相等——用 UserSub 形态钉住判别点。
+	if auth.UserSub(1, 2, "alice", 0) == g[0][0] {
+		t.Error("member sub must differ from admin sub for same name")
 	}
 }

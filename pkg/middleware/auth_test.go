@@ -33,7 +33,7 @@ func (f fakeValidator) Validate(_ context.Context, _ string) (*token.Claims, err
 }
 
 // claimsFor 生成与 jwt 用例同源的默认 claims（TenantID=1 与 GenerateToken 的 tenantID 参数对齐，
-// 便于 Casbin sub 前缀 {tenantId}:{username} 在两种模式下一致）。
+// 便于 Casbin sub 前缀 {tenantId}:{userType}:{username} 在两种模式下一致）。
 func claimsFor(_ *config.Config) *token.Claims {
 	return &token.Claims{
 		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1,
@@ -154,8 +154,8 @@ func TestAuthMiddleware_CasbinDeny_403(t *testing.T) {
 	cfg := testCfg()
 	enf := newEnforcer(t)
 	// 只给 bob 授权；alice 请求 → 403。
-	// sub 前缀 {tenantId}:{username}（Task 3 块⑦）：策略 subject 与中间件 sub 同构。
-	if _, err := enf.AddPolicy("1:bob", "/api/admin/system/users", "GET"); err != nil {
+	// sub 前缀 {tenantId}:{userType}:{username}（C1）：策略 subject 与中间件 sub 同构。
+	if _, err := enf.AddPolicy("1:1:bob", "/api/admin/system/users", "GET"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,8 +172,8 @@ func TestAuthMiddleware_CasbinDeny_403(t *testing.T) {
 func TestAuthMiddleware_CasbinAllow_200(t *testing.T) {
 	cfg := testCfg()
 	enf := newEnforcer(t)
-	// sub 前缀 {tenantId}:{username}（Task 3 块⑦）：策略 subject 与中间件 sub 同构。
-	if _, err := enf.AddPolicy("1:alice", "/api/admin/system/users", "GET"); err != nil {
+	// sub 前缀 {tenantId}:{userType}:{username}（C1）：策略 subject 与中间件 sub 同构。
+	if _, err := enf.AddPolicy("1:1:alice", "/api/admin/system/users", "GET"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -268,15 +268,15 @@ func TestAuthMiddleware_TokenMode(t *testing.T) {
 	}
 }
 
-// T3 移交①：token 模式下 Casbin sub 同样带 {tenantId}:{username} 前缀。
-// 策略 subject 为 "1:alice"；若中间件不加前缀（sub="alice"）则不命中 → 403，
+// T3 移交①：token 模式下 Casbin sub 同样带 {tenantId}:{userType}:{username} 前缀。
+// 策略 subject 为 "1:1:alice"；若中间件不加前缀（sub="alice"）则不命中 → 403，
 // 因此 200 判别前缀已参与 Enforce；再用跨租户 claims 断言前缀确实隔离。
 func TestAuthMiddleware_TokenMode_CasbinPrefix(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := testCfg()
 	cfg.Auth.Mode = "token"
 	enf := newEnforcer(t)
-	if _, err := enf.AddPolicy("1:alice", "/api/admin/system/users", "GET"); err != nil {
+	if _, err := enf.AddPolicy("1:1:alice", "/api/admin/system/users", "GET"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,24 +297,24 @@ func TestAuthMiddleware_TokenMode_CasbinPrefix(t *testing.T) {
 		return w
 	}
 
-	// 同租户：sub "1:alice" 命中带前缀策略 → 200。
+	// 同租户：sub "1:1:alice" 命中带前缀策略 → 200。
 	if w := doAuth(build(1)); w.Code != http.StatusOK {
 		t.Errorf("token-mode prefixed sub status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
-	// 跨租户：sub "2:alice" 不命中 "1:alice" → 403（判别：前缀参与 Enforce 且隔离）。
+	// 跨租户：sub "2:1:alice" 不命中 "1:1:alice" → 403（判别：前缀参与 Enforce 且隔离）。
 	if w := doAuth(build(2)); w.Code != http.StatusForbidden {
 		t.Errorf("cross-tenant sub status = %d, want 403", w.Code)
 	}
 }
 
-// T3 移交②：claims.Username 为空 → sub 退化为 {tid}:{userid}，仍能命中以 userid 为
-// sub 的 g 绑定（g("1:9","1:role:editor") → p("1:role:editor",…)）。若未退化则 sub="1:" 不命中。
+// T3 移交②：claims.Username 为空 → sub 退化为 {tid}:{ut}:{userid}，仍能命中以 userid 为
+// sub 的 g 绑定（g("1:1:9","1:role:editor") → p("1:role:editor",…)）。若未退化则 sub="1:1:" 不命中。
 func TestAuthMiddleware_EmptyUsername_SubUserIDFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := testCfg()
 	cfg.Auth.Mode = "token"
 	enf := newEnforcer(t)
-	if _, err := enf.AddGroupingPolicy("1:9", "1:role:editor"); err != nil {
+	if _, err := enf.AddGroupingPolicy("1:1:9", "1:role:editor"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := enf.AddPolicy("1:role:editor", "/api/admin/system/users", "GET"); err != nil {
@@ -333,7 +333,7 @@ func TestAuthMiddleware_EmptyUsername_SubUserIDFallback(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Errorf("empty-username sub {tid}:{userid} status = %d, want 200; body=%s", w.Code, w.Body.String())
+		t.Errorf("empty-username sub {tid}:{ut}:{userid} status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
 }
 
@@ -416,7 +416,9 @@ func TestAuthMiddleware_ScopeLoadError_FallbackMode5(t *testing.T) {
 	}
 }
 
-// member token 不加载（也不注入 scope）：加载器零调用。
+// member token 打 /api/admin/**：C1 管理员门槛 403（早于 scope 注入与 Enforcer——
+// 本路由未挂 enforcer，顺带钉住 I4：门槛不依赖 enforcer 装配），
+// ScopeLoader 零调用（member 永不注入数据范围）。
 func TestAuthMiddleware_ScopeSkipped_ForMember(t *testing.T) {
 	cfg := testCfg()
 	cfg.Auth.Mode = "token"
@@ -425,11 +427,8 @@ func TestAuthMiddleware_ScopeSkipped_ForMember(t *testing.T) {
 		UserID: 5, Username: "bob", UserType: token.UserTypeMember, TenantID: 1, DeptID: 77,
 	}
 	w := scopeReq(scopeRouter(cfg, claims, loader))
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
-	}
-	if w.Body.String() != `{"dept":0,"mode":0,"ok":false,"user":0}` {
-		t.Errorf("body = %s, want no scope injected for member", w.Body.String())
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d want 403 (admin-only gate) body=%s", w.Code, w.Body.String())
 	}
 	if loader.calls != 0 {
 		t.Errorf("loader called %d times for member, want 0", loader.calls)
@@ -449,5 +448,145 @@ func TestAuthMiddleware_ScopeLoaderNil(t *testing.T) {
 	}
 	if w.Body.String() != `{"dept":0,"mode":0,"ok":false,"user":0}` {
 		t.Errorf("body = %s, want no scope when loader nil", w.Body.String())
+	}
+}
+
+// ---- C1：管理员路径门槛（user_type 维度） ----
+
+// member 昵称撞管理员用户名（sub 撞名场景）：即便 enforcer 里已有
+// g("0:1:admin","0:role:admin") + 角色全量策略，member（ut=2）打 /api/admin/** 也必须 403——
+// 门槛在 Enforcer 之前拦截，即使 sub 完全撞名也进不了策略判定（I4：micro member-server 无 enforcer 同样生效）。
+func TestAuthMiddleware_MemberOnAdminPath_Forbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	enf := newEnforcer(t)
+	if _, err := enf.AddGroupingPolicy("0:1:admin", "0:role:admin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enf.AddPolicy("0:role:admin", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
+
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 5, Username: "admin", UserType: token.UserTypeMember, TenantID: 0,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Enforcer: enf, Validator: v}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("member on admin path status = %d, want 403; body=%s", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); body != `{"error":"forbidden"}` {
+		t.Errorf("body = %s, want {\"error\":\"forbidden\"}", body)
+	}
+}
+
+// 同一 enforcer、同一撞名用户名，管理员（ut=1）正常走 Enforcer → 200。
+// 与上一用例合起来判别：403 来自 user_type 门槛，而非策略缺失。
+func TestAuthMiddleware_AdminOnAdminPath_EnforcerAllows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	enf := newEnforcer(t)
+	if _, err := enf.AddGroupingPolicy("0:1:admin", "0:role:admin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enf.AddPolicy("0:role:admin", "/api/admin/system/users", "GET"); err != nil {
+		t.Fatal(err)
+	}
+
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 9, Username: "admin", UserType: token.UserTypeAdmin, TenantID: 0,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Enforcer: enf, Validator: v}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("admin on admin path status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// ---- C2：Token 内租户覆盖 X-Tenant-ID 头（spec §4.3） ----
+
+// 复刻 http.go 顺序：TenantMiddleware 在 AuthMiddleware 之前。
+// header X-Tenant-ID: 2 + token claims tenant 1 → handler 里 TenantID 必须为 1
+//（判别：AuthMiddleware 未按 token 回写 ctx 则为 2 → 头伪造跨租户成功）。
+func TestAuthMiddleware_TokenTenantOverridesHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewTenantMiddleware(nil))
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Validator: v}))
+	r.GET("/api/admin/system/users", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"tid": tenant.TenantIDFromContext(c.Request.Context())})
+	})
+
+	req := httptest.NewRequest("GET", "/api/admin/system/users", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("X-Tenant-ID", "2")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"tid":1}` {
+		t.Errorf("body = %s, want tid=1（token 优先于 X-Tenant-ID 头）", w.Body.String())
+	}
+}
+
+// ---- I1：member refresh/logout 走公开路径 ----
+
+// 复刻 http.go 顺序（Tenant + Auth，带 enforcer 与 token 校验器）。
+// member refresh 是 possession-based（凭 body 的 refresh_token）：access 过期/缺失都不该
+// 被中间件拦下（controller 层的 400/401 属业务）。判别：中间件若仍鉴权 → 401/403。
+func TestAuthMiddleware_MemberRefresh_NotIntercepted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	enf := newEnforcer(t)
+	// 即便 enforcer 一条策略都没有，也不该影响公开路径。
+	v := fakeValidator{err: errors.New("expired")} // 过期 access：根本轮不到校验
+
+	handlerHit := false
+	r := gin.New()
+	r.Use(middleware.NewTenantMiddleware(nil))
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Enforcer: enf, Validator: v}))
+	r.POST("/api/app/member/auth/refresh", func(c *gin.Context) {
+		handlerHit = true
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+	r.POST("/api/app/member/auth/logout", func(c *gin.Context) {
+		handlerHit = true
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	for _, path := range []string{"/api/app/member/auth/refresh", "/api/app/member/auth/logout"} {
+		handlerHit = false
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Authorization", "Bearer expired-access") // 带过期/无效 access token
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("POST %s status = %d, want 200（中间件放行）; body=%s", path, w.Code, w.Body.String())
+		}
+		if !handlerHit {
+			t.Errorf("POST %s 未到达 handler（被中间件拦截）", path)
+		}
 	}
 }

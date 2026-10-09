@@ -42,9 +42,11 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// 公开路径：非 /api/admin/** 且非需登录的 app 接口一律放行。
-		// /api/app/** 中仅本清单需要登录态（登录/注册等入口是公开的）。
-		if !strings.HasPrefix(path, "/api/admin/") && !appAuthRequired(path) {
+		// 公开路径：仅 /api/admin/** 需要登录态，其余（含 /api/app/** 全部）一律放行。
+		// I1 取舍：member 的 refresh/logout 是 possession-based——refresh 凭 body 里的
+		// refresh_token、logout 凭 Authorization 头自行撤销（controller 已如此实现），
+		// 放进本中间件只会在 access 过期时把刷新链路也 401 拦死，故不再列入鉴权清单。
+		if !strings.HasPrefix(path, "/api/admin/") {
 			c.Next()
 			return
 		}
@@ -57,7 +59,19 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		}
 		c.Set("claims", claims)
 
-		// 数据范围注入（T10）：仅管理端用户加载；member token 不加载（ScopeLoader 调用为 0）。
+		// spec §4.3：Token 内租户为准——覆盖/回写 ctx，防 X-Tenant-ID 头伪造跨租户。
+		// （公开路径无 claims，不经过此处，仍由 TenantMiddleware 按 header/domain 解析。）
+		c.Request = c.Request.WithContext(tenant.WithTenantID(c.Request.Context(), claims.TenantID))
+
+		// /api/admin/** 仅限管理员（C1）：member token（user_type=2）直接 403，
+		// 且置于 Enforcer 之前——micro 形态 member-server 未装配 enforcer，此门槛
+		// 在任何装配下都生效；即便 sub 撞名也进不了策略判定（I4）。
+		if claims.UserType != int(token.UserTypeAdmin) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+
+		// 数据范围注入（T10）：仅管理端用户加载（上方门槛后必为管理员，条件保留作纵深防御）。
 		// 失败方向 = 最严：Load 出错时按 Mode 5（仅本人）兜底注入，不阻断请求——
 		// 加载失败不能退化成"看到更多数据"。
 		if d.ScopeLoader != nil && claims.UserType == int(token.UserTypeAdmin) {
@@ -72,11 +86,10 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		}
 
 		if d.Enforcer != nil {
-			// sub 带租户前缀：{tenantId}:{username}，杜绝跨租户同名角色串策略（块⑦）。
-			sub := fmt.Sprintf("%d:%s", claims.TenantID, claims.Username)
-			if claims.Username == "" {
-				sub = fmt.Sprintf("%d:%d", claims.TenantID, claims.UserID)
-			}
+			// sub 带租户 + user_type 维度：{tenantId}:{userType}:{username}（C1）。
+			// 只有 tenant 前缀时，member 昵称 "admin" 与管理员用户名撞 sub → g(x,x) 恒等提权；
+			// user_type 维度让二者永不同 sub（空 username 退化为 {tid}:{ut}:{userid}）。
+			sub := auth.UserSub(claims.TenantID, claims.UserType, claims.Username, claims.UserID)
 			obj := c.FullPath()
 			if obj == "" {
 				obj = path
@@ -89,13 +102,6 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-// appAuthRequired：app 端需要登录态的路径前缀（一期只有 member 的登出/刷新；
-// 登录、注册、send-sms-code 等入口公开）。
-func appAuthRequired(path string) bool {
-	return strings.HasPrefix(path, "/api/app/member/auth/logout") ||
-		strings.HasPrefix(path, "/api/app/member/auth/refresh")
 }
 
 func parseClaims(d AuthDeps, tokenStr string) (*auth.Claims, error) {

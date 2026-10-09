@@ -11,7 +11,9 @@ import (
 
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/tenant"
+	"alexGo-cloud/pkg/token"
 )
 
 type RoleService interface {
@@ -459,7 +461,9 @@ func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint
 }
 
 // EnsureUserRolePolicy 绑定用户→角色的 g 关系，主体与角色 sub 均带租户前缀
-//（{tid}:{username} → {tid}:{roleCode}），与中间件 sub 构造一致。
+//（{tid}:{ut}:{username} → {tid}:{roleCode}），与中间件 sub 构造一致。
+// 本方法只服务 system 侧管理员登录/配权 → user_type 恒 1（C1：member 昵称与管理员
+// 用户名撞 sub 会经 g(x,x) 恒等提权，故 user_type 维度必须与中间件同构）。
 func (s *permissionService) EnsureUserRolePolicy(ctx context.Context, username string, roles []*model.Role) error {
 	if s.enforcer == nil || username == "" {
 		return nil
@@ -471,7 +475,7 @@ func (s *permissionService) EnsureUserRolePolicy(ctx context.Context, username s
 		return err
 	}
 	tid := tenant.TenantIDFromContext(ctx)
-	userSub := fmt.Sprintf("%d:%s", tid, username)
+	userSub := auth.UserSub(tid, int(token.UserTypeAdmin), username, 0)
 	existing, err := s.enforcer.GetRolesForUser(userSub)
 	if err != nil {
 		return err
