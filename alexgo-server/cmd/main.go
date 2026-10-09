@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
 
@@ -31,12 +32,13 @@ import (
 	"alexGo-cloud/pkg/trace"
 )
 
-// main 是 alexGo-cloud 单体模式的统一启动入口。
+// main 是 alexGo-cloud 的 system-server 入口，支持双运行模式：
 //
-// 设计目标：
-// 1) 单体一键启动：HTTP + 模块路由 + 迁移 + 可观测性，默认都在这里装配。
-// 2) 零成本演进：当开启 microservice.enabled 时，通过 Fx Decorate 把本地接口实现替换为 gRPC 客户端实现。
-// 3) 生产可控：通过配置开关启用/禁用 outbox、NATS、Redis、限流熔断等能力。
+//   - mono 模式（默认，deployment.mode != "micro"）：单进程装配 system+order+member
+//     全部模块（make run 一键全起），token 签发/校验都用本地 token.Service；
+//   - micro 模式（DEPLOYMENT_MODE=micro，make run-system）：本进程只装 system+order，
+//     member 路由由 modules/member/cmd 独立进程提供（make run-member），
+//     会员登录经 gRPC TokenService 委托本进程签发。
 //
 // 运行方式：
 // - 默认：启动 HTTP 服务（同时执行迁移 + 启动 Outbox Relay 等后台任务）
@@ -52,24 +54,57 @@ func main() {
 		defer func() { _ = logger.Log.Sync() }()
 	}
 
-	opts := []fx.Option{
-		// fx.Provide：声明依赖构建方式（“怎么构造”）。
-		// fx.Invoke：声明副作用入口（“启动时做什么”）。
-		//
-		// 这里的顺序不影响依赖解析，但“阅读顺序”建议从基础设施 → 应用层 → 模块层。
+	// 配置提前加载：模块装配（mono/micro）在 fx 构建期就需要 deployment.mode，
+	// 无法等 fx 内 Provide 再分支——所以此处直接加载并 fx.Supply，
+	// 原先 fx.Provide(config.LoadGlobalConfig) 移除（*config.Config 全局唯一来源）。
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		if logger.Log != nil {
+			logger.Log.Fatal("load config failed", zap.Error(err))
+		}
+		panic(err)
+	}
+
+	// fx.New(...) 会构建依赖图并按 Lifecycle 启动；Run() 会阻塞直到接收到退出信号。
+	fx.New(options(cfg, *migrateOnly)...).Run()
+}
+
+// options 装配入口 fx 清单（正/反向干跑测试复用同一清单，防止测试与入口漂移）。
+// 接口映射单独切片（ifaceOptions）：反向干跑测试剔除之，证明模块真实消费 token.Issuer/Validator。
+func options(cfg *config.Config, migrateOnly bool) []fx.Option {
+	return append(baseOptions(cfg, migrateOnly), ifaceOptions()...)
+}
+
+// ifaceOptions 入口级接口映射：fx 按具体类型 *token.Service 提供、不会自动满足接口，
+// 故显式 Provide、全局唯一——登录签发（system NewAuthService / member NewMemberService）
+// 与中间件校验分别消费，system/member 两模块共用（member-server 入口同样写一份）。
+func ifaceOptions() []fx.Option {
+	return []fx.Option{
 		fx.Provide(
-			// 配置加载：全局 config.yaml + modules/<name>/configs/config.yaml 命名空间合并。
-			config.LoadGlobalConfig,
+			func(s *token.Service) token.Issuer { return s },
+			func(s *token.Service) token.Validator { return s },
+		),
+	}
+}
+
+// baseOptions 基础装配：基础设施 Provider/Invoke + system/order 模块
+// （member 模块按部署模式条件追加；接口映射见 ifaceOptions）。
+func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
+	// fx.Provide：声明依赖构建方式（“怎么构造”）。
+	// fx.Invoke：声明副作用入口（“启动时做什么”）。
+	//
+	// 这里的顺序不影响依赖解析，但“阅读顺序”建议从基础设施 → 应用层 → 模块层。
+	opts := []fx.Option{
+		// 配置：提前加载后经 Supply 注入（见 main），此处不再 Provide 加载器。
+		fx.Supply(cfg),
+		fx.Provide(
 			// 数据库连接：GORM + 连接池 + Fx OnStop 优雅关闭。
 			database.NewDB,
 			// 租户域名解析（Host → tenant_id），供 TenantMiddleware 注入（可选，nil 时只认 X-Tenant-ID 头）。
 			tenant.NewDomainLookup,
-			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）。
+			// OAuth2 令牌服务：同时作为 Issuer（签发）与 Validator（中间件校验）；
+			// 接口映射见 ifaceOptions。
 			token.NewService,
-			// 接口映射（fx 按具体类型 *token.Service 提供，不会自动满足接口依赖，
-			// 故显式 Provide 一次、全局唯一）：登录签发 / 中间件校验分别消费。
-			func(s *token.Service) token.Issuer { return s },
-			func(s *token.Service) token.Validator { return s },
 			// 当 microservice.enabled=true 时可能需要创建 gRPC 连接（否则返回 nil）。
 			client.NewGRPCConn,
 			// Casbin Enforcer：用于 RBAC 权限校验（AuthMiddleware 内可选启用）。
@@ -129,15 +164,16 @@ func main() {
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
 		system.FxModule,
 		order.FxModule,
-		// member 模块先无条件装入（Task 12 才按部署模式拆分）。
-		member.FxModule,
 	}
-
-	if !*migrateOnly {
+	// mono 模式（deployment.mode != "micro"）：member 路由同进程注册，
+	// TokenIssuer/AccountLimitChecker 都由本进程本地满足；
+	// micro 模式：member 由 modules/member/cmd 独立启动，本进程不装其路由。
+	if cfg.Deployment.Mode != "micro" {
+		opts = append(opts, member.FxModule)
+	}
+	if !migrateOnly {
 		// 统一 HTTP Server（Gin + 中间件 + 模块路由注册）。
 		opts = append(opts, fx.Invoke(server.StartHTTPServer))
 	}
-
-	// fx.New(...) 会构建依赖图并按 Lifecycle 启动；Run() 会阻塞直到接收到退出信号。
-	fx.New(opts...).Run()
+	return opts
 }
