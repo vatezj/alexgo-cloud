@@ -154,6 +154,20 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 	default:
 		return nil, fmt.Errorf("token: unknown user type")
 	}
+	// I3：停用租户的存量 token 必须失效——Issue 时的租户检查只拦"停用后新签发"，
+	// 停用前签发的 token 仍会通过上面的查询；这里按校验时点复查（与 Issue 同款 raw SQL）。
+	// tenant_id=0（平台租户/未解析）与 Issue 对齐，跳过检查。
+	if row.TenantID != 0 {
+		var status int
+		if err := s.db.WithContext(ctx).
+			Raw("SELECT status FROM tenants WHERE id = ? AND deleted = 0", row.TenantID).
+			Scan(&status).Error; err != nil {
+			return nil, fmt.Errorf("token: tenant lookup: %w", err)
+		}
+		if status != 1 {
+			return nil, fmt.Errorf("token: tenant disabled")
+		}
+	}
 	return claims, nil
 }
 

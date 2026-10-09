@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,8 +13,10 @@ import (
 
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/logger"
+	"alexGo-cloud/pkg/token"
 )
 
 type SeederParams struct {
@@ -273,40 +274,49 @@ func seed(ctx context.Context, p SeederParams) error {
 
 	allMenus, _ := p.Menus.List(ctx, tid)
 
-	// system:auth 按钮菜单（T9 移交）：permissionRoutes 含 profile/refresh/logout 三条
-	// /auth 路由；若无任何菜单 permission 前缀命中 system:auth，启动重灌后这三条路由会全员 403。
-	// 幂等：已存在（任一菜单 permPrefix=="system:auth"）则跳过，兼容已播种过菜单的库。
-	hasAuthMenu := false
+	// 按钮菜单补齐（T9/C3 移交）：permissionRoutes 含 system:auth / system:tenant /
+	// member:user 三组路由；若无任何菜单的 permPrefix 命中它们，启动重灌后这些路由会全员 403
+	//（C3：租户管理与会员管理接口开箱不可用）。
+	// 幂等：任一菜单 permPrefix 已命中则跳过，兼容已播种过菜单的库；
+	// 三组均进入 allMenus → SetRoleMenus（admin 种子角色拿到全部管理接口）。
+	var rootID uint64
 	for _, m := range allMenus {
-		if permPrefix(m.Permission) == "system:auth" {
-			hasAuthMenu = true
+		if m.ParentID == 0 && strings.EqualFold(m.Type, "dir") {
+			rootID = m.ID
 			break
 		}
 	}
-	if !hasAuthMenu {
-		var rootID uint64
-		for _, m := range allMenus {
-			if m.ParentID == 0 && strings.EqualFold(m.Type, "dir") {
-				rootID = m.ID
-				break
-			}
+	for _, b := range []struct {
+		perm string
+		name string
+		icon string
+		sort int
+	}{
+		{perm: "system:auth:profile", name: "登录鉴权", icon: "key", sort: 11},
+		{perm: "system:tenant:manage", name: "租户管理", icon: "cluster", sort: 12},
+		{perm: "member:user:manage", name: "会员管理", icon: "team", sort: 13},
+	} {
+		// permPrefix 取前两段（"system:auth:profile"→"system:auth"），比对必须同尺度，
+		// 否则永远不命中 → 每次启动重复插菜单（破坏幂等）。
+		if hasPermPrefix(allMenus, permPrefix(b.perm)) {
+			continue
 		}
-		authBtn := &model.Menu{
+		btn := &model.Menu{
 			ParentID:   rootID,
 			Type:       "button",
-			Name:       "登录鉴权",
+			Name:       b.name,
 			Path:       "",
 			Component:  "",
-			Icon:       "key",
-			Permission: "system:auth:profile",
-			Sort:       11,
+			Icon:       b.icon,
+			Permission: b.perm,
+			Sort:       b.sort,
 			Status:     1,
 			TenantID:   tid,
 			CreatedAt:  now,
 			UpdatedAt:  now,
 		}
-		if err := p.Menus.Create(ctx, authBtn); err == nil {
-			allMenus = append(allMenus, authBtn)
+		if err := p.Menus.Create(ctx, btn); err == nil {
+			allMenus = append(allMenus, btn)
 		}
 	}
 
@@ -325,9 +335,10 @@ func seed(ctx context.Context, p SeederParams) error {
 				logger.Log.Warn("rebuild policies failed", zap.Error(rerr))
 			}
 		}
-		// 用户→角色 g 绑定带租户前缀（{tid}:{username} → {tid}:{roleCode}），与中间件 sub 同构。
+		// 用户→角色 g 绑定带租户 + user_type 维度（{tid}:{ut}:{username} → {tid}:{roleCode}），
+		// 与中间件 sub 同构（C1：种子管理员是 user_type=1，缺维度会被 member 昵称撞 sub 提权）。
 		if _, aerr := p.Enforcer.AddRoleForUser(
-			fmt.Sprintf("%d:%s", tid, username),
+			auth.UserSub(tid, int(token.UserTypeAdmin), username, 0),
 			roleSub(tid, roleCode),
 		); aerr != nil && logger.Log != nil {
 			logger.Log.Warn("seed role link failed", zap.Error(aerr))
@@ -342,4 +353,15 @@ func seed(ctx context.Context, p SeederParams) error {
 	}
 
 	return nil
+}
+
+// hasPermPrefix 判断菜单集中是否已有任一菜单的 permission 前缀命中给定前缀
+//（permPrefix 取前两段，故 "system:auth:profile" 与 "system:auth:refresh" 同组）。
+func hasPermPrefix(menus []*model.Menu, prefix string) bool {
+	for _, m := range menus {
+		if m != nil && permPrefix(m.Permission) == prefix {
+			return true
+		}
+	}
+	return false
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,7 +11,8 @@ import (
 	"alexGo-cloud/modules/member/service"
 )
 
-// AuthController app 端会员鉴权接口（register/login 公开；refresh/logout 需登录态）。
+// AuthController app 端会员鉴权接口（register/login/refresh/logout 全部公开入口：
+// refresh/logout 是 possession-based，由 controller 持有的 token 本身鉴权）。
 type AuthController struct {
 	svc service.MemberService
 }
@@ -57,6 +59,11 @@ func (c *AuthController) Login(ctx *gin.Context) {
 	}
 	res, err := c.svc.Login(ctx.Request.Context(), req.Mobile, req.Password, ctx.ClientIP())
 	if err != nil {
+		// 签发失败（I2）：凭据已通过，是 token.Issuer 侧故障 → 503，不冒充 401。
+		if errors.Is(err, service.ErrIssuance) {
+			errJSON(ctx, http.StatusServiceUnavailable, fmt.Errorf("auth service unavailable"))
+			return
+		}
 		errJSON(ctx, http.StatusUnauthorized, err)
 		return
 	}
@@ -65,7 +72,8 @@ func (c *AuthController) Login(ctx *gin.Context) {
 	})
 }
 
-// Refresh 刷新令牌（需登录态：中间件 appAuthRequired 清单）。
+// Refresh 刷新令牌。possession-based：凭 body 里的 refresh_token，无须中间件登录态
+//（access 过期正是刷新的场景——见 I1，中间件不再拦 /api/app/**）。
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
@@ -89,7 +97,8 @@ func (c *AuthController) Refresh(ctx *gin.Context) {
 	})
 }
 
-// Logout 注销当前 access token（需登录态：中间件 appAuthRequired 清单）。
+// Logout 注销当前 access token。possession-based：凭 Authorization 头的 access token
+// 自行撤销（无须中间件登录态，I1）。
 func (c *AuthController) Logout(ctx *gin.Context) {
 	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
 	if raw == "" {

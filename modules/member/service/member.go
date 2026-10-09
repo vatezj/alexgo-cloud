@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -17,6 +18,14 @@ import (
 
 // mobileRe 中国大陆手机号（1 开头、第二位 3-9、共 11 位）。
 var mobileRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
+
+// ErrIssuance 签发失败哨兵：密码/状态校验已通过，是 token.Issuer 侧故障
+//（gRPC 不可达、DB 故障、issuer 未装配）→ controller 映射 503，
+// 与"凭据错误 401"区分——否则 infra 故障会被误报成"密码错误"（I2）。
+var ErrIssuance = errors.New("issuance failed")
+
+// ErrInvalidStatus 状态值越界哨兵：status ∉ {0,1} → controller 映射 400（T5 deferred）。
+var ErrInvalidStatus = errors.New("invalid status")
 
 // LoginResult 与 system 同形：双端登录/刷新的统一响应（controller 直接序列化）。
 type LoginResult struct {
@@ -62,7 +71,7 @@ func (s *memberService) Register(ctx context.Context, mobile, password, nickname
 		return nil, fmt.Errorf("password too short (min 8)")
 	}
 	// 昵称禁止含 ':'：角色 sub 命名空间为 "{tid}:role:{code}"，用户 sub 为
-	// "{tid}:{nickname}"。若昵称可含 ':'，注册昵称 "role:admin" 会得到
+	// "{tid}:{ut}:{nickname}"。若昵称可含 ':'，注册昵称 "role:admin" 会得到
 	// "{tid}:role:admin"，与管理员角色 sub 撞车 → casbin g(x,x) 恒等 → 提权。
 	if strings.Contains(nickname, ":") {
 		return nil, fmt.Errorf("username/nickname must not contain ':'")
@@ -115,11 +124,15 @@ func (s *memberService) Login(ctx context.Context, mobile, password, ip string) 
 	if err := s.repo.Update(ctx, u); err != nil {
 		return nil, err
 	}
+	if s.issuer == nil {
+		// 未装配 issuer（micro 未接 gRPC / mono 漏注入）：与签发故障同语义 → 503。
+		return nil, fmt.Errorf("%w: issuer not wired", ErrIssuance)
+	}
 	issued, err := s.issuer.Issue(ctx, token.IssueParams{
 		UserID: u.ID, UserType: token.UserTypeMember, TenantID: tid, ClientID: "alexgo-app",
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrIssuance, err)
 	}
 	return toResult(issued), nil
 }
@@ -146,7 +159,12 @@ func (s *memberService) List(ctx context.Context, page, size int) ([]*model.Memb
 // Disable 启用/停用会员（status: 1启用 0停用）；停用不吊销既有 token——
 // 中间件 Validate 查用户存在性，但状态检查在 login 层——既有 token 生命周期内仍有效
 // （一期取舍：踢人场景由 RevokeAll 覆盖，本接口后续接 RevokeAll 联动）。
+// status 边界校验（T5 deferred）：仅接受 0/1，其余值返回 ErrInvalidStatus → controller 400；
+// "空 body 默认停用"在 controller 侧用指针 bind 关闭（字段缺失即 400，service 层不可见存在性）。
 func (s *memberService) Disable(ctx context.Context, id uint64, status int) error {
+	if status != 0 && status != 1 {
+		return fmt.Errorf("%w: %d (want 0 or 1)", ErrInvalidStatus, status)
+	}
 	// 仓储无按 ID 直取——用 UpdateStatus 语义按 tenant+id 局部更新。
 	return s.repo.UpdateStatus(ctx, tenant.TenantIDFromContext(ctx), id, status)
 }
