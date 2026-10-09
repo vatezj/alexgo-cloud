@@ -42,11 +42,12 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// 公开路径：仅 /api/admin/** 需要登录态，其余（含 /api/app/** 全部）一律放行。
-		// I1 取舍：member 的 refresh/logout 是 possession-based——refresh 凭 body 里的
-		// refresh_token、logout 凭 Authorization 头自行撤销（controller 已如此实现），
-		// 放进本中间件只会在 access 过期时把刷新链路也 401 拦死，故不再列入鉴权清单。
-		if !strings.HasPrefix(path, "/api/admin/") {
+		// 公开路径：/api/admin/** 需登录态；vben 自读三端点（isVbenSelfRead）走
+		// "token→claims→租户→member 门槛"后放行（跳过 data_scope 与 Casbin，见锚点 2）；
+		// 其余（含 /api/app/** 全部、/api/auth/login|logout、health/metrics/pprof）一律放行。
+		// I1 取舍：member 的 refresh/logout 是 possession-based——凭 body/头自行校验，
+		// 放进本中间件只会在 access 过期时把刷新链路也 401 拦死，故不列入鉴权清单。
+		if !strings.HasPrefix(path, "/api/admin/") && !isVbenSelfRead(path) {
 			c.Next()
 			return
 		}
@@ -68,6 +69,14 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		// 在任何装配下都生效；即便 sub 撞名也进不了策略判定（I4）。
 		if claims.UserType != int(token.UserTypeAdmin) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+
+		// vben 自读档（锚点 2）：已过 token→claims→租户覆盖→member 门槛，
+		// 到此必为管理员自读请求——跳过 data_scope 注入与 Casbin 直接放行。
+		// /api/admin/** 不满足本条件，继续走下方完整门控，现行为不变。
+		if !strings.HasPrefix(path, "/api/admin/") {
+			c.Next()
 			return
 		}
 
@@ -133,4 +142,16 @@ func parseClaims(d AuthDeps, tokenStr string) (*auth.Claims, error) {
 		UserType: int(tc.UserType),
 		DeptID:   tc.DeptID,
 	}, nil
+}
+
+// isVbenSelfRead：vben 前端启动期自读端点的精确清单（非前缀匹配——
+// /api/auth/other、/api/auth/login 等必须留在公开档）。
+// 这三个端点带 token 即代表登录态，授权语义由 handler 内按 claims 自查，
+// 不需要 data_scope（不查业务行）也不走 Casbin（无对应路由策略）。
+func isVbenSelfRead(path string) bool {
+	switch path {
+	case "/api/auth/codes", "/api/user/info", "/api/menu/all":
+		return true
+	}
+	return false
 }

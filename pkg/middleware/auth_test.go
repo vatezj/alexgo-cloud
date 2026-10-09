@@ -590,3 +590,143 @@ func TestAuthMiddleware_MemberRefresh_NotIntercepted(t *testing.T) {
 		}
 	}
 }
+
+// ---- Task: vben 自读端点三档（/api/auth/codes、/api/user/info、/api/menu/all） ----
+
+// newSelfReadRouter：装 3 条自读端点 + 判别路由 /api/auth/other + admin 对照路由。
+func newSelfReadRouter(cfg *config.Config, enf *casbin.Enforcer) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{
+		Cfg: cfg, Enforcer: enf, Validator: fakeValidator{claims: claimsFor(cfg)},
+	}))
+	echo := func(c *gin.Context) {
+		a, _ := c.Get("claims")
+		cl, _ := a.(*auth.Claims)
+		name := ""
+		if cl != nil {
+			name = cl.Username
+		}
+		c.JSON(http.StatusOK, gin.H{"username": name})
+	}
+	r.GET("/api/auth/codes", echo)
+	r.GET("/api/user/info", echo)
+	r.GET("/api/menu/all", echo)
+	r.GET("/api/auth/other", echo) // 不在精确清单 → 公开档判别
+	r.GET("/api/admin/system/users", echo)
+	r.POST("/api/auth/login", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	r.POST("/api/auth/logout", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) }) // 公开档回归（ExactMatchNotPrefix 钉住无 token 200）
+	return r
+}
+
+// 自读无 token → 401（token→claims 是必经档，不能退化成公开）。
+func TestVbenSelfRead_NoToken_401(t *testing.T) {
+	r := newSelfReadRouter(testCfg(), nil)
+	for _, p := range []string{"/api/auth/codes", "/api/user/info", "/api/menu/all"} {
+		if w := do(r, "GET", p, ""); w.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s 无 token status = %d, want 401; body=%s", p, w.Code, w.Body.String())
+		}
+	}
+}
+
+// 自读合法 token → 200 且 claims 已注入 handler。
+func TestVbenSelfRead_ValidToken_200InjectsClaims(t *testing.T) {
+	cfg := testCfg()
+	tok, err := auth.GenerateToken(9, "alice", 1, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newSelfReadRouter(cfg, nil)
+	w := do(r, "GET", "/api/auth/codes", "Bearer "+tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"username":"alice"}` {
+		t.Errorf("body = %s, want claims injected", w.Body.String())
+	}
+}
+
+// 空策略 enforcer + 合法 token 打自读 → 200：判别 Casbin 被跳过
+//（若走到 Enforce，空策略必 403）。
+func TestVbenSelfRead_SkipsCasbin(t *testing.T) {
+	cfg := testCfg()
+	tok, err := auth.GenerateToken(9, "alice", 1, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newSelfReadRouter(cfg, newEnforcer(t)) // 零策略
+	w := do(r, "GET", "/api/user/info", "Bearer "+tok)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200（空策略下仍放行 → 跳过 Casbin）; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// 自读 + ScopeLoader → loader 零调用（跳过 data_scope；跳过前不得 Load）。
+func TestVbenSelfRead_SkipsScopeLoader(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	loader := &fakeScope{ds: tenant.DataScope{Mode: 3, UserID: 9, DeptID: 77}}
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 9, Username: "alice", UserType: token.UserTypeAdmin, TenantID: 1, DeptID: 77,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Validator: v, ScopeLoader: loader}))
+	r.GET("/api/auth/codes", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	w := do(r, "GET", "/api/auth/codes", "Bearer t")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if loader.calls != 0 {
+		t.Errorf("loader called %d times on self-read, want 0（先跳过 scope 再放行）", loader.calls)
+	}
+}
+
+// member token（token 模式 ut=2）打自读 → 403：member 门槛对自读同样生效。
+func TestVbenSelfRead_Member_403(t *testing.T) {
+	cfg := testCfg()
+	cfg.Auth.Mode = "token"
+	v := fakeValidator{claims: &token.Claims{
+		UserID: 5, Username: "bob", UserType: token.UserTypeMember, TenantID: 1,
+	}}
+	r := gin.New()
+	r.Use(middleware.NewAuthMiddleware(middleware.AuthDeps{Cfg: cfg, Validator: v}))
+	r.GET("/api/menu/all", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	w := do(r, "GET", "/api/menu/all", "Bearer t")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403（member 门槛先于自读放行）; body=%s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"error":"forbidden"}` {
+		t.Errorf("body = %s, want {\"error\":\"forbidden\"}", w.Body.String())
+	}
+}
+
+// 判别"精确匹配非前缀"：/api/auth/other 不在清单 → 公开档无 token 直接 200；
+// /api/auth/login、/api/auth/logout 回归公开档。
+func TestVbenSelfRead_ExactMatchNotPrefix(t *testing.T) {
+	r := newSelfReadRouter(testCfg(), nil)
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/auth/other"},
+		{"POST", "/api/auth/login"},
+		{"POST", "/api/auth/logout"},
+	} {
+		if w := do(r, tc.method, tc.path, ""); w.Code != http.StatusOK {
+			t.Errorf("%s %s 无 token status = %d, want 200（公开档，未被前缀吞掉）; body=%s",
+				tc.method, tc.path, w.Code, w.Body.String())
+		}
+	}
+}
+
+// admin 全门控回归：自读改动不得松动 /api/admin/**（空策略 + 合法 token → 403）。
+func TestVbenSelfRead_AdminPathStillGated(t *testing.T) {
+	cfg := testCfg()
+	tok, err := auth.GenerateToken(9, "alice", 1, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newSelfReadRouter(cfg, newEnforcer(t)) // 零策略
+	if w := do(r, "GET", "/api/admin/system/users", "Bearer "+tok); w.Code != http.StatusForbidden {
+		t.Errorf("admin 路径 status = %d, want 403（空策略照常 Enforce）; body=%s", w.Code, w.Body.String())
+	}
+}
