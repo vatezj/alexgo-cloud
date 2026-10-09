@@ -12,8 +12,10 @@
 
 | 模块 | 功能 |
 | --- | --- |
-| 系统管理（`modules/system`） | 用户、角色、菜单、部门、岗位、字典、配置、通知 |
-| 权限与安全 | JWT 登录鉴权、Casbin RBAC（菜单粒度授权）、登录日志、操作审计 |
+| 系统管理（`modules/system`） | 用户、角色、菜单、部门、岗位、字典、配置、通知、租户 |
+| 登录与用户体系 | 账号密码 / Token 签发刷新注销（OAuth2 不透明令牌）/ 会员 mobile 注册登录 |
+| 权限与安全 | Casbin RBAC（菜单粒度授权，主体带租户前缀）、data_scope 数据权限、登录日志、操作审计 |
+| 会员（`modules/member`） | mobile 注册/登录/刷新/登出、会员列表与启停（micro 形态经 gRPC 委托 system 签发） |
 | 订单演示（`modules/order`） | 单表 CRUD 示例（`modules.order: false` 默认关闭，用于演示模块接入） |
 | 后台前端（`admin-web/`） | Vue 3 + Naive UI + Vite 管理后台，覆盖上述系统管理页面 |
 
@@ -25,7 +27,7 @@
 | 单体 → 微服务 | `fx.Decorate` 一键把本地实现替换为 gRPC 客户端，调用方零改动 |
 | 入口防护 | Redis Token Bucket 限流 + 熔断器（均可配置开关，故障 fail-open） |
 | 可靠事件 | Transactional Outbox（`FOR UPDATE SKIP LOCKED`）→ NATS JetStream |
-| 多租户 | `X-Tenant-ID` 头注入租户上下文 |
+| 多租户 | `X-Tenant-ID` 头 / 域名解析注入租户上下文，GORM 插件自动过滤 `tenant_id`，租户管理 |
 | 可观测性 | `/health` 存活、`/health/ready` DB 探活、`/metrics` Prometheus、OTel 链路追踪、pprof（默认关闭） |
 | 代码生成 | 模板 CRUD 生成器 + 按数据表反向生成整套 CRUD |
 | 部署 | docker-compose / Kustomize / Helm（dev·gray·prod）+ ArgoCD 多环境 |
@@ -71,12 +73,22 @@ npm run dev
 > 🍎 macOS 用户提示：本机如遇 `go build` / `go test` 链接报错（SDK 兼容问题），
 > 加 `CGO_ENABLED=0` 执行即可，如 `CGO_ENABLED=0 make test`。
 
+## 运行模式
+
+| 模式 | 命令 | 说明 |
+| --- | --- | --- |
+| mono（默认） | `make run` | 单进程全部模块（system+order+member），Token 本地签发，端口 :8080 |
+| micro（部署形态） | `make run-system` + `make run-member` | system-server :8080(+gRPC :50051) 与 member-server :8081，member 经 gRPC 委托签发 |
+
+配置：`deployment.mode`（mono|micro）；member 上游地址 `SYSTEM_GRPC_ADDR`。
+micro 本地联调前端分流：`MEMBER_PROXY=http://localhost:8081 npm run dev`。
+
 ## 📁 项目结构
 
 ```
 alexGo-cloud/
 ├── alexgo-server/     # 启动入口 + HTTP Server 装配（cmd/main.go、server/）
-├── modules/           # 业务模块（system、order），各含 controller/service/repository/model
+├── modules/           # 业务模块（system、order、member），各含 controller/service/repository/model
 ├── pkg/               # 20+ 基础能力包（auth、limiter、outbox、middleware、migrate…）
 ├── admin-web/         # 管理后台前端（Vue 3 + Naive UI + Vite）
 ├── deployments/       # docker-compose / kubernetes / helm / argocd
@@ -155,7 +167,9 @@ make pprof
 
 | 命令 | 说明 |
 | --- | --- |
-| `make run` | 启动服务（含自动迁移） |
+| `make run` | mono 模式启动（单进程全部模块，含自动迁移） |
+| `make run-system` | micro 模式 system-server（`DEPLOYMENT_MODE=micro`，含 gRPC TokenService :50051） |
+| `make run-member` | micro 模式 member-server（:8081，`SYSTEM_GRPC_ADDR=127.0.0.1:50051`） |
 | `make migrate` | 仅执行数据库迁移（`--migrate-only`，适合发布前 / init Job） |
 | `make test` | 单元测试（进程内，不依赖 MySQL/Redis/NATS） |
 | `make build` | 编译到 `bin/alexgo-server` |

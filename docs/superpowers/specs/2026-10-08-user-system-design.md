@@ -1,6 +1,7 @@
 # alexGo-cloud 用户体系（SaaS 多租户 + 全登录方式）设计文档
 
-> **状态**：待评审（Review Draft）
+> **状态**：已评审通过；一期（块①②③⑦ + 双服务骨架 + 双运行模式）已实施（见 git log）
+> 二/三期（块④⑤⑥：短信/三方/小程序）待排期
 > **参考**：yudao-cloud《用户体系》文档 + 用户提供的三表结构图（system_users / system_oauth2_access_token / member_user）
 > **基线代码**：`main` @ `ffadd5a`（2026-10-08）
 

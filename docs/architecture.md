@@ -18,7 +18,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | 目录 | 职责 |
 | --- | --- |
 | `alexgo-server/` | 单体进程入口与 HTTP 层：`cmd/main.go` 统一启动装配，`configs/` 全局配置，`server/` Gin 路由、中间件链与 `server.Module` 抽象 |
-| `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计等）与 `order`（示例业务）；内部按 `api / controller / model / repository / service` 分层 |
+| `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）、`order`（示例业务）与 `member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
 | `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
 | `admin-web/` | 管理后台前端（Vue 3 + Vite），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
@@ -65,20 +65,38 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 配套入口：`modules/system/cmd/grpc_main.go` 提供 system 模块的独立进程化装配
 （`system.FxModule` + `grpcserver.StartGRPCServer`）。拆分只换装配，不改调用方代码。
 
+**双运行模式（`deployment.mode`）**：`mono`（默认）时 `cmd/main.go` 额外装配 `member.FxModule`，
+system+order+member 单进程跑在 :8080；`micro` 时本进程不装 member 路由，会员侧由
+`modules/member/cmd/main.go` 独立启动（:8081），其 Token 签发经 gRPC `TokenService`
+（system 侧 :50051，`StartGRPCServer` 内部按 `deployment.mode` 门控，mono 直接 return）委托完成。
+gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled` 任一开启
+（地址 `system_grpc_addr` 优先，见 `pkg/client.GetServiceAddress`）。
+
 ## 5. HTTP 中间件链（顺序即优先级）
 
 `alexgo-server/server/http.go` 的 `newRouter` 用 `gin.New()` 按下列顺序挂全局中间件
 （先注册先执行，外层 → 内层；顺序即优先级）：
 
 1. `middleware.Recovery()` — 捕获 panic，对外返回 500，不打挂进程；
-2. `middleware.TenantMiddleware()` — 从 `X-Tenant-ID` 请求头注入租户上下文，是多租户隔离、
-   审计与限流维度的基础；
+2. `middleware.NewTenantMiddleware(domainLookup)` — 解析租户并注入上下文：`X-Tenant-ID` 请求头
+   优先，其次 Host 域名（`tenant.DomainLookup`，nil 时只认请求头）；是多租户隔离、审计与限流
+   维度的基础；
 3. `middleware.Logger()` — 结构化请求日志；
 4. `monitor.PrometheusMiddleware()` — 记录 `http_requests_total`（method/path/status）等指标；
 5. `middleware.RateLimitAndBreaker(cfg, limiter, breaker)` — Redis Token Bucket 限流 + 熔断的
    入口防护；limiter/breaker 为 nil（对应 `limiter.enabled` / `breaker.enabled` 关闭）时优雅放行；
-6. `middleware.AuthMiddleware(cfg, enforcer)` — **仅对 `/api/admin/**` 前缀**做 JWT 校验 +
-   Casbin RBAC；其余路径直接放行，不影响健康检查、指标与 app 端接口；
+6. `middleware.NewAuthMiddleware(AuthDeps{Cfg, Enforcer, Validator, ScopeLoader})` — **token/jwt
+   双模式**鉴权（`pkg/middleware/auth.go`）：
+   - **模式**：`auth.mode=token`（默认）用不透明令牌经 `token.Validator` 查库校验；Validator 未装配
+     属装配错误，直接 401（fail-closed，绝不放行）。`auth.mode=jwt` 走旧静态 JWT 解析，作为回滚开关。
+   - **作用范围**：`/api/admin/**` 全量 + app 端仅 `/api/app/member/auth/logout|refresh`
+     （登录、注册等入口公开）；`/health`、`/health/ready`、`/metrics`、`/debug/pprof/` 直接放行。
+   - **Casbin sub 前缀**：用户主体为 `{tenant}:{user}`（用户名为空退化为 `{tenant}:{userId}`）；
+     角色策略主体另占独立命名空间 `{tenant}:role:{code}`（`modules/system/service/permission_routes.go`
+     的 `roleSub`），防止跨租户同名串策略、也防止成员自注册昵称撞角色 sub 提权。
+   - **data_scope 注入**：仅管理端用户经 `tenant.ScopeLoader` 计算数据权限档写入 ctx（加载失败按
+     Mode 5「仅本人」最严兜底、只告警不放行更多数据）；member 用户与未装配（ScopeLoader=nil）时不注入，
+     GORM 插件只剩租户隔离，保持安全缺省。
 7. `middleware.OperateLogMiddleware(recorder)` — 操作审计，同样只作用于 `/api/admin/**`
    （recorder 为 nil 时不记录）；
 8. `trace.OTELMiddleware()` — OpenTelemetry（otelgin）链路追踪，可导出 Jaeger/Tempo/OTLP Collector；
@@ -121,9 +139,10 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 入口为 `pkg/config/loader.go` 的 `LoadGlobalConfig`，产出统一的 `*config.Config`
 （结构定义见 `pkg/config/config.go`）。合并优先级（从高到低）：
 
-1. **环境变量显式覆盖（密钥类，最终生效）**：`v.Unmarshal(&cfg)` **之后**调用
+1. **环境变量显式覆盖（最终生效）**：`v.Unmarshal(&cfg)` **之后**调用
    `applyEnvOverrides`，把 `DB_DSN` → `database.dsn`、`JWT_SECRET` → `system.jwt_secret`、
-   `REDIS_PASSWORD` → `redis.password`（仅非空时覆盖）。必须在这一步做显式覆盖的原因见函数
+   `REDIS_PASSWORD` → `redis.password`、`DEPLOYMENT_MODE` → `deployment.mode`、
+   `SYSTEM_GRPC_ADDR` → `system_grpc_addr`（全部仅非空时覆盖）。必须在这一步做显式覆盖的原因见函数
    注释：没有显式绑定且名字对不上（AutomaticEnv 按 key 转写查的是 `DATABASE_DSN` 而非
    `DB_DSN`），且模块配置合并用的 `v.Set()` 在 viper 中优先级高于 env——不经这一步，
    密钥 env 永远输给模块 yaml。
@@ -136,9 +155,19 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
    `EnvKeyReplacer`（`.`→`_`）服务于 `AutomaticEnv` 的 **`SERVER_HTTP_ADDR` 这类
    “viper key 转写”** 的隐式 env 查找；`HTTP_ADDR` 这类短名是 `BindEnv` 的显式绑定，
    `DB_DSN` 这类则走 Unmarshal 后的 `applyEnvOverrides` 显式覆盖，三者不要混为一谈。
-4. **代码默认值**：`SetDefault(...)`，如 `server.pprof_enabled=false`、`migrate.auto=true`、
-   `outbox.enabled=true`、`outbox.interval_second=5`、`limiter.enabled=false`、
-   `mq.nats.enabled=false`、`redis.enabled=false` 等，保证无配置文件也能启动。
+4. **代码默认值**：`SetDefault(...)`，如 `server.pprof_enabled=false`、`server.grpc_addr=":50051"`、
+   `migrate.auto=true`、`outbox.enabled=true`、`outbox.interval_second=5`、`limiter.enabled=false`、
+   `mq.nats.enabled=false`、`redis.enabled=false`、`auth.mode="token"`、
+   `auth.access_expire_hour=2`、`auth.refresh_expire_day=7`、`deployment.mode="mono"`、
+   `system_grpc_addr="127.0.0.1:50051"` 等，保证无配置文件也能启动。
+
+一期新增的三组键（`pkg/config/config.go`）：
+
+| 键 | 取值 | 作用 |
+| --- | --- | --- |
+| `auth.mode` | `token`（默认）/ `jwt` | 签发与校验走 OAuth2 不透明令牌（查库校验），`jwt` 为回滚开关；`auth.access_expire_hour` / `auth.refresh_expire_day` 控制有效期 |
+| `deployment.mode` | `mono`（默认）/ `micro` | 决定模块装配（是否装 member）与 gRPC TokenService 是否监听 |
+| `system_grpc_addr` | 默认 `127.0.0.1:50051` | member-server → system-server TokenService 地址（micro 联调/部署用） |
 
 其他约定：
 
@@ -149,14 +178,27 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 
 ## 8. 测试策略
 
-全部是进程内单元测试，**CI 不依赖任何外部服务**，共 7 个测试包：`pkg/config`、`pkg/auth`、
-`pkg/circuitbreaker`、`pkg/limiter`、`pkg/middleware`、`pkg/outbox`、`alexgo-server/server`。
+全部是进程内单元测试，**CI 不依赖任何外部服务**，共 20 个测试包（`go test ./... | grep -c "^ok"`）：
+`alexgo-server/cmd`、`alexgo-server/server`、`modules/member/cmd`、`modules/member/service`、
+`modules/system`、`modules/system/cmd`、`modules/system/grpcserver`、`modules/system/model`、
+`modules/system/repository`、`modules/system/service`、`pkg/auth`、`pkg/circuitbreaker`、
+`pkg/client`、`pkg/config`、`pkg/limiter`、`pkg/middleware`、`pkg/outbox`、`pkg/tenant`、
+`pkg/tenant/gormplugin`、`pkg/token`。
 依赖替身：
 
 - **miniredis**：模拟 Redis，实际跑限流 Lua 脚本（`pkg/limiter`）；
 - **内存 Casbin**：`model.NewModelFromString` + `AddPolicy` 构造 enforcer，覆盖鉴权中间件的
-  401/403/200 与非 admin 路径放行（`pkg/middleware`）；
-- **glebarez/sqlite 内存库**：给 `/health/ready` 提供可探活、可断开的 DB（`alexgo-server/server`）；
+  401/403/200、租户前缀 sub 与 data_scope 注入（`pkg/middleware`），以及 role_menus → 策略重建/清陈旧
+  （`modules/system/service` 的 `policy_sync_test.go`）；
+- **glebarez/sqlite 内存库**：三类用途——`/health/ready` 可探活/可断开的 DB（`alexgo-server/server`）、
+  **租户字段隔离插件**的 INSERT 填充 / SELECT 过滤 / data_scope 叠加验证（`pkg/tenant/gormplugin`、
+  `pkg/tenant`）、仓库层与 TokenService 的落库路径（`modules/system/repository`、
+  `modules/system/grpcserver`、`pkg/token`）；
+- **bufconn gRPC**：`google.golang.org/grpc/test/bufconn` 内存监听，验证 TokenClient ↔ TokenService
+  的通路与参数映射（`pkg/client`），不起真实端口；
+- **fake Issuer / Validator**：`token.Issuer`、`token.Validator` 的内存替身，覆盖签发-刷新-登出语义
+  与中间件校验分支（`modules/system/service`、`modules/member/service`、`pkg/middleware`），
+  另有 FX 依赖图反向干跑（`alexgo-server/cmd`、`modules/member/cmd`）；
 - **fake Broker**：`mq.Broker` 的假实现，验证 Outbox 发布成功 → `published`、失败 → `failed`
   的状态语义（`pkg/outbox`）。
 
@@ -166,14 +208,26 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 
 ## 9. 部署拓扑
 
+- **运行形态与双服务**：本地 `make run` 是 **mono**（单进程 system+order+member，:8080）；
+  compose / kustomize / Helm 交付的默认形态是 **micro 双服务**：
+  - `alexgo`（system-server）：业务 :8080 + **gRPC TokenService :50051**（`DEPLOYMENT_MODE=micro`，
+    `StartGRPCServer` 按该开关门控），只装 system+order 路由；
+  - `member`（member-server，容器入口 `/app/member-server`）：:8081，`SYSTEM_GRPC_ADDR` 指向前者
+    的 50051，会员签发/刷新经 gRPC 委托；**两服务共用同一数据库**（同库约束）；
+  - **前缀分流**：`/api/app/member`、`/api/admin/member` 两个前缀走 member 服务——
+    `deployments/kubernetes/ingress.yaml` 与 Helm `templates/ingress.yaml` 把这两条 path 排在 `/`
+    之前（nginx-ingress 最长前缀匹配）；本地前端用 `MEMBER_PROXY=http://localhost:8081 npm run dev`
+    把 Vite 的 member 代理指到 :8081（`admin-web/vite.config.ts`），mono 时默认全部指 :8080。
 - **本地**：`make run` 直跑；或 `make docker-up`（`deployments/docker-compose/docker-compose.yml`，
-  含 MySQL，`DB_DSN` 经 `environment:` 注入）；前端 `admin-web/` 独立 `npm run dev`。
+  含 MySQL，`DB_DSN` 经 `environment:` 注入，内置 system/member 双容器）；前端 `admin-web/` 独立
+  `npm run dev`。micro 本地双进程用 `make run-system` + `make run-member`。
 - **K8s**，二选一：
-  - kustomize：`kubectl apply -k deployments/kubernetes`（namespace / configmap / deployment /
-    service / hpa / ingress）；
+  - kustomize：`kubectl apply -k deployments/kubernetes`（namespace / configmap / deployment +
+    deployment-member / service + service-member / hpa / ingress）；
   - Helm 多环境：`deployments/helm/alexgo-cloud`，`values.yaml` 加
     `values-dev.yaml` / `values-gray.yaml` / `values-prod.yaml` 覆盖差异（副本数、镜像 tag、
-    `pprofEnabled`、域名、HPA）；`deployments/argocd/` 提供 dev/gray/prod 三个 Application
+    `pprofEnabled`、域名、HPA），并含 `deployment.mode`（默认 micro）与 `member.replicaCount`；
+    `deployments/argocd/` 提供 dev/gray/prod 三个 Application
     （`valueFiles: [values.yaml, values-<env>.yaml]`，自动 sync + prune + CreateNamespace）。
 - **配置与密钥注入**：清单把 `config.yaml` 以 volume 挂载进容器作为兜底，密钥类走 env 通道
   且**由 K8s Secret 注入、压过 ConfigMap 里的 config.yaml**（`applyEnvOverrides` 在 Unmarshal
