@@ -43,7 +43,7 @@ func (ctrl *Controller) Register(r *gin.RouterGroup) {
 	r.POST("/auth/logout", ctrl.Logout)
 	r.GET("/auth/codes", ctrl.Codes)
 	r.GET("/user/info", ctrl.UserInfo)
-	// /menu/all 由 Task 3 补齐
+	r.GET("/menu/all", ctrl.MenuAll)
 }
 
 // ok vben 成功信封。
@@ -160,4 +160,39 @@ func (ctrl *Controller) UserInfo(c *gin.Context) {
 		"homePath": "",
 		"token":    strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")),
 	})
+}
+
+// MenuAll GET /api/menu/all —— vben backend 模式的完整路由树。
+// 目录占位 LAYOUT 在此置空：vben convertRoutes 对空 component 直接跳过，
+// generateAccessible 随后 delete 有 children 顶层路由的 component；
+// 若输出 "LAYOUT" 会走 pageMap 查找失败分支（console.error + not-found 组件）。
+func (ctrl *Controller) MenuAll(c *gin.Context) {
+	cl, found := claimsOf(c)
+	if !found {
+		fail(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	routes, err := ctrl.permSvc.UserRoutes(c.Request.Context(), cl.UserID)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if routes == nil {
+		routes = []*service.VbenRoute{}
+	}
+	blankLayout(routes)
+	ok(c, routes)
+}
+
+// blankLayout 递归把 component=="LAYOUT" 置空（UserRoutes 每次请求新建树，原地改安全）。
+func blankLayout(routes []*service.VbenRoute) {
+	for _, r := range routes {
+		if r == nil {
+			continue
+		}
+		if r.Component == "LAYOUT" {
+			r.Component = ""
+		}
+		blankLayout(r.Children)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/system/controller/admin"
 	"alexGo-cloud/modules/system/controller/app"
+	"alexGo-cloud/modules/system/controller/vben"
 	"alexGo-cloud/modules/system/grpcserver"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/modules/system/service"
@@ -59,6 +60,7 @@ var FxModule = fx.Module("system",
 		service.NewMenuService,
 		service.NewPermissionService,
 		admin.NewAuthController,
+		vben.NewController,
 		admin.NewRoleController,
 		admin.NewMenuController,
 		admin.NewAuditController,
@@ -134,6 +136,7 @@ type systemModule struct {
 	auditCtrl  *admin.AuditController
 	appCtrl    *app.AppController
 	tenantCtrl *admin.TenantController
+	vbenCtrl   *vben.Controller
 }
 
 func NewSystemModule(
@@ -146,6 +149,7 @@ func NewSystemModule(
 	auditCtrl *admin.AuditController,
 	appCtrl *app.AppController,
 	tenantCtrl *admin.TenantController,
+	vbenCtrl *vben.Controller,
 ) server.Module {
 	return &systemModule{
 		adminCtrl:  adminCtrl,
@@ -157,6 +161,7 @@ func NewSystemModule(
 		auditCtrl:  auditCtrl,
 		appCtrl:    appCtrl,
 		tenantCtrl: tenantCtrl,
+		vbenCtrl:   vbenCtrl,
 	}
 }
 
@@ -212,4 +217,8 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	appGroup.POST("/auth/login", m.appCtrl.Login)
 	appGroup.POST("/auth/refresh", m.authCtrl.Refresh)
 	appGroup.POST("/auth/logout", m.authCtrl.Logout)
+
+	// vben-admin 自读端点（/api/auth/login|logout|codes、/api/user/info、/api/menu/all）：
+	// 挂在 /api 根组（r 已带 /api 前缀），与 admin/app 组无路径冲突。
+	m.vbenCtrl.Register(r)
 }

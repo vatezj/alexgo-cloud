@@ -236,3 +236,83 @@ func TestUserInfo_NoClaims_401(t *testing.T) {
 		t.Errorf("status = %d, want 401（claims 缺失防御）", w.Code)
 	}
 }
+
+func TestMenuAll_LAYOUTBlankedAndTreeKept(t *testing.T) {
+	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{
+		routes: []*service.VbenRoute{
+			{
+				Path: "/system", Name: "system", Component: "LAYOUT",
+				Meta: service.VbenRouteMeta{Title: "系统管理", OrderNo: 10},
+				Children: []*service.VbenRoute{
+					{
+						Path: "/system/users", Name: "system_users",
+						Component: "views/system/SystemUsersPage",
+						Meta:      service.VbenRouteMeta{Title: "用户管理", OrderNo: 1},
+					},
+				},
+			},
+		},
+	}, &fakeUser{})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/menu/all", func(c *gin.Context) {
+		c.Set("claims", &auth.Claims{UserID: 9})
+		ctrl.MenuAll(c)
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/menu/all", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "LAYOUT") {
+		t.Errorf("body 含 LAYOUT（vben convertRoutes 会报 component invalid）: %s", body)
+	}
+	if !strings.Contains(body, `"component":""`) {
+		t.Errorf("目录 component 必须置空: %s", body)
+	}
+	if !strings.Contains(body, `"component":"views/system/SystemUsersPage"`) {
+		t.Errorf("叶子 component 必须原样保留: %s", body)
+	}
+	if !strings.Contains(body, `"path":"/system/users"`) || !strings.Contains(body, `"title":"用户管理"`) {
+		t.Errorf("树结构/meta 丢失: %s", body)
+	}
+}
+
+func TestMenuAll_NilRoutes_EmptyArray(t *testing.T) {
+	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{routes: nil}, &fakeUser{})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/menu/all", func(c *gin.Context) {
+		c.Set("claims", &auth.Claims{UserID: 9})
+		ctrl.MenuAll(c)
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/menu/all", nil))
+	if !strings.Contains(w.Body.String(), `"data":[]`) {
+		t.Errorf("body = %s, want data:[]（nil 转空数组，vben fetchMenuListAsync 期望数组）", w.Body.String())
+	}
+}
+
+// Register 必须挂齐 5 条路由：任一缺失在 vben 运行期表现为 404 → 登录流程卡死。
+func TestRegister_MountsAllFiveRoutes(t *testing.T) {
+	// 强制修复：brief 原文用 &fakeAuth{}（loginRes 为 nil 且 err 为 nil），
+	// 循环里 POST /api/auth/login 会让 Login 解引用 res.AccessToken → nil panic；
+	// 仅补 fixture 的 loginRes，断言保持逐字节不变。
+	r := newTestRouter(&fakeAuth{loginRes: &service.LoginResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 1}}, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/auth/login"},
+		{http.MethodPost, "/api/auth/logout"},
+		{http.MethodGet, "/api/auth/codes"},
+		{http.MethodGet, "/api/user/info"},
+		{http.MethodGet, "/api/menu/all"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader("{}"))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code == http.StatusNotFound {
+			t.Errorf("%s %s 未挂载（gin 404）", tc.method, tc.path)
+		}
+	}
+}
