@@ -177,3 +177,64 @@ func TestRefresh_WindowExceeded(t *testing.T) {
 		t.Error("refresh beyond window must fail")
 	}
 }
+
+// I3：停用租户的存量 token 必须失效——Issue 时租户启用（签发成功），停用后 Validate 拒绝；
+// 同租户组的启用租户 token 不受影响（判别：检查点在 Validate 而非全局禁用）。
+func TestValidate_TenantDisabledAfterIssue(t *testing.T) {
+	s := newTestService(t)
+	// 夹具里 tenant 2 是停用态：先放开，签发成功后模拟运维停用（UPDATE status=0）。
+	if err := s.db.Exec(`UPDATE tenants SET status = 1 WHERE id = 2`).Error; err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := s.Issue(context.Background(), IssueParams{
+		UserID: 9, UserType: UserTypeAdmin, TenantID: 2, ClientID: "alexgo-admin",
+	})
+	if err != nil {
+		t.Fatalf("Issue() while tenant 2 enabled error = %v", err)
+	}
+	enabled := mustIssue(t, s) // tenant 1
+
+	// 停用租户 2（模仿真实停用操作）。
+	if err := s.db.Exec(`UPDATE tenants SET status = 0 WHERE id = 2`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Validate(context.Background(), disabled.AccessToken); err == nil {
+		t.Error("token of disabled tenant must fail validation")
+	} else if err.Error() != "token: tenant disabled" {
+		t.Errorf("err = %v, want tenant disabled", err)
+	}
+	// 租户 1 仍可用。
+	if _, err := s.Validate(context.Background(), enabled.AccessToken); err != nil {
+		t.Errorf("enabled tenant token must still validate: %v", err)
+	}
+}
+
+// I6：member 分支 Validate roundtrip——scalar Scan 取 nickname（member_user 表），
+// claims.Username=昵称、UserType=2（钉住 raw SQL 的列映射与 user_type 分派）。
+func TestIssue_Validate_MemberRoundtrip(t *testing.T) {
+	s := newTestService(t)
+	if err := s.db.Exec(`CREATE TABLE member_user (
+		id INTEGER PRIMARY KEY, nickname TEXT, mobile TEXT, deleted INTEGER NOT NULL DEFAULT 0)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Exec(`INSERT INTO member_user (id, nickname, mobile) VALUES (5, 'nick-5', '13800000000')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	issued, err := s.Issue(context.Background(), IssueParams{
+		UserID: 5, UserType: UserTypeMember, TenantID: 1, ClientID: "alexgo-app",
+	})
+	if err != nil {
+		t.Fatalf("Issue() error = %v", err)
+	}
+	claims, err := s.Validate(context.Background(), issued.AccessToken)
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if claims.Username != "nick-5" || claims.UserType != UserTypeMember || claims.UserID != 5 {
+		t.Errorf("claims = %+v, want nickname=nick-5, user_type=2, user_id=5", claims)
+	}
+	if claims.DeptID != 0 {
+		t.Errorf("dept_id = %d, want 0 for member", claims.DeptID)
+	}
+}

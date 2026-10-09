@@ -77,10 +77,12 @@ npm run dev
 
 | 模式 | 命令 | 说明 |
 | --- | --- | --- |
-| mono（默认） | `make run` | 单进程全部模块（system+order+member），Token 本地签发，端口 :8080 |
+| mono（默认） | `make run` | 单进程全部模块（system+member，order 按配置开关），Token 本地签发，端口 :8080 |
 | micro（部署形态） | `make run-system` + `make run-member` | system-server :8080(+gRPC :50051) 与 member-server :8081，member 经 gRPC 委托签发 |
 
 配置：`deployment.mode`（mono|micro）；member 上游地址 `SYSTEM_GRPC_ADDR`。
+会话行为：access token 2h、refresh token 7d（`auth.access_expire_hour` / `auth.refresh_expire_day` 可调）；
+admin-web 的自动刷新为后续项——access 过期后需重新登录（app 端可用 `/api/app/member/auth/refresh` 换新）。
 micro 本地联调前端分流：`MEMBER_PROXY=http://localhost:8081 npm run dev`。
 
 ## 📁 项目结构

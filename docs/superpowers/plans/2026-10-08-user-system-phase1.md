@@ -17,7 +17,7 @@
 - **测试零外部依赖**：sqlite 内存库（glebarez，已在 go.mod）、内存 Casbin、fake Issuer/Validator、bufconn gRPC；**不依赖 MySQL/Redis/网络**
 - 中文注释、解释"为什么"；文件级 doc comment 与现有风格一致
 - **状态位统一 `1=启用 0=停用`**（与现有 `users.Status==1` 才可登录一致；spec DDL 注释里"0开启1停用"以此为准改写）
-- **`deleted` 列一律 `TINYINT(1)`（不是 TINYINT(1)）**、一期仅落库不启用 gorm 软删——TINYINT(1) 经 go-sql-driver 返回原始字节，GORM bool 字段扫描必然报错（T1 审查源码级证实）；对 spec "bit(1)+gorm.DeletedAt" 的记录性偏差
+- **`deleted` 列一律 `TINYINT(1)`（不是 BIT(1)）**、一期仅落库不启用 gorm 软删——TINYINT(1) 经 go-sql-driver 返回原始字节，GORM bool 字段扫描必然报错（T1 审查源码级证实）；对 spec "bit(1)+gorm.DeletedAt" 的记录性偏差
 - 环境变量经 `applyEnvOverrides` 显式覆盖（viper Unmarshal 不读隐式 env）：新增 `DEPLOYMENT_MODE`、`SYSTEM_GRPC_ADDR`
 - `protoc` 本机未装：Task 11 用 `brew install protobuf` + `go install protoc-gen-go protoc-gen-go-grpc`（**brew 为工作区外系统改动，执行时向用户披露**）
 - 新命名：spec 的 `TokenIssuer` → 代码接口 `token.Issuer`；gRPC 服务名 `TokenService`

@@ -4,6 +4,15 @@
 > 二/三期（块④⑤⑥：短信/三方/小程序）待排期
 > **参考**：yudao-cloud《用户体系》文档 + 用户提供的三表结构图（system_users / system_oauth2_access_token / member_user）
 > **基线代码**：`main` @ `ffadd5a`（2026-10-08）
+>
+> **实施偏差（一期）**：与本 spec 不一致、经评审裁决按下列口径落地——
+> 1. **Token 无进程内缓存**：§4.2 曾提议"LRU 缓存 60s"，裁决移除：cache-aside 有 TOCTOU
+>    （Validate 读库后、写缓存前可与 Revoke 交错把已吊销 token 写回），且多进程下缓存让
+>    "踢人立即失效"最长延迟 60s，违背验收项；改为恒查库（单表唯一索引点查，正确性优先）。
+> 2. **状态位统一 `1=启用 0=停用`**：本 spec DDL 注释里"0开启1停用"一律以此为准改写
+>    （与既有 `users.Status==1` 才可登录一致）。
+> 3. **`deleted` 列用 `TINYINT(1)`（不是 `BIT(1)`）**：BIT(1) 经 go-sql-driver 返回原始字节，
+>    与 GORM bool 字段扫描不兼容（源码级证实）；且一期仅落列、不启用 `gorm.DeletedAt` 软删。
 
 ## 1. 背景与现状
 
@@ -342,13 +351,13 @@ ALTER TABLE `menus`
 **决策：从"静态密钥 JWT"切换为"不透明 Token + DB 校验"（yudao 同款）**，理由：
 - 支持**即时注销/踢人**（DB 删行即失效），JWT 做不到
 - `user_id + user_type + tenant_id` 集中在一张表，审计/查询方便
-- 代价：每次鉴权查 DB → 中间件加**进程内 LRU 缓存（60s TTL）**缓解，预留 Redis 升级位
+- 代价：每次鉴权查 DB → ~~中间件加**进程内 LRU 缓存（60s TTL）**缓解，预留 Redis 升级位~~（已裁决移除，见偏差注）
 
 **流程（双服务形态，方案 A）**：
 1. **签发（权威在 system-server）** `pkg/token.Service`：生成随机 `access_token`（crypto/rand 32 字节 base64url，DB 存明文——与参考图一致，依赖 DB 访问控制）、`refresh_token`（32 位随机）、写 `system_oauth2_access_token`，默认 access 2h、refresh 7d（配置化）；`client_id` 固定——admin 侧 `alexgo-admin`、app 侧 `alexgo-app`，`scopes` 暂置 `all`
    - **system-server 本地登录**（管理员账号密码等）：进程内直接调 `token.Service`（`fx.Decorate` 注入，不走自环 gRPC）
    - **member-server 登录**（账号/短信/三方/小程序验证通过后）：gRPC 调 `TokenService.IssueToken(user_type=2, …)` → 返回 token 对；gRPC 失败 → 登录接口 503（不降级）
-2. **校验（两服务各自本地做）**：`AuthMiddleware` 查共享 `system_oauth2_access_token` 表（经 LRU 缓存，60s）→ 得 `(user_id, user_type, tenant_id)` → 按 user_type 加载对应用户表 → 注入 context（`claims` 扩展 `user_type`）→ Casbin 仅 system-server 启用
+2. **校验（两服务各自本地做）**：`AuthMiddleware` 查共享 `system_oauth2_access_token` 表（~~经 LRU 缓存，60s~~ 已裁决移除缓存恒查库，见偏差注）→ 得 `(user_id, user_type, tenant_id)` → 按 user_type 加载对应用户表 → 注入 context（`claims` 扩展 `user_type`）→ Casbin 仅 system-server 启用
    - 依赖约束：一期两服务连**同一个 MySQL**（分进程不分库）；未来真分库时把校验替换为 gRPC introspection（`ValidateToken` 预留，不在一期）
 3. **刷新**：`POST /api/app/system/auth/refresh`（system 本地）与 `POST /api/app/member/auth/refresh`（member → gRPC `RefreshToken`）
 4. **注销/踢人**：统一落 system-server 权威——admin 侧踢人删行；member 的 logout 走 gRPC `RevokeToken`
@@ -414,8 +423,9 @@ ALTER TABLE `menus`
    - 白名单：`dept_id` 不存在的表、豁免表（同块③豁免机制追加 `data_exempt` 标记）
    - 粒度：**只对带 `dept_id` 的业务表生效**（一期=system_users；order 等业务表后续按需挂）
 3. **Casbin 租户隔离**（消除串策略）
-   - 策略主体改造：`sub` 从裸 `username/roleCode` 改为 **`{tenantId}:{username}` / `{tenantId}:{roleCode}`**
-   - 影响点：`EnsureUserRolePolicy`（登录时 g 绑定）、种子 `AddPolicy`、`AuthMiddleware` 组装 sub（从 Token 的 tenant_id + username 拼接）、存量 `casbin_rule` 数据迁移（启动时重建：清空 + 按 role_menus 重灌）
+   - 策略主体改造：`sub` 从裸 `username/roleCode` 改为 **`{tenantId}:{userType}:{username}` / `{tenantId}:{roleCode}`**
+     （user_type 维度为 C1 修正：member 昵称与管理员用户名可同名，缺维度时 `g(x,x)` 恒等即提权）
+   - 影响点：`EnsureUserRolePolicy`（登录时 g 绑定）、种子 `AddPolicy`、`AuthMiddleware` 组装 sub（从 Token 的 tenant_id + user_type + username 拼接）、存量 `casbin_rule` 数据迁移（启动时重建：清空 + 按 role_menus 重灌）
    - Casbin model 的 matcher 不变（`g`/`keyMatch2`/`regexMatch` 照旧）
 
 **角色表补列**（§3.7 DDL）随本块的迁移一并执行；`type=1` 系统内置角色禁止删除（service 层校验）。
@@ -463,7 +473,7 @@ social:
 
 | 现有件 | 变化 |
 | --- | --- |
-| `AuthMiddleware` | 校验源 JWT → Token 表（L1 LRU 缓存）；claims 增加 `user_type`；`auth.mode=jwt` 可回滚；**sub 改为 `{tenantId}:{username}`（块⑦）** |
+| `AuthMiddleware` | 校验源 JWT → Token 表（~~L1 LRU 缓存~~ 已裁决移除缓存恒查库，见偏差注）；claims 增加 `user_type`；`auth.mode=jwt` 可回滚；**sub 改为 `{tenantId}:{userType}:{username}`（块⑦ + C1 修正）**；`/api/admin/**` 仅管理员（C1 门槛）；Token 内租户覆盖 `X-Tenant-ID` 头（spec §4.3） |
 | Casbin | **模型 matcher 不变**，但策略主体带租户前缀；`EnsureUserRolePolicy`、种子、存量 `casbin_rule` 迁移时全量重建；`AssignMenus` 等触发策略同步（块⑦） |
 | `OperateLog` / `Audit` | `creator/updater` 自动注入（补列后可真实落库） |
 | 现有 JWT 测试（pkg/auth 7包之一） | 保留不删；`pkg/token` 新增独立测试包 |

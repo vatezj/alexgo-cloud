@@ -14,7 +14,7 @@ export default defineConfig({
     proxy: {
       // member 前缀可独立上游：mono（默认）两服务同进程 → 全部指 8080；
       // micro 本地联调：MEMBER_PROXY=http://localhost:8081 npm run dev
-      // （Vite 代理键按对象顺序、最长前缀优先——member 两条必须在 /api 通配之前，spec §2.3）
+      // （Vite 代理键按对象顺序匹配，member 两条必须在 /api 之前，spec §2.3）
       '/api/app/member': { target: process.env.MEMBER_PROXY || 'http://localhost:8080', changeOrigin: true },
       '/api/admin/member': { target: process.env.MEMBER_PROXY || 'http://localhost:8080', changeOrigin: true },
       '/api': 'http://localhost:8080',
