@@ -78,7 +78,7 @@ config:
     defaultAdminPassword: "admin123"
   modules:
     system: true
-    order: false
+    order: true
 
 ingress:
   enabled: true

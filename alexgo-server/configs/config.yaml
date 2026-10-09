@@ -43,4 +43,4 @@ breaker:
 
 modules:
   system: true
-  order: false
+  order: true

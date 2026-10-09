@@ -32,6 +32,7 @@ var permissionRoutes = map[string][]string{
 	"system:auth":   {"/api/admin/system/auth/profile", "/api/admin/system/auth/refresh", "/api/admin/system/auth/logout"},
 	"system:tenant": {"/api/admin/system/tenants", "/api/admin/system/tenants/*"},
 	"member:user":   {"/api/admin/member/users", "/api/admin/member/users/*"},
+	"order:order":   {"/api/admin/order/orders", "/api/admin/order/orders/*"},
 }
 
 // permPrefix 取 permission 的前两段作为路由分组键："system:user:list" → "system:user"。

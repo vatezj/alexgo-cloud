@@ -231,3 +231,26 @@ func TestEnsureUserRolePolicy_SubHasUserType(t *testing.T) {
 		t.Error("member sub must differ from admin sub for same name")
 	}
 }
+
+// order 模块启用后：角色按 "order:order:*" 权限必须拿到 /api/admin/order/orders
+//（集合 + item 两形态），且未授权的 system 路由仍拒绝——判别表项真加进去了、
+// rebuild 不再对 order 按钮权限静默丢弃。
+func TestRebuild_OrderRoutes(t *testing.T) {
+	e := newMemEnforcer(t)
+	role := &model.Role{ID: 1, Code: "admin", TenantID: 1}
+	menus := []*model.Menu{{ID: 1, Permission: "order:order:*", Type: "menu"}}
+	if err := rebuildRolePolicies(context.Background(), e, role, menus); err != nil {
+		t.Fatalf("rebuild error = %v", err)
+	}
+	if _, err := e.AddRoleForUser("1:1:admin", "1:role:admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, obj := range []string{"/api/admin/order/orders", "/api/admin/order/orders/123"} {
+		if ok, _ := e.Enforce("1:1:admin", obj, "GET"); !ok {
+			t.Errorf("order route %s must be allowed", obj)
+		}
+	}
+	if ok, _ := e.Enforce("1:1:admin", "/api/admin/system/users", "GET"); ok {
+		t.Error("unassigned route must be denied")
+	}
+}
