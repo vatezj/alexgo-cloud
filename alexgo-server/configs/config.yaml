@@ -4,7 +4,7 @@ server:
   pprof_enabled: true
 
 database:
-  dsn: "root:root@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local"
+  dsn: "alexgo-cloud:caMYe2mB3jpEerbY@tcp(81.71.152.135:3399)/alexgo-cloud?charset=utf8mb4&parseTime=True&loc=Local"
 
 migrate:
   auto: true
