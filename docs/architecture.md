@@ -55,6 +55,9 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 
 ## 4. 单体 → 微服务切换
 
+> 服务间调用的完整说明（双形态对照、gRPC 通路、地址解析、异步事件、consul 现状）
+> 见 `docs/service-communication.md`。本节只保留装配层要点。
+
 `cmd/main.go` 用 `fx.Decorate` 在依赖图构建完成后替换 `systemservice.UserService` 的最终实现：
 
 - `microservice.enabled=false`（默认）：直接返回本地实现，跨模块调用零开销；
