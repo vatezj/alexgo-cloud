@@ -9,7 +9,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/service"
+	"alexGo-cloud/pkg/auth"
 )
 
 func newTestRouter(auth *fakeAuth, audit *fakeAudit, perm *fakePerm, user *fakeUser) *gin.Engine {
@@ -92,5 +94,145 @@ func TestLogin_BadBody_400(t *testing.T) {
 		"/api/auth/login", `not-json`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// withClaims 复刻中间件注入（Task 4 之前测试自注入）。
+func withClaims(r *gin.Engine, path string, cl *auth.Claims, h gin.HandlerFunc) {
+	r.GET(path, func(c *gin.Context) {
+		if cl != nil {
+			c.Set("claims", cl)
+		}
+		h(c)
+	})
+}
+
+func TestLogout_NoToken_Still200(t *testing.T) {
+	authSvc := &fakeAuth{}
+	r := newTestRouter(authSvc, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200（no-op 也要成功）; body=%s", w.Code, w.Body.String())
+	}
+	if authSvc.logoutCount != 0 {
+		t.Errorf("logout called %d times without token, want 0", authSvc.logoutCount)
+	}
+	if !strings.Contains(w.Body.String(), `"code":0`) {
+		t.Errorf("body = %s, want envelope code 0", w.Body.String())
+	}
+}
+
+func TestLogout_WithBearer_CallsService(t *testing.T) {
+	authSvc := &fakeAuth{}
+	r := newTestRouter(authSvc, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer the-token")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || authSvc.logoutCount != 1 {
+		t.Errorf("status = %d logoutCount = %d, want 200/1", w.Code, authSvc.logoutCount)
+	}
+}
+
+func TestCodes_ReturnsRawPermStrings(t *testing.T) {
+	// 强制修复：newTestRouter 经 Register 已挂 /api/auth/codes，withClaims 再注册
+	// 同路径会触发 gin 重复路由 panic；改用裸引擎（与本 brief 其余 3 个自注入测试同款）。
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	withClaims(r, "/api/auth/codes", &auth.Claims{UserID: 9, Username: "alice"}, func(c *gin.Context) {
+		NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{codes: []string{"order:order:*", "system:role:*"}}, &fakeUser{}).Codes(c)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/codes", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Code int      `json:"code"`
+		Data []string `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 0 || len(resp.Data) != 2 || resp.Data[0] != "order:order:*" {
+		t.Errorf("resp = %+v, want raw perm strings in data", resp)
+	}
+}
+
+func TestCodes_NilCodes_ReturnEmptyArray(t *testing.T) {
+	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{codes: nil}, &fakeUser{})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/auth/codes", func(c *gin.Context) {
+		c.Set("claims", &auth.Claims{UserID: 1})
+		ctrl.Codes(c)
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/auth/codes", nil))
+	// data 必须是 [] 而非 null：vben accessStore 期望数组。
+	if !strings.Contains(w.Body.String(), `"data":[]`) {
+		t.Errorf("body = %s, want data:[] (not null)", w.Body.String())
+	}
+}
+
+func TestUserInfo_StringUserIDAndRequiredFields(t *testing.T) {
+	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{
+		roles: []*model.Role{{Code: "admin"}, {Code: "ops"}},
+	}, &fakeUser{user: &model.User{Nickname: "管理员", Avatar: "http://a/x.png"}})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/user/info", func(c *gin.Context) {
+		c.Set("claims", &auth.Claims{UserID: 9, Username: "alice"})
+		ctrl.UserInfo(c)
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/user/info", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			UserID   string   `json:"userId"`
+			Username string   `json:"username"`
+			RealName string   `json:"realName"`
+			Avatar   string   `json:"avatar"`
+			Roles    []string `json:"roles"`
+			Desc     *string  `json:"desc"`
+			HomePath *string  `json:"homePath"`
+			Token    *string  `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	d := resp.Data
+	if d.UserID != "9" {
+		t.Errorf("userId = %q (%T), want string \"9\"（vben BasicUserInfo.userId: string）", d.UserID, d.UserID)
+	}
+	if d.Username != "alice" || d.RealName != "管理员" || d.Avatar != "http://a/x.png" {
+		t.Errorf("data = %+v, want username/nickname/avatar 映射", d)
+	}
+	if len(d.Roles) != 2 || d.Roles[0] != "admin" {
+		t.Errorf("roles = %v, want [admin ops]", d.Roles)
+	}
+	if d.Desc == nil || d.HomePath == nil || d.Token == nil {
+		t.Errorf("desc/homePath/token 必须存在（UserInfo 三必填），got %+v", d)
+	}
+}
+
+func TestUserInfo_NoClaims_401(t *testing.T) {
+	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/user/info", ctrl.UserInfo) // 无 claims 注入
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/user/info", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401（claims 缺失防御）", w.Code)
 	}
 }
