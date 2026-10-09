@@ -357,6 +357,7 @@ func (s *permissionService) UserRoutes(ctx context.Context, userID uint64) ([]*V
 					Title:   m.Name,
 					Icon:    m.Icon,
 					OrderNo: m.Sort,
+					Order:   m.Sort,
 				},
 			}
 			if m.Permission != "" {
@@ -505,6 +506,7 @@ type VbenRouteMeta struct {
 	Title       string   `json:"title"`
 	Icon        string   `json:"icon,omitempty"`
 	OrderNo     int      `json:"orderNo,omitempty"`
+	Order       int      `json:"order,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 }
 
