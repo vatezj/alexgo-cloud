@@ -34,7 +34,7 @@
 - **动作按钮权限**用页面自身菜单 perm **原串**（如 `system:role:*`、`order:order:*`、`system:log:login`）——`/auth/codes` 原样返回，vben `v-access` 逐字包含匹配，不做通配展开。
 - **操作列用 vxe slot**（`slots:{default:'actions'}` + `<template #actions="{row}">`）——web-antd 的 CellOperation 适配器不存在。
 - **表格数据一律经 `localPage` 本地切页**：后端列表接口回全量数组（无分页参数）。
-- **弹窗约定**：`onConfirm` 写 `formApi.validateAndSubmitForm().then(() => modalApi.close()).catch(() => {})`——resolve 不自动关（已从 `modal-api.ts`/`modal.vue` 源码确认：确认按钮只调 `onConfirm`，无自动 close），reject 保持打开；页面 catch **不再 `message.error`**（拦截器已 toast，防双弹）。
+- **弹窗约定**：`onConfirm` 写 `try { await formApi.validateAndSubmitForm(); } catch { /* 空 catch */ }`——`form-api.ts:433` 已复核：校验不过时 **resolve `undefined` 且不触发 `handleSubmit`**，故**不可**写 `.then(() => modalApi.close())`（校验失败也会关窗）；**关窗只在 `handleSubmit` 成功路径**（`message.success → modalApi.close() → gridApi.reload()`）；后端 reject 被 catch（弹窗保持打开）；页面 catch **不再 `message.error`**（拦截器已 toast，防双弹）。
 - **提交全部直接落 main**（本仓库约定，不建功能分支）。
 - **不改的东西**：`alexgo-server/configs/config.yaml` 中真实 DB 密码（已进 git，属既有问题，本计划不碰）；`.github/`（用本仓库自己的）；根 `README.md`（只改行，不覆盖）。
 
@@ -4453,7 +4453,7 @@ git commit -m "feat(web-antd): system operate logs page (read-only)"
 - Test: 浏览器冒烟（Step 4，Playwright MCP）
 
 **Interfaces:**
-- Consumes: T13 `listOrders/createOrder/Order`；seed 菜单 `path=/order/orders`、`component=views/order/OrderOrdersPage`、`permission=order:order:*`（T7 迁移新增行）；后端订单路由需 `order.enabled` 开关（T8：本地 `config.yaml` 的 `order.enabled: true`——**只改本地配置，不 commit config.yaml**）。
+- Consumes: T13 `listOrders/createOrder/Order`；seed 菜单 `path=/order/orders`、`component=views/order/OrderOrdersPage`、`permission=order:order:*`（T7 迁移新增行）；后端订单路由需 `modules.order` 开关（**Task 5** 已把 `alexgo-server/configs/config.yaml` 的 `modules.order: true` 翻true 并提交——本任务不改 config.yaml）。
 - Produces: `/order/orders` 页面（列表+创建，无删除）；`OrderOrdersPage` 组件名；阶段 D 收口证据（Step 4：11 页逐页巡检）。
 
 - [ ] **Step 1: 写页面文件**
@@ -4630,10 +4630,11 @@ Expected: 双绿。
 - [ ] **Step 3: 确认订单开关**
 
 ```bash
-grep -n "enabled" /Users/alex/Desktop/goWork/alexGo-cloud/alexgo-server/configs/config.yaml
+grep -n "  order:" /Users/alex/Desktop/goWork/alexGo-cloud/alexgo-server/configs/config.yaml
+git status --short alexgo-server/configs/config.yaml
 ```
 
-Expected: `order.enabled: true`。若为 `false`，本地改为 `true` **且不加入本次 commit**（`git status` 里 config.yaml 必须干净——该文件含真实凭据，任何 diff 都不得提交）。
+Expected: `  order: true`（Task 5 已翻并提交）；`git status` 对 config.yaml **无输出**（该文件含真实凭据——本任务 diff 不得触碰它。若执行环境被改回 `false`，本地改回 `true` 但不加入任何 commit）。
 
 - [ ] **Step 4: 全页面巡检冒烟（阶段 D 收口）**
 
