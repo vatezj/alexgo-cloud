@@ -63,3 +63,14 @@ func TestLoadGlobalConfig_FallbackToFileWhenEnvEmpty(t *testing.T) {
 		t.Error("JWTSecret empty: module config fallback broken")
 	}
 }
+
+func TestCodegenUnitTestEnable_DefaultTrue(t *testing.T) {
+	chdirRepoRoot(t)
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig() error = %v", err)
+	}
+	if !cfg.Codegen.UnitTestEnable {
+		t.Error("codegen.unit_test_enable default = false, want true")
+	}
+}

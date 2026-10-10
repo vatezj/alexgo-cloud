@@ -57,6 +57,7 @@ func LoadGlobalConfig() (*Config, error) {
 	v.SetDefault("auth.refresh_expire_day", 7)
 	v.SetDefault("deployment.mode", "mono")
 	v.SetDefault("system_grpc_addr", "127.0.0.1:50051")
+	v.SetDefault("codegen.unit_test_enable", true)
 
 	// 常用 env 覆盖：兼容 docker-compose / k8s secret 注入。
 	_ = v.BindEnv("server.http_addr", "HTTP_ADDR")

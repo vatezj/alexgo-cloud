@@ -109,4 +109,10 @@ type Config struct {
 
 	// SystemGRPCAddr：member-server → system-server TokenService 的地址。
 	SystemGRPCAddr string `mapstructure:"system_grpc_addr"`
+
+	// Codegen：代码生成器（modules/infra + tools/codegen）配置。
+	Codegen struct {
+		// UnitTestEnable：生成代码时是否附带单元测试骨架（默认开启）。
+		UnitTestEnable bool `mapstructure:"unit_test_enable"`
+	} `mapstructure:"codegen"`
 }
