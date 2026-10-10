@@ -94,14 +94,16 @@ func seed(ctx context.Context, p SeederParams) error {
 	_ = p.UserRole.SetUserRoles(ctx, tid, u.ID, []uint64{r.ID})
 
 	menus, _ := p.Menus.List(ctx, tid)
-	if len(menus) == 0 {
+	// 迁移 20261009000001 先于本函数插入仪表盘/订单 5 行，fresh 库 len(menus)!=0
+	// 会被误判"已播种"→ 11 个系统菜单永远缺失（Option A，spec errata 4）。
+	if !hasSystemDir(menus) {
 		root := &model.Menu{
 			ParentID:   0,
 			Type:       "dir",
 			Name:       "系统管理",
 			Path:       "/system",
 			Component:  "",
-			Icon:       "settings",
+			Icon:       "lucide:settings",
 			Permission: "system",
 			Sort:       10,
 			Status:     1,
@@ -117,7 +119,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "用户管理",
 			Path:       "/system/users",
 			Component:  "views/system/SystemUsersPage",
-			Icon:       "user",
+			Icon:       "lucide:user",
 			Permission: "system:user:list",
 			Sort:       1,
 			Status:     1,
@@ -133,7 +135,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "角色管理",
 			Path:       "/system/roles",
 			Component:  "views/system/SystemRolesPage",
-			Icon:       "team",
+			Icon:       "lucide:users",
 			Permission: "system:role:*",
 			Sort:       2,
 			Status:     1,
@@ -149,7 +151,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "菜单管理",
 			Path:       "/system/menus",
 			Component:  "views/system/SystemMenusPage",
-			Icon:       "menu",
+			Icon:       "lucide:list-tree",
 			Permission: "system:menu:*",
 			Sort:       3,
 			Status:     1,
@@ -165,7 +167,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "部门管理",
 			Path:       "/system/depts",
 			Component:  "views/system/SystemDeptsPage",
-			Icon:       "apartment",
+			Icon:       "lucide:building-2",
 			Permission: "system:dept:*",
 			Sort:       4,
 			Status:     1,
@@ -181,7 +183,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "岗位管理",
 			Path:       "/system/posts",
 			Component:  "views/system/SystemPostsPage",
-			Icon:       "idcard",
+			Icon:       "lucide:id-card",
 			Permission: "system:post:*",
 			Sort:       5,
 			Status:     1,
@@ -197,7 +199,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "字典管理",
 			Path:       "/system/dict",
 			Component:  "views/system/SystemDictPage",
-			Icon:       "book",
+			Icon:       "lucide:book-open",
 			Permission: "system:dict:*",
 			Sort:       6,
 			Status:     1,
@@ -213,7 +215,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "系统参数",
 			Path:       "/system/configs",
 			Component:  "views/system/SystemConfigsPage",
-			Icon:       "setting",
+			Icon:       "lucide:settings-2",
 			Permission: "system:config:*",
 			Sort:       7,
 			Status:     1,
@@ -229,7 +231,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "通知公告",
 			Path:       "/system/notices",
 			Component:  "views/system/SystemNoticesPage",
-			Icon:       "bell",
+			Icon:       "lucide:bell",
 			Permission: "system:notice:*",
 			Sort:       8,
 			Status:     1,
@@ -245,7 +247,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "登录日志",
 			Path:       "/system/logins",
 			Component:  "views/system/SystemLoginLogsPage",
-			Icon:       "history",
+			Icon:       "lucide:history",
 			Permission: "system:log:login",
 			Sort:       9,
 			Status:     1,
@@ -261,7 +263,7 @@ func seed(ctx context.Context, p SeederParams) error {
 			Name:       "操作日志",
 			Path:       "/system/operates",
 			Component:  "views/system/SystemOperateLogsPage",
-			Icon:       "profile",
+			Icon:       "lucide:file-text",
 			Permission: "system:log:operate",
 			Sort:       10,
 			Status:     1,
@@ -281,7 +283,9 @@ func seed(ctx context.Context, p SeederParams) error {
 	// 三组均进入 allMenus → SetRoleMenus（admin 种子角色拿到全部管理接口）。
 	var rootID uint64
 	for _, m := range allMenus {
-		if m.ParentID == 0 && strings.EqualFold(m.Type, "dir") {
+		// 迁移先插了 /dashboard、/order 两个 ParentID==0 目录——按"第一个 dir"取
+		// 会把 3 个按钮挂到仪表盘下；锚定 /system 目录本身。
+		if m.Path == "/system" && strings.EqualFold(m.Type, "dir") {
 			rootID = m.ID
 			break
 		}
@@ -360,6 +364,17 @@ func seed(ctx context.Context, p SeederParams) error {
 func hasPermPrefix(menus []*model.Menu, prefix string) bool {
 	for _, m := range menus {
 		if m != nil && permPrefix(m.Permission) == prefix {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSystemDir 判断 /system 目录是否已存在——seed 菜单创建门控（Option A）。
+// 迁移可在 seed 之前向 menus 插行（仪表盘/订单），"表非空"不再等于"已播种"。
+func hasSystemDir(menus []*model.Menu) bool {
+	for _, m := range menus {
+		if m != nil && m.Path == "/system" && strings.EqualFold(m.Type, "dir") {
 			return true
 		}
 	}

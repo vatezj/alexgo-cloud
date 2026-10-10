@@ -39,3 +39,26 @@ func TestSeedButtonPerms_MatchRouteKeys(t *testing.T) {
 		}
 	}
 }
+
+// 迁移（fx.Invoke）先于 seed（OnStart）执行：fresh 库在 seed 观察时已非空——
+// 旧门控 len==0 会误判"已播种"，11 个系统菜单永久缺失。以 /system 目录存在为准。
+func TestHasSystemDir(t *testing.T) {
+	if hasSystemDir(nil) {
+		t.Error("empty must be false")
+	}
+	if hasSystemDir([]*model.Menu{{Path: "/dashboard", Type: "dir"}}) {
+		t.Error("dashboard dir must not count (migration inserts it first)")
+	}
+	if !hasSystemDir([]*model.Menu{{Path: "/system", Type: "dir"}}) {
+		t.Error("/system dir must count")
+	}
+	if hasSystemDir([]*model.Menu{{Path: "/system", Type: "menu"}}) {
+		t.Error("type must be dir")
+	}
+	if !hasSystemDir([]*model.Menu{{Path: "/system", Type: "DIR"}}) {
+		t.Error("type compare must be case-insensitive")
+	}
+	if hasSystemDir([]*model.Menu{nil, {Path: "/system/users", Type: "menu"}}) {
+		t.Error("nil element must be skipped, not panic")
+	}
+}
