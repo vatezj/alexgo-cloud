@@ -94,7 +94,7 @@ func seed(ctx context.Context, p SeederParams) error {
 	_ = p.UserRole.SetUserRoles(ctx, tid, u.ID, []uint64{r.ID})
 
 	menus, _ := p.Menus.List(ctx, tid)
-	// 迁移 20261009000001 先于本函数插入仪表盘/订单 5 行，fresh 库 len(menus)!=0
+	// 迁移 20261009000001 先于本函数插入工作台/订单 5 行，fresh 库 len(menus)!=0
 	// 会被误判"已播种"→ 11 个系统菜单永远缺失（Option A，spec errata 4）。
 	if !hasSystemDir(menus) {
 		root := &model.Menu{
@@ -284,7 +284,7 @@ func seed(ctx context.Context, p SeederParams) error {
 	var rootID uint64
 	for _, m := range allMenus {
 		// 迁移先插了 /dashboard、/order 两个 ParentID==0 目录——按"第一个 dir"取
-		// 会把 3 个按钮挂到仪表盘下；锚定 /system 目录本身。
+		// 会把 3 个按钮挂到工作台下；锚定 /system 目录本身。
 		if m.Path == "/system" && strings.EqualFold(m.Type, "dir") {
 			rootID = m.ID
 			break
@@ -371,7 +371,7 @@ func hasPermPrefix(menus []*model.Menu, prefix string) bool {
 }
 
 // hasSystemDir 判断 /system 目录是否已存在——seed 菜单创建门控（Option A）。
-// 迁移可在 seed 之前向 menus 插行（仪表盘/订单），"表非空"不再等于"已播种"。
+// 迁移可在 seed 之前向 menus 插行（工作台/订单），"表非空"不再等于"已播种"。
 func hasSystemDir(menus []*model.Menu) bool {
 	for _, m := range menus {
 		if m != nil && m.Path == "/system" && strings.EqualFold(m.Type, "dir") {

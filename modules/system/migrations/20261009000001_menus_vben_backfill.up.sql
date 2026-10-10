@@ -1,11 +1,11 @@
--- vben-admin 菜单回填：仪表盘/订单 2 目录 + 3 子页 + admin 角色绑定 + 11 处 icon 换新。
+-- vben-admin 菜单回填：工作台/订单 2 目录 + 3 子页 + admin 角色绑定 + 11 处 icon 换新。
 -- 幂等：全部 INSERT 走 NOT EXISTS，UPDATE 按旧 icon 精确匹配（重跑命中 0 行）。
 -- 过滤必须带 type IN ('dir','menu')：member 按钮 icon='team' 与 roles 菜单 icon='team'
 -- 同值，不带 type 会把按钮图标改掉；/system（dir）也在这 11 行内。
 
 -- ① 根目录 2 行
 INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
-SELECT 0, 0, 'dir', '仪表盘', '/dashboard', '', 'lucide:layout-dashboard', '', 1, 1, 0, NOW(), NOW() FROM DUAL
+SELECT 0, 0, 'dir', '工作台', '/dashboard', '', 'lucide:layout-dashboard', '', 1, 1, 0, NOW(), NOW() FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND `path`='/dashboard' AND `type`='dir' AND `deleted`=0);
 
 INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
