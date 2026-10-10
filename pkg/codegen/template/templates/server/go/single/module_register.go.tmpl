@@ -1,0 +1,18 @@
+package {{.Module}}
+
+import (
+	"github.com/gin-gonic/gin"
+
+	adminctrl "alexGo-cloud/modules/{{.Module}}/controller/admin"
+)
+
+// Register{{.Entity}}DBRoutes 注册 {{.Entity}} 的 admin 路由（生成文件，勿手改）。
+// 由 module.go 手动调用接线：adminctrl := admin.New{{.Entity}}Controller(...)
+func Register{{.Entity}}DBRoutes(r *gin.RouterGroup, c *adminctrl.Admin{{.Entity}}Controller) {
+	g := r.Group("/admin/{{.Module}}")
+	g.GET("/{{.Plural}}", c.List)
+	g.GET("/{{.Plural}}/:id", c.Get)
+	g.POST("/{{.Plural}}", c.Create)
+	g.PUT("/{{.Plural}}/:id", c.Update)
+	g.DELETE("/{{.Plural}}/:id", c.Delete)
+}

@@ -1,0 +1,17 @@
+package app
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+type App{{.Entity}}Controller struct{}
+
+func NewApp{{.Entity}}Controller() *App{{.Entity}}Controller {
+	return &App{{.Entity}}Controller{}
+}
+
+func (c *App{{.Entity}}Controller) Ping(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
