@@ -27,6 +27,9 @@ export const overridesPreferences = defineOverridesPreferences({
     companySiteLink: 'https://github.com/vatezj/alexgo-cloud',
     date: '2026',
   },
+  footer: {
+    enable: true,
+  },
 });
 
 export const preferencesExtension =
