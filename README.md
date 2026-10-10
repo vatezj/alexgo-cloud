@@ -16,8 +16,8 @@
 | 登录与用户体系 | 账号密码 / Token 签发刷新注销（OAuth2 不透明令牌）/ 会员 mobile 注册登录 |
 | 权限与安全 | Casbin RBAC（菜单粒度授权，主体带租户前缀）、data_scope 数据权限、登录日志、操作审计 |
 | 会员（`modules/member`） | mobile 注册/登录/刷新/登出、会员列表与启停（micro 形态经 gRPC 委托 system 签发） |
-| 订单演示（`modules/order`） | 单表 CRUD 示例（`modules.order: false` 默认关闭，用于演示模块接入） |
-| 后台前端（`admin-web/`） | Vue 3 + Naive UI + Vite 管理后台，覆盖上述系统管理页面 |
+| 订单演示（`modules/order`） | 单表 CRUD 示例（`modules.order: true` 默认开启，用于演示模块接入） |
+| 后台前端（`apps/web-antd/`） | vue-vben-admin v5.7.0（Vite + Ant Design Vue + vxe-table）管理后台，覆盖上述系统管理页面 |
 
 ### 基础设施（`pkg/`）
 
@@ -62,12 +62,11 @@ curl http://localhost:8080/health/ready  # 就绪探活（ping DB）
 ### 后台前端
 
 ```bash
-cd admin-web
-npm i
-npm run dev
+pnpm install
+pnpm --filter @vben/web-antd dev
 ```
 
-- 访问 <http://localhost:5174>，登录接口为 `/api/app/system/auth/login`
+- 访问 <http://localhost:5666>，登录接口为 `/api/auth/login`
 - 默认账号（后端启动后自动初始化）：**admin / admin123**
 
 > 🍎 macOS 用户提示：本机如遇 `go build` / `go test` 链接报错（SDK 兼容问题），
@@ -82,8 +81,8 @@ npm run dev
 
 配置：`deployment.mode`（mono|micro）；member 上游地址 `SYSTEM_GRPC_ADDR`。
 会话行为：access token 2h、refresh token 7d（`auth.access_expire_hour` / `auth.refresh_expire_day` 可调）；
-admin-web 的自动刷新为后续项——access 过期后需重新登录（app 端可用 `/api/app/member/auth/refresh` 换新）。
-micro 本地联调前端分流：`MEMBER_PROXY=http://localhost:8081 npm run dev`。
+管理后台的自动刷新为后续项——access 过期后需重新登录（vben `enableRefreshToken=false`，app 端可用 `/api/app/member/auth/refresh` 换新）。
+micro 本地联调前端分流：`MEMBER_PROXY=http://localhost:8081 pnpm --filter @vben/web-antd dev`。
 
 ## 📁 项目结构
 
@@ -92,7 +91,8 @@ alexGo-cloud/
 ├── alexgo-server/     # 启动入口 + HTTP Server 装配（cmd/main.go、server/）
 ├── modules/           # 业务模块（system、order、member），各含 controller/service/repository/model
 ├── pkg/               # 20+ 基础能力包（auth、limiter、outbox、middleware、migrate…）
-├── admin-web/         # 管理后台前端（Vue 3 + Naive UI + Vite）
+├── apps/              # 管理后台前端（vendored vue-vben-admin v5.7.0，主用 web-antd）
+├── packages/          # vendored vben 共享包（@vben/*）
 ├── deployments/       # docker-compose / kubernetes / helm / argocd
 ├── scripts/           # proto 生成、CRUD 生成器、k6 压测脚本
 ├── tools/dbgen/       # 按数据表反向生成 CRUD

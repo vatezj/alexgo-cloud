@@ -20,7 +20,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | `alexgo-server/` | 单体进程入口与 HTTP 层：`cmd/main.go` 统一启动装配，`configs/` 全局配置，`server/` Gin 路由、中间件链与 `server.Module` 抽象 |
 | `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）、`order`（示例业务）与 `member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
 | `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
-| `admin-web/` | 管理后台前端（Vue 3 + Vite），经 `/api/**` 调用后端 |
+| `apps/web-antd/` | 管理后台前端（vendored vue-vben-admin v5.7.0，Ant Design Vue），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
 | `scripts/` | 工程脚本：proto 生成（`gen_proto.sh`）、CRUD 生成器、k6 压测（`load_test.js`）、代码模板 |
 | `tools/dbgen` | 按数据表生成 CRUD 代码（`make generate-db-crud`） |
@@ -219,11 +219,11 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
     的 50051，会员签发/刷新经 gRPC 委托；**两服务共用同一数据库**（同库约束）；
   - **前缀分流**：`/api/app/member`、`/api/admin/member` 两个前缀走 member 服务——
     `deployments/kubernetes/ingress.yaml` 与 Helm `templates/ingress.yaml` 把这两条 path 排在 `/`
-    之前（nginx-ingress 最长前缀匹配）；本地前端用 `MEMBER_PROXY=http://localhost:8081 npm run dev`
-    把 Vite 的 member 代理指到 :8081（`admin-web/vite.config.ts`），mono 时默认全部指 :8080。
+    之前（nginx-ingress 最长前缀匹配）；本地前端用 `MEMBER_PROXY=http://localhost:8081 pnpm --filter @vben/web-antd dev`
+    把 Vite 的 member 代理指到 :8081（`apps/web-antd/vite.config.ts`），mono 时默认全部指 :8080。
 - **本地**：`make run` 直跑；或 `make docker-up`（`deployments/docker-compose/docker-compose.yml`，
-  含 MySQL，`DB_DSN` 经 `environment:` 注入，内置 system/member 双容器）；前端 `admin-web/` 独立
-  `npm run dev`。micro 本地双进程用 `make run-system` + `make run-member`。
+  含 MySQL，`DB_DSN` 经 `environment:` 注入，内置 system/member 双容器）；前端 `apps/web-antd/` 独立
+  `pnpm --filter @vben/web-antd dev`。micro 本地双进程用 `make run-system` + `make run-member`。
 - **K8s**，二选一：
   - kustomize：`kubectl apply -k deployments/kubernetes`（namespace / configmap / deployment +
     deployment-member / service + service-member / hpa / ingress）；
