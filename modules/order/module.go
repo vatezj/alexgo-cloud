@@ -9,6 +9,7 @@ import (
 	"alexGo-cloud/modules/order/repository"
 	"alexGo-cloud/modules/order/service"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/migrate"
 )
 
 var FxModule = fx.Module("order",
@@ -22,6 +23,13 @@ var FxModule = fx.Module("order",
 			NewOrderModule,
 			fx.As(new(server.Module)),
 			fx.ResultTags(`group:"modules"`),
+		),
+	),
+	fx.Provide(
+		fx.Annotate(
+			NewMigrationSource,
+			fx.As(new(migrate.Source)),
+			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
 )
