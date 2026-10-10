@@ -13,7 +13,7 @@ type fake{{.Entity}}Repo struct {
 	seq  uint64
 }
 
-var errRecordNotFound = errors.New("record not found")
+var err{{.Entity}}RecordNotFound = errors.New("record not found")
 
 func (f *fake{{.Entity}}Repo) Create(_ context.Context, e *model.{{.Entity}}) error {
 	f.seq++
@@ -34,7 +34,7 @@ func (f *fake{{.Entity}}Repo) GetByID(_ context.Context{{ if .HasTenant }}, _ ui
 	if e, ok := f.data[id]; ok {
 		return e, nil
 	}
-	return nil, errRecordNotFound
+	return nil, err{{.Entity}}RecordNotFound
 }
 
 func (f *fake{{.Entity}}Repo) Update(_ context.Context, e *model.{{.Entity}}) error {

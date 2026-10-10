@@ -20,7 +20,10 @@ import (
 	"alexGo-cloud/pkg/config"
 )
 
-const smokeTable = "codegen_smoke_item"
+const (
+	smokeTable  = "codegen_smoke_item"
+	smokeTable2 = "codegen_smoke_note" // 同模块第二张表：回归双表同包重声明（B1）
+)
 
 // TestSmoke_RealTableGoBuild 是 M1 验收：真实表 → 生成 → 编译 → 跑生成的单测 → 清理。
 // 需要本地 MySQL（docker compose 起）。DB 不可达时 Skip。
@@ -48,9 +51,10 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 		t.Skipf("mysql unreachable: %v (先 docker compose up mysql)", err)
 	}
 
-	// 1. 建冒烟表（幂等）
-	mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTable)
-	mustExec(t, db, `CREATE TABLE `+smokeTable+` (
+	// 1. 建两张冒烟表（同模块，幂等）
+	for _, name := range []string{smokeTable, smokeTable2} {
+		mustExec(t, db, "DROP TABLE IF EXISTS "+name)
+		mustExec(t, db, `CREATE TABLE `+name+` (
   id bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   name varchar(64) NOT NULL COMMENT '名称',
   price decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '价格',
@@ -61,29 +65,35 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
   created_at datetime NOT NULL COMMENT '创建时间',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='codegen smoke'`)
+	}
 	t.Cleanup(func() {
 		mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTable)
+		mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTable2)
 	})
 
-	// 2. 读元数据 + 构建 + 生成
+	// 2. 读元数据 + 构建 + 生成（两张表 → 同一模块）
 	schema := schemaFromDSN(cfg.Database.DSN)
 	if schema == "" {
 		t.Fatal("cannot parse schema from dsn")
 	}
-	meta, err := metadata.NewMySQLReader(db, schema).ReadTable(ctx, smokeTable)
-	if err != nil {
-		t.Fatalf("ReadTable: %v", err)
+	var tables []*model.Table
+	for _, name := range []string{smokeTable, smokeTable2} {
+		meta, err := metadata.NewMySQLReader(db, schema).ReadTable(ctx, name)
+		if err != nil {
+			t.Fatalf("ReadTable %s: %v", name, err)
+		}
+		tbl, err := builder.Build(meta, builder.Options{Module: "order"})
+		if err != nil {
+			t.Fatalf("Build %s: %v", name, err)
+		}
+		tables = append(tables, tbl)
 	}
-	tbl, err := builder.Build(meta, builder.Options{Module: "order"})
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	files, err := codegen.Generate([]*model.Table{tbl}, codegen.Options{UnitTestEnable: true})
+	files, err := codegen.Generate(tables, codegen.Options{UnitTestEnable: true})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 7 {
-		t.Fatalf("files = %d, want 7", len(files))
+	if len(files) != 14 {
+		t.Fatalf("files = %d, want 14", len(files))
 	}
 
 	// 3. 只记录本次新建的路径，cleanup 只删自己的文件
@@ -112,10 +122,10 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
-	// 5. 跑生成的单测 + vet（vet 覆盖 _test.go 编译）
-	entity := tbl.ClassName // CodegenSmokeItem
+	// 5. 跑两个实体生成的单测 + vet（vet 覆盖 _test.go 同包编译，防重声明回归）
+	pattern := "Test(" + tables[0].ClassName + "|" + tables[1].ClassName + ")Service_CRUD"
 	out, err = exec.Command("go", "test", "./modules/order/service/",
-		"-run", "Test"+entity+"Service_CRUD", "-count=1").CombinedOutput()
+		"-run", pattern, "-count=1").CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated test failed: %v\n%s", err, out)
 	}

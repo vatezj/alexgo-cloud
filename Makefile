@@ -27,7 +27,7 @@ generate-db-crud:
 generate-all: proto generate-crud
 
 codegen-smoke: ## M1 验收：真实表生成→编译→跑生成测试→清理（需本地 MySQL）
-	go test -tags integration ./tools/codegen/ -run TestSmoke -v
+	go test -tags integration ./tools/codegen/ -run TestSmoke -v -count=1
 
 migrate:
 	go run ./alexgo-server/cmd/main.go --migrate-only

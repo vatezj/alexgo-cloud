@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +42,19 @@ func fixtureMeta() *metadata.TableMeta {
 func buildFixture(t *testing.T) *model.Table {
 	t.Helper()
 	tbl, err := builder.Build(fixtureMeta(), builder.Options{Module: "order"})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	return tbl
+}
+
+// buildSecondFixture 与 buildFixture 同模块（order），表名不同 → 实体名不同。
+func buildSecondFixture(t *testing.T) *model.Table {
+	t.Helper()
+	meta := fixtureMeta()
+	meta.Name = "codegen_demo_notes"
+	meta.Comment = "codegen demo note"
+	tbl, err := builder.Build(meta, builder.Options{Module: "order"})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -133,6 +149,53 @@ func TestGenerate_SortedOutput(t *testing.T) {
 	for i := 1; i < len(files); i++ {
 		if files[i-1].Path >= files[i].Path {
 			t.Fatalf("unsorted: %s >= %s", files[i-1].Path, files[i].Path)
+		}
+	}
+}
+
+// 回归钉（B1）：同模块双表生成的两份 service_test 同属 package service，
+// 包级 var 必须按实体限定（err<Entity>RecordNotFound），否则重声明
+// → 生成代码 go vet/test 失败。
+func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
+	files, err := codegen.Generate([]*model.Table{buildFixture(t), buildSecondFixture(t)}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(files) != 14 {
+		t.Fatalf("files = %d, want 14: %+v", len(files), pathsOf(files))
+	}
+	var testFiles []model.GeneratedFile
+	for _, f := range files {
+		if strings.HasSuffix(f.Path, "_test.go") {
+			testFiles = append(testFiles, f)
+		}
+	}
+	if len(testFiles) != 2 {
+		t.Fatalf("service_test files = %d, want 2: %+v", len(testFiles), pathsOf(files))
+	}
+	seen := map[string]string{} // 顶层 var 名 → 所在文件
+	for _, f := range testFiles {
+		file, err := parser.ParseFile(token.NewFileSet(), f.Path, f.Content, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", f.Path, err)
+		}
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range vs.Names {
+					if prev, dup := seen[name.Name]; dup {
+						t.Errorf("duplicate top-level var %s across same-package files %s and %s", name.Name, prev, f.Path)
+					}
+					seen[name.Name] = f.Path
+				}
+			}
 		}
 	}
 }

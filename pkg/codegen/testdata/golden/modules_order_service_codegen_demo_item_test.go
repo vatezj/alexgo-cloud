@@ -13,7 +13,7 @@ type fakeCodegenDemoItemRepo struct {
 	seq  uint64
 }
 
-var errRecordNotFound = errors.New("record not found")
+var errCodegenDemoItemRecordNotFound = errors.New("record not found")
 
 func (f *fakeCodegenDemoItemRepo) Create(_ context.Context, e *model.CodegenDemoItem) error {
 	f.seq++
@@ -34,7 +34,7 @@ func (f *fakeCodegenDemoItemRepo) GetByID(_ context.Context, _ uint64, id uint64
 	if e, ok := f.data[id]; ok {
 		return e, nil
 	}
-	return nil, errRecordNotFound
+	return nil, errCodegenDemoItemRecordNotFound
 }
 
 func (f *fakeCodegenDemoItemRepo) Update(_ context.Context, e *model.CodegenDemoItem) error {
