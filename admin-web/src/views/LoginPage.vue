@@ -1,6 +1,6 @@
 <template>
-  <div style="min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 16px">
-    <n-card title="后台登录" style="max-width: 420px; width: 100%">
+  <div style=" display: flex; align-items: center; justify-content: center;min-height: 100vh; padding: 16px">
+    <n-card title="后台登录" style=" width: 100%;max-width: 420px">
       <n-form :model="form" :rules="rules" ref="formRef">
         <n-form-item label="用户名" path="username">
           <n-input v-model:value="form.username" placeholder="例如：demo" />

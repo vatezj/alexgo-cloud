@@ -1,13 +1,13 @@
 <template>
   <n-layout has-sider style="height: 100vh">
     <n-layout-sider bordered collapse-mode="width" :collapsed-width="64" :width="220" show-trigger>
-      <div style="height: 56px; display: flex; align-items: center; padding: 0 12px; font-weight: 600">
+      <div style=" display: flex; align-items: center;height: 56px; padding: 0 12px; font-weight: 600">
         alexGo-cloud
       </div>
       <n-menu :options="menuOptions" :value="activeKey" @update:value="onSelect" />
     </n-layout-sider>
     <n-layout>
-      <n-layout-header bordered style="height: 56px; display: flex; align-items: center; padding: 0 16px">
+      <n-layout-header bordered style=" display: flex; align-items: center;height: 56px; padding: 0 16px">
         <n-space align="center" justify="space-between" style="width: 100%">
           <div>{{ title }}</div>
           <n-button size="small" @click="logout">退出</n-button>
@@ -16,7 +16,7 @@
       <n-layout-content style="padding: 16px">
         <router-view />
       </n-layout-content>
-      <n-layout-footer bordered style="height: 40px; display: flex; align-items: center; padding: 0 16px">
+      <n-layout-footer bordered style=" display: flex; align-items: center;height: 40px; padding: 0 16px">
         <span style="opacity: 0.7">alexGo-cloud Admin</span>
       </n-layout-footer>
     </n-layout>
