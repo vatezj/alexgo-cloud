@@ -75,8 +75,20 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   client.addResponseInterceptor(
     defaultResponseInterceptor({
       codeField: 'code',
-      dataField: 'data',
-      successCode: 0,
+      // alexGo：兼容三形态——
+      //   ① 新信封 {code:0,data,...}      → successCode 0，解 data
+      //   ② 旧业务 {data:[...]}           → 无 code → undefined 视为成功，解 data
+      //   ③ 旧动作 {"status":"ok"}        → 无 code、无 data 键 → 返回原 body
+      // 非 2xx 走 rejected 链（successCode 不参与）→ authenticate → errorMessage
+      //（优先弹后端 error 文案）。
+      dataField: (response: any) =>
+        response &&
+        typeof response === 'object' &&
+        'data' in response &&
+        response.data !== undefined
+          ? response.data
+          : response,
+      successCode: (code: any) => code === undefined || code === 0,
     }),
   );
 

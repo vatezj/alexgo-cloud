@@ -38,9 +38,9 @@ export async function refreshTokenApi() {
  * 退出登录
  */
 export async function logoutApi() {
-  return baseRequestClient.post('/auth/logout', {
-    withCredentials: true,
-  });
+  // alexGo：走 requestClient（带 Authorization）——后端按 token 撤销；
+  // 后端恒 200，撤销失败也不阻断前端登出流程。refreshTokenApi 保留原样（一期关闭 refresh 链）。
+  return requestClient.post('/auth/logout');
 }
 
 /**

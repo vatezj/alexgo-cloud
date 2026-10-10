@@ -16,9 +16,16 @@ interface WebAntdPreferencesExtension {
  * !!! 更改配置后请清空缓存，否则可能不生效
  */
 export const overridesPreferences = defineOverridesPreferences({
-  // overrides
   app: {
+    accessMode: 'backend',
+    defaultHomePath: '/dashboard/analytics',
+    enableRefreshToken: false,
     name: import.meta.env.VITE_APP_TITLE,
+  },
+  copyright: {
+    companyName: 'alexGo-cloud',
+    companySiteLink: 'https://github.com/vatezj/alexgo-cloud',
+    date: '2026',
   },
 });
 
