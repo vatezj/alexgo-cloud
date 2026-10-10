@@ -1,4 +1,4 @@
-.PHONY: run run-system run-member build clean test proto generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade
+.PHONY: run run-system run-member build clean test proto generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke
 
 MODULE ?= system
 TABLES ?=
@@ -25,6 +25,9 @@ generate-db-crud:
 	go run ./tools/dbgen --module=$(MODULE) --tables=$(TABLES)
 
 generate-all: proto generate-crud
+
+codegen-smoke: ## M1 验收：真实表生成→编译→跑生成测试→清理（需本地 MySQL）
+	go test -tags integration ./tools/codegen/ -run TestSmoke -v
 
 migrate:
 	go run ./alexgo-server/cmd/main.go --migrate-only
