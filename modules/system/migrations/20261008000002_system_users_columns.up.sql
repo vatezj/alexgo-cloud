@@ -1,5 +1,6 @@
 -- 先加常规列（全部 AFTER 引用本迁移内已存在的列或表自带列），
 -- 条件列随后补：fresh 链路 post_ids/sex 已由下方 ALTER 建好，AFTER 引用才成立。
+-- [2026-10-09 回写] 本文件曾于 2026-10-09 由原无条件形态改写为条件 PREPARE（双谱系兼容，见提交 6d91959）；版本号未变，已跑环境不重放。
 ALTER TABLE `system_users`
   ADD COLUMN `remark`     VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注' AFTER `nickname`,
   ADD COLUMN `dept_id`    BIGINT       NOT NULL DEFAULT 0  COMMENT '部门ID' AFTER `remark`,

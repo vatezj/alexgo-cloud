@@ -91,8 +91,13 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-// withMultiStatements 幂等地给迁移 DSN 追加 multiStatements=true。
+// withMultiStatements 幂等地让迁移 DSN 以 multiStatements=true 生效：
+// 显式 multiStatements=false 会被改写为 true（否则多语句迁移报 ERROR 1064），
+// 已为 true 的原样保留，未带该参数的追加 true。
 func withMultiStatements(dsn string) string {
+	if strings.Contains(dsn, "multiStatements=false") {
+		return strings.Replace(dsn, "multiStatements=false", "multiStatements=true", 1)
+	}
 	if strings.Contains(dsn, "multiStatements=") {
 		return dsn
 	}
