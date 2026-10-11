@@ -7,7 +7,10 @@ import (
 	"sort"
 	"testing"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"alexGo-cloud/modules/member/model"
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -324,5 +327,51 @@ func TestDisable_StatusFlipAndBounds(t *testing.T) {
 	}
 	if u.Status != 1 {
 		t.Errorf("status changed to %d by invalid call, want 1", u.Status)
+	}
+}
+
+// newAuthenticateRepo 造一个持有效凭据的 member 行（Mobile 13800000000 / pw123456），
+// status 可翻转停用。memRepo.Create 分配 nextID=1 → 行 ID 恒 1；ctx 无租户 → tid 0，
+// 与 GetByMobile(ctx, 0, mobile) 对齐。
+func newAuthenticateRepo(t *testing.T, status int) *memRepo {
+	t.Helper()
+	repo := newMemRepo()
+	h, err := bcrypt.GenerateFromPassword([]byte("pw123456"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(context.Background(), &model.MemberUser{
+		TenantID: 0, Mobile: "13800000000", Password: string(h), Status: status, Nickname: "tester",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+func TestAuthenticate_OK(t *testing.T) {
+	svc := NewMemberService(newAuthenticateRepo(t, 1), &fakeIssuer{}, nil)
+	ident, err := svc.Authenticate(context.Background(), "13800000000", "pw123456", "1.2.3.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ident.UserID != 1 || ident.Username != "13800000000" ||
+		ident.AccountType != oauth2svc.AccountTypeMember || ident.TenantID != 0 {
+		t.Errorf("identity = %+v", ident)
+	}
+}
+
+func TestAuthenticate_WrongPassword(t *testing.T) {
+	svc := NewMemberService(newAuthenticateRepo(t, 1), &fakeIssuer{}, nil)
+	_, err := svc.Authenticate(context.Background(), "13800000000", "bad", "")
+	if !errors.Is(err, oauth2svc.ErrInvalidCredentials) {
+		t.Fatalf("应 ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestAuthenticate_Disabled(t *testing.T) {
+	svc := NewMemberService(newAuthenticateRepo(t, 0), &fakeIssuer{}, nil)
+	_, err := svc.Authenticate(context.Background(), "13800000000", "pw123456", "")
+	if !errors.Is(err, oauth2svc.ErrUserDisabled) {
+		t.Fatalf("停用应 ErrUserDisabled, got %v", err)
 	}
 }

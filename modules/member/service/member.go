@@ -12,6 +12,7 @@ import (
 
 	"alexGo-cloud/modules/member/model"
 	"alexGo-cloud/modules/member/repository"
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -37,6 +38,7 @@ type LoginResult struct {
 // MemberService 会员用户领域服务（app 端注册/登录/刷新/登出 + admin 端列表/启停）。
 type MemberService interface {
 	Register(ctx context.Context, mobile, password, nickname, ip string) (*model.MemberUser, error)
+	Authenticate(ctx context.Context, mobile, password, ip string) (*oauth2svc.AuthIdentity, error)
 	Login(ctx context.Context, mobile, password, ip string) (*LoginResult, error)
 	Refresh(ctx context.Context, refreshToken string) (*LoginResult, error)
 	Logout(ctx context.Context, accessToken string) error
@@ -106,22 +108,38 @@ func (s *memberService) Register(ctx context.Context, mobile, password, nickname
 	return u, nil
 }
 
-// Login 状态/密码校验通过后才签发（失败路径绝不触碰 issuer）。
-func (s *memberService) Login(ctx context.Context, mobile, password, ip string) (*LoginResult, error) {
+// Authenticate member 账号凭据校验（members 表零改动；校验通过即写 LoginIP/LoginDate，
+// 与旧 Login 成功路径同语义——统一登录/兼容层共用）。
+func (s *memberService) Authenticate(ctx context.Context, mobile, password, ip string) (*oauth2svc.AuthIdentity, error) {
 	tid := tenant.TenantIDFromContext(ctx)
 	u, err := s.repo.GetByMobile(ctx, tid, mobile)
-	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
+	if err != nil || u == nil {
+		return nil, oauth2svc.ErrInvalidCredentials
 	}
 	if u.Status != 1 {
-		return nil, fmt.Errorf("user disabled")
+		return nil, oauth2svc.ErrUserDisabled
 	}
 	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) != nil {
-		return nil, fmt.Errorf("invalid credentials")
+		return nil, oauth2svc.ErrInvalidCredentials
 	}
-	now := time.Now()
-	u.LoginIP, u.LoginDate = ip, &now
-	if err := s.repo.Update(ctx, u); err != nil {
+	if ip != "" {
+		now := time.Now()
+		u.LoginIP, u.LoginDate = ip, &now
+		_ = s.repo.Update(ctx, u)
+	}
+	return &oauth2svc.AuthIdentity{
+		UserID:      u.ID,
+		TenantID:    tid,
+		Username:    u.Mobile,
+		AccountType: oauth2svc.AccountTypeMember,
+	}, nil
+}
+
+// Login 状态/密码校验通过后才签发（失败路径绝不触碰 issuer）。
+// 凭据前三步（查用户→比密码→写登录 IP/日期）委托 Authenticate，本方法只负责签发。
+func (s *memberService) Login(ctx context.Context, mobile, password, ip string) (*LoginResult, error) {
+	ident, err := s.Authenticate(ctx, mobile, password, ip)
+	if err != nil {
 		return nil, err
 	}
 	if s.issuer == nil {
@@ -129,7 +147,7 @@ func (s *memberService) Login(ctx context.Context, mobile, password, ip string) 
 		return nil, fmt.Errorf("%w: issuer not wired", ErrIssuance)
 	}
 	issued, err := s.issuer.Issue(ctx, token.IssueParams{
-		UserID: u.ID, UserType: token.UserTypeMember, TenantID: tid, ClientID: "alexgo-app",
+		UserID: ident.UserID, UserType: token.UserTypeMember, TenantID: ident.TenantID, ClientID: "alexgo-app",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrIssuance, err)

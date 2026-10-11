@@ -9,6 +9,7 @@ import (
 	"alexGo-cloud/modules/member/controller/app"
 	"alexGo-cloud/modules/member/repository"
 	"alexGo-cloud/modules/member/service"
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -21,6 +22,10 @@ var FxModule = fx.Module("member",
 		service.NewMemberService,
 		app.NewAuthController,
 		admin.NewUserController,
+	),
+	// member 凭据校验窄接口映射：统一登录（Task 8）按 oauth2svc.MemberAuthenticator 消费。
+	fx.Provide(
+		func(svc service.MemberService) oauth2svc.MemberAuthenticator { return svc },
 	),
 	fx.Provide(
 		fx.Annotate(
