@@ -108,8 +108,9 @@ func (s *memberService) Register(ctx context.Context, mobile, password, nickname
 	return u, nil
 }
 
-// Authenticate member 账号凭据校验（members 表零改动；校验通过即写 LoginIP/LoginDate，
-// 与旧 Login 成功路径同语义——统一登录/兼容层共用）。
+// Authenticate member 账号凭据校验（members 表零改动；统一登录/兼容层共用）。
+// 凭据校验通过后记录登录态：ip 非空才写 LoginIP/LoginDate；
+// 写库失败不阻断签发（与旧 Login 不同——旧路径 Update 失败直接返回错误）。
 func (s *memberService) Authenticate(ctx context.Context, mobile, password, ip string) (*oauth2svc.AuthIdentity, error) {
 	tid := tenant.TenantIDFromContext(ctx)
 	u, err := s.repo.GetByMobile(ctx, tid, mobile)
