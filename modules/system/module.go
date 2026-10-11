@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/controller/admin"
 	"alexGo-cloud/modules/system/controller/app"
 	"alexGo-cloud/modules/system/controller/vben"
@@ -56,6 +57,10 @@ var FxModule = fx.Module("system",
 		repository.NewUserRoleRepository,
 		repository.NewRoleMenuRepository,
 		service.NewAuthService,
+		// 统一登录（Task 4）：system 侧凭据校验器、jwt 回滚签发器、审计窄接口映射。
+		service.NewUserAuthenticator,
+		service.NewJWTGenerator,
+		func(svc service.AuditService) oauth2svc.LoginAuditor { return svc },
 		service.NewRoleService,
 		service.NewMenuService,
 		service.NewPermissionService,
