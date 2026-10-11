@@ -113,29 +113,155 @@ type UnifiedDeps struct {
 	JWTGen     JWTGenerator        `optional:"true"`
 }
 
-// unifiedLogin 统一登录实现（Task 4 占位 stub；Task 8 删除方法体换真逻辑，
-// 接口/哨兵/ProtocolError/UnifiedDeps 不动——见计划 Task 8 开头 Ruling）。
+// === Task 8 真身（覆写 Task 4 stub；接口/哨兵/ProtocolError/UnifiedDeps 不动）===
+
 type unifiedLogin struct {
-	deps UnifiedDeps
+	cfg        *config.Config
+	issuer     token.Issuer
+	captcha    *CaptchaService
+	userAuth   UserAuthenticator
+	memberAuth MemberAuthenticator
+	auditor    LoginAuditor
+	jwtGen     JWTGenerator
 }
 
-// NewUnifiedLogin Task 4 仅建构造与结构占位，保证编译与图装配；
-// 真身逻辑（Login/AuthorizeLogin/IssueFor）归 Task 8。
 func NewUnifiedLogin(deps UnifiedDeps) UnifiedLogin {
-	return &unifiedLogin{deps: deps}
+	return &unifiedLogin{
+		cfg:        deps.Cfg,
+		issuer:     deps.Issuer,
+		captcha:    deps.Captcha,
+		userAuth:   deps.UserAuth,
+		memberAuth: deps.MemberAuth,
+		auditor:    deps.Auditor,
+		jwtGen:     deps.JWTGen,
+	}
 }
 
-// Login 占位：Task 8 实现（类型校验→captcha→路由→IssueFor→恰一次审计）。
-func (u *unifiedLogin) Login(context.Context, LoginParams) (*LoginResult, *AuthIdentity, error) {
-	return nil, nil, ErrAuthenticatorMissing
+// checkAndRoute 类型校验（先于 captcha 与审计）→ captcha → 按类型路由凭据校验。
+// 不签发、不记审计——两者归 Login/AuthorizeLogin（每恰一次）。
+func (u *unifiedLogin) checkAndRoute(ctx context.Context, p LoginParams) (*AuthIdentity, error) {
+	at := p.AccountType
+	if at == "" {
+		at = AccountTypeSystem // 缺省 system（authorize/login 请求体 account_type 可选）
+	}
+	if at != AccountTypeSystem && at != AccountTypeMember {
+		return nil, ErrAccountTypeUnsupported
+	}
+	if u.captcha != nil {
+		if err := u.captcha.Verify(ctx, p.CaptchaUUID, p.CaptchaCode); err != nil {
+			return nil, err
+		}
+	}
+	switch at {
+	case AccountTypeSystem:
+		if u.userAuth == nil {
+			return nil, ErrAuthenticatorMissing
+		}
+		return u.userAuth.Authenticate(ctx, p.Username, p.Password)
+	default: // member
+		if u.memberAuth == nil {
+			return nil, ErrAuthenticatorMissing
+		}
+		return u.memberAuth.Authenticate(ctx, p.Username, p.Password, p.IP)
+	}
 }
 
-// AuthorizeLogin 占位：Task 8 实现（不签发 token 的授权码流登录）。
-func (u *unifiedLogin) AuthorizeLogin(context.Context, LoginParams) (*AuthIdentity, error) {
-	return nil, ErrAuthenticatorMissing
+// audit 恰一次记账（D13：msg 前缀 "oauth2: "；auditor nil 安全——图未接线时静默跳过）。
+func (u *unifiedLogin) audit(ctx context.Context, p LoginParams, ident *AuthIdentity, success bool, cause error) {
+	if u.auditor == nil {
+		return
+	}
+	username, userID := p.Username, uint64(0)
+	if ident != nil {
+		username, userID = ident.Username, ident.UserID
+	}
+	msg := "oauth2: ok"
+	if !success {
+		msg = "oauth2: " + cause.Error()
+	}
+	_ = u.auditor.RecordLogin(ctx, username, userID, p.IP, p.UserAgent, success, msg)
 }
 
-// IssueFor 占位：Task 8 实现（按账号类型与模式签发）。
-func (u *unifiedLogin) IssueFor(context.Context, *AuthIdentity, string) (*LoginResult, error) {
-	return nil, ErrAuthenticatorMissing
+func (u *unifiedLogin) Login(ctx context.Context, p LoginParams) (*LoginResult, *AuthIdentity, error) {
+	ident, err := u.checkAndRoute(ctx, p)
+	if err != nil {
+		// ErrAccountTypeUnsupported 是请求形状错误，先于审计（无审计）；
+		// 其余失败一律 RecordLogin(success=false)（spec §6）。
+		if !errors.Is(err, ErrAccountTypeUnsupported) {
+			u.audit(ctx, p, nil, false, err)
+		}
+		return nil, nil, err
+	}
+	res, ierr := u.IssueFor(ctx, ident, p.ClientID)
+	if ierr != nil {
+		u.audit(ctx, p, ident, false, ierr)
+		return nil, nil, ierr
+	}
+	u.audit(ctx, p, ident, true, nil)
+	return res, ident, nil
+}
+
+func (u *unifiedLogin) AuthorizeLogin(ctx context.Context, p LoginParams) (*AuthIdentity, error) {
+	ident, err := u.checkAndRoute(ctx, p)
+	if err != nil {
+		if !errors.Is(err, ErrAccountTypeUnsupported) {
+			u.audit(ctx, p, nil, false, err)
+		}
+		return nil, err
+	}
+	u.audit(ctx, p, ident, true, nil)
+	return ident, nil
+}
+
+// IssueFor 按账号类型与模式签发（D2/D9 冻结语义）：
+//   - client：恒不透明（jwt 模式也如此），refresh 强制空；
+//   - system + mode=jwt：JWTGenerator，无 refresh、expires 0；
+//   - system/member 其余：token.Issuer 按类型签不透明令牌。
+// 任何签发失败 wrap ErrIssuance（协议端点 500 server_error 的映射依据）。
+func (u *unifiedLogin) IssueFor(ctx context.Context, ident *AuthIdentity, clientID string) (*LoginResult, error) {
+	if ident == nil {
+		return nil, fmt.Errorf("%w: nil identity", ErrIssuance)
+	}
+	if u.cfg != nil && u.cfg.Auth.Mode == "jwt" && ident.AccountType == AccountTypeSystem {
+		if u.jwtGen == nil {
+			return nil, fmt.Errorf("%w: jwt generator not wired", ErrIssuance)
+		}
+		tk, err := u.jwtGen.Issue(ctx, ident.UserID, ident.Username, ident.TenantID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrIssuance, err)
+		}
+		return &LoginResult{AccessToken: tk}, nil
+	}
+	if u.issuer == nil {
+		return nil, fmt.Errorf("%w: issuer not wired", ErrIssuance)
+	}
+	ip := token.IssueParams{
+		UserID:   ident.UserID,
+		TenantID: ident.TenantID,
+		ClientID: clientID,
+	}
+	switch ident.AccountType {
+	case AccountTypeSystem:
+		ip.UserType = token.UserTypeAdmin
+	case AccountTypeMember:
+		ip.UserType = token.UserTypeMember
+	case AccountTypeClient:
+		ip.UserType = token.UserTypeClient
+		ip.UserID, ip.TenantID = 0, 0
+	default:
+		return nil, fmt.Errorf("%w: unknown account type %q", ErrIssuance, ident.AccountType)
+	}
+	issued, err := u.issuer.Issue(ctx, ip)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrIssuance, err)
+	}
+	res := &LoginResult{
+		AccessToken:  issued.AccessToken,
+		RefreshToken: issued.RefreshToken,
+		ExpiresIn:    issued.ExpiresIn,
+	}
+	if ident.AccountType == AccountTypeClient {
+		res.RefreshToken = "" // 机机无 refresh（D9），即便底层返回也强制清空
+	}
+	return res, nil
 }
