@@ -92,6 +92,16 @@ const coreRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    component: () => import('#/views/_core/authentication/callback.vue'),
+    meta: {
+      hideInTab: true,
+      ignoreAccess: true,
+      title: 'OAuth Callback',
+    },
+    name: 'OAuthCallback',
+    path: '/callback',
+  },
 ];
 
 export { coreRoutes, fallbackNotFoundRoute };
