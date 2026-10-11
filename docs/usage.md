@@ -1,0 +1,177 @@
+# alexGo-cloud 使用文档
+
+> 本文依据当前代码整理，是新功能的操作入口参考。与实现不一致时，以代码为准。
+> 架构与装配见 [architecture.md](architecture.md)。
+
+## 0. 通用约定
+
+- **Base URL**：所有接口挂在 `/api` 组下（`alexgo-server/server/http.go`）。
+- **认证**：请求头 `Authorization: Bearer <JWT>`；登录后取得 token。
+- **权限（Casbin）**：每个接口前缀注册为权限码，需角色持有对应权限才可访问，否则 403。
+  权限码注册见 `modules/system/service/permission_routes.go`。
+- **信封**（infra 模块惯例，`codegen_controller.go` 头注释）：
+  - 列表：`{"data": [...], "total": n}`
+  - 详情：`{"data": {...}, "columns": [...]}`
+  - 变更成功：`{"status": "ok"}`
+  - 错误：`{"error": "..."}`，状态码只用 **400**（业务拒绝/参数错）与 **500**（内部错），仓库无 404 惯例。
+
+---
+
+## 1. 菜单管理（系统管理 → 菜单）
+
+### 1.1 界面操作
+
+入口：管理后台 **系统管理 → 菜单管理**（`apps/web-antd/src/views/system/SystemMenusPage.vue`）。
+
+- 表格为**树形表**（按 `parent_id` 转树，默认全部展开，点名称列箭头折叠），一次性加载全量菜单，不分页。
+- **新建**：右上「新建」打开弹窗，填写名称/类型/路径/组件/权限码/图标/排序/状态。
+- **编辑**：行操作「编辑」打开同一弹窗，提交走 `PUT`（编辑态由 `editingId` 区分）。
+- **删除**：行操作「删除」，二次确认后调用 `DELETE`；删除后后端**全量重建 Casbin 策略**，被删菜单的权限立即失效。
+
+**菜单类型**（`type`）：
+
+| 值 | 含义 | 关键字段 |
+| --- | --- | --- |
+| `dir` | 目录（UI 分组，无路由） | `name`, `icon`, `sort` |
+| `menu` | 页面 | `path`（路由路径）、`component`（前端组件路径） |
+| `button` | 按钮级权限 | `permission`（权限码） |
+
+**编辑限制**：不允许把节点挂到自己或自己的后代之下（防树成环，含深度上限 64 的脏数据环防御）；修改 permission/路由后策略自动重建，无需手动操作。
+
+### 1.2 API
+
+权限码：`system:menu` → 前缀 `/api/admin/system/menus`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/system/menus` | 菜单列表（扁平数组，前端转树） |
+| POST | `/api/admin/system/menus` | 新建 |
+| PUT | `/api/admin/system/menus/:id` | 编辑 |
+| DELETE | `/api/admin/system/menus/:id` | 删除 |
+
+编辑/新建载荷（`MenuPayload`，见 `apps/web-antd/src/api/admin.ts`）：
+
+```json
+{
+  "parent_id": 0,
+  "type": "menu",
+  "name": "代码生成配置",
+  "path": "/codegen/config",
+  "component": "views/infra/codegen/index",
+  "icon": "lucide:file-code",
+  "permission": "infra:codegen",
+  "sort": 1,
+  "status": 1
+}
+```
+
+编辑示例：
+
+```bash
+curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":1,"type":"dir","name":"代码生成","path":"/codegen","component":"","icon":"lucide:code","permission":"infra","sort":90,"status":1}'
+```
+
+> `status` 显式传 `0` 即停用——编辑接口不会把 0 当作"未传"套默认值。
+
+---
+
+## 2. 代码生成配置（M2，API-only）
+
+代码生成分阶段交付：**M2（当前）**完成配置持久化与同步的后端闭环；**M3** 接管理界面与生成执行。
+本节描述 M2 已可用的 HTTP 接口。
+
+### 2.1 前置
+
+- **权限码**：`infra:codegen`（页面）、`infra:codegen:import` / `infra:codegen:sync` / `infra:codegen:delete`（按钮），
+  路由前缀 `/api/admin/infra/codegen` 已在 `permission_routes.go` 注册。
+- **菜单入口**：迁移 `20261011000002_codegen_menus` 已种入 **系统管理 → 代码生成 → 代码生成配置**；
+  M3 完成前组件 `views/infra/codegen/index` 尚未接线，点菜单会 404，API 可先用。
+- **元数据库**：导入/Sync 读取的是配置的元数据库（DSN 见 `configs/config.yaml` 的 `dsn`）。
+
+### 2.2 接口一览
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/infra/codegen/tables` | 分页列表（`?page=&size=`，size ≤ 200） |
+| POST | `/api/admin/infra/codegen/import` | 导入物理表为配置 |
+| GET | `/api/admin/infra/codegen/tables/:id` | 详情（`{data, columns}`） |
+| PUT | `/api/admin/infra/codegen/tables/:id` | 改配置（白名单字段，见 2.4） |
+| DELETE | `/api/admin/infra/codegen/tables/:id` | 删除配置（级联删列） |
+| GET | `/api/admin/infra/codegen/tables/:id/columns` | 列配置列表 |
+| PUT | `/api/admin/infra/codegen/tables/:id/columns` | 批量保存列配置（整体替换，非空数组） |
+| POST | `/api/admin/infra/codegen/tables/:id/sync` | 从元数据同步差异（spec §9.4） |
+| GET | `/api/admin/infra/codegen/tables/:id/generate` | **M3 占位**，恒返回 500 `generate is an M3 feature` |
+
+### 2.3 典型工作流
+
+```bash
+BASE=http://localhost:8080/api/admin/infra/codegen
+AUTH="Authorization: Bearer $TOKEN"
+CT='Content-Type: application/json'
+
+# 1) 导入物理表（表名只允许小写 snake；重复导入返回 400）
+curl -X POST $BASE/import -H "$AUTH" -H "$CT" -d '{"table_name":"order_items"}'
+
+# 2) 查详情，拿 id 与列配置
+curl -H "$AUTH" $BASE/tables/1
+
+# 3) 改配置（只传要改的字段；见 2.4 校验规则）
+curl -X PUT $BASE/tables/1 -H "$AUTH" -H "$CT" \
+  -d '{"module":"order","business_name":"order_item","class_name":"OrderItem"}'
+
+# 4) 调列配置：开关展示/表单/查询字段、必填、字典等（整体替换）
+curl -X PUT $BASE/tables/1/columns -H "$AUTH" -H "$CT" \
+  -d '[{"id":10,"name":"status","list_enable":true,"form_enable":true,
+        "query_enable":true,"query_operation":"eq","sort_order":3}]'
+
+# 5) 表结构变更后同步：新增列默认全关、消失列标 deprecated、快照刷新不碰配置
+curl -X POST $BASE/tables/1/sync -H "$AUTH"
+# → {"data":{"added":1,"updated":0,"deprecated":0,"unchanged":7}}
+```
+
+### 2.4 配置字段与校验（PUT `/tables/:id`）
+
+可编辑字段（**白名单合并**：只覆盖传入的非零字段，`table_name`/`created_at` 等快照与系统字段不受 body 影响）：
+
+| 字段 | 校验 |
+| --- | --- |
+| `module` | 小写 snake `^[a-z][a-z0-9_]*$`，≤128（拼进生成物路径，拒绝 `..`/`/`） |
+| `business_name` | 同上 |
+| `class_name` | Go 导出标识符 `^[A-Z][A-Za-z0-9_]*$`，≤128；**同 module+class_name 跨行冲突拒绝** |
+| `template_type` | 1=单表, 2=树表, 3=主子表（0 视为未传） |
+| `front_type` | 1=vben5-antd（0 视为未传） |
+| `parent_table_id` | 主子表父表 id（0 视为未传） |
+| `remark` | 自由文本 |
+
+校验失败与重复导入均返回 **400** `{"error": "...table/class_name..."}`（错误文本包 `ErrTableInvalid` 哨兵）。
+
+### 2.5 同步语义（spec §9.4）
+
+`POST /tables/:id/sync` 重读元数据并分类：
+
+| 分类 | 行为 |
+| --- | --- |
+| added（新列） | 插入行，所有开关默认关，sort 接在既有最大之后 |
+| updated（快照变） | 刷新 Type/Comment/GoType/主键等快照，**配置字段不动**；deprecated 列重现即复活 |
+| deprecated（列消失） | 标 `deprecated=1`（只标未标过的行），不物理删除 |
+| unchanged | 不写库 |
+
+返回计数 `{added, updated, deprecated, unchanged}`。
+
+### 2.6 CLI（可选）
+
+`tools/codegen` 提供同引擎的命令行入口（draft 模式：元数据 → 构建 → 生成 → 写盘，**默认不覆盖已有文件**）。
+schema 名从 DSN 解析（`mysql.ParseDSN`，解析失败按空 schema 上报）。常用 flag：
+
+```bash
+go run ./tools/codegen \
+  -module order \                # 目标模块名（必填，如 order）
+  -tables order_items,order_log \ # 逗号分隔表名（留空 = schema 全部表）
+  -dsn '' \                       # MySQL DSN（默认取 config database.dsn / DB_DSN）
+  -schema '' \                    # schema 名（默认从 dsn 解析）
+  -out . \                        # 输出根目录（仓库根）
+  -dry-run                        # 只打印计划生成的文件，不写盘
+# 其他：-force 覆盖已有文件；-no-tests 跳过单测骨架
+```
