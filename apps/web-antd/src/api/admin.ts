@@ -321,3 +321,56 @@ export function createOrder(payload: {
 }) {
   return requestClient.post<Order>('/admin/order/orders', payload);
 }
+
+// ---- OAuth2 客户端 ----
+export interface Oauth2Client {
+  id: number;
+  client_id: string;
+  client_name: string;
+  website: string;
+  grant_types: string; // 逗号分隔
+  redirect_uris: string; // 换行分隔，精确匹配
+  account_types: string; // 逗号分隔 system,member
+  scopes: string;
+  activity: number; // 1 启用 0 停用
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Oauth2ClientPayload {
+  client_id: string;
+  client_secret?: string; // 明文；编辑留空=不改（后端 Update 语义）
+  client_name: string;
+  website: string;
+  grant_types: string;
+  redirect_uris: string;
+  account_types: string;
+  scopes: string;
+  activity: number;
+}
+
+// page/size 走 URL 内联 query（对齐 listOperateLogs 风格）；
+// 响应 {data,total} 被拦截器解出 data 后 total 丢失 → 页面本地切页，这里一次拉满上限 200。
+export function listClients() {
+  return requestClient.get<Oauth2Client[]>(
+    '/admin/oauth2/clients?page=1&size=200',
+  );
+}
+
+// 明文 secret 仅创建响应回显一次（createClientResponse），List/Update 恒不回。
+export function createClient(payload: Oauth2ClientPayload) {
+  return requestClient.post<Oauth2Client & { client_secret?: string }>(
+    '/admin/oauth2/clients',
+    payload,
+  );
+}
+
+export function updateClient(id: number, payload: Oauth2ClientPayload) {
+  return requestClient.put<Oauth2Client>(`/admin/oauth2/clients/${id}`, payload);
+}
+
+export function deleteClient(id: number) {
+  return requestClient.delete<{ status: string }>(
+    `/admin/oauth2/clients/${id}`,
+  );
+}
