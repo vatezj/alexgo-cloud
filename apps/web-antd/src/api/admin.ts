@@ -149,11 +149,8 @@ export function deleteRole(id: number) {
 }
 
 // ---- 菜单 ----
-export function listMenus() {
-  return requestClient.get<Menu[]>('/admin/system/menus');
-}
-
-export function createMenu(payload: {
+/** 新建/编辑菜单的表单载荷（编辑时 id 走 URL 路径参数） */
+export interface MenuPayload {
   component: string;
   icon: string;
   name: string;
@@ -163,8 +160,18 @@ export function createMenu(payload: {
   sort: number;
   status: number;
   type: string;
-}) {
+}
+
+export function listMenus() {
+  return requestClient.get<Menu[]>('/admin/system/menus');
+}
+
+export function createMenu(payload: MenuPayload) {
   return requestClient.post<Menu>('/admin/system/menus', payload);
+}
+
+export function updateMenu(id: number, payload: MenuPayload) {
+  return requestClient.put<Menu>(`/admin/system/menus/${id}`, payload);
 }
 
 export function deleteMenu(id: number) {

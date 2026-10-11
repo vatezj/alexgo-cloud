@@ -181,6 +181,7 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup.POST("/roles/:id/menus", m.roleCtrl.AssignMenus)
 	adminGroup.GET("/menus", m.menuCtrl.List)
 	adminGroup.POST("/menus", m.menuCtrl.Create)
+	adminGroup.PUT("/menus/:id", m.menuCtrl.Update)
 	adminGroup.DELETE("/menus/:id", m.menuCtrl.Delete)
 	adminGroup.GET("/depts", m.basicCtrl.ListDepts)
 	adminGroup.POST("/depts", m.basicCtrl.CreateDept)

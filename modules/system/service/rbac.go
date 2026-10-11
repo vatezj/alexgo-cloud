@@ -38,6 +38,7 @@ type RoleCreateParams struct {
 type MenuService interface {
 	List(ctx context.Context) ([]*model.Menu, error)
 	Create(ctx context.Context, m *model.Menu) (*model.Menu, error)
+	Update(ctx context.Context, m *model.Menu) (*model.Menu, error)
 	Delete(ctx context.Context, id uint64) error
 	Tree(ctx context.Context, menus []*model.Menu) []*model.Menu
 }
@@ -192,6 +193,66 @@ func (s *menuService) Create(ctx context.Context, m *model.Menu) (*model.Menu, e
 		}
 	}
 	return m, nil
+}
+
+// Update 更新菜单的可编辑字段（按 id 取租户内的既有行，逐字段覆盖）；
+// permission/路由可能变化，与 Create/Delete 同样全量重建 Casbin 策略。
+// 拒绝把节点挂到自己或自己的后代之下，防树成环。
+func (s *menuService) Update(ctx context.Context, m *model.Menu) (*model.Menu, error) {
+	if m == nil || m.ID == 0 {
+		return nil, fmt.Errorf("menu id required")
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	existing, err := s.menuRepo.GetByID(ctx, tid, m.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkParent(ctx, tid, m.ID, m.ParentID); err != nil {
+		return nil, err
+	}
+	existing.ParentID = m.ParentID
+	existing.Type = m.Type
+	existing.Name = m.Name
+	existing.Path = m.Path
+	existing.Component = m.Component
+	existing.Icon = m.Icon
+	existing.Permission = m.Permission
+	existing.Sort = m.Sort
+	// Status 允许显式 0（停用），不套用 Create 的默认 1
+	existing.Status = m.Status
+	existing.UpdatedAt = time.Now()
+	if err := s.menuRepo.Update(ctx, existing); err != nil {
+		return nil, err
+	}
+	if s.permSvc != nil {
+		if err := s.permSvc.RebuildPolicies(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return existing, nil
+}
+
+// checkParent 校验 parentID 合法：0=根放行；等于自身、或出现在自身祖先链上（即把
+// 节点挂进自己的子树）则拒绝。父节点查不到时放行，与 Create 不校验父存在保持一致。
+func (s *menuService) checkParent(ctx context.Context, tid, id, parentID uint64) error {
+	if parentID == 0 {
+		return nil
+	}
+	if parentID == id {
+		return fmt.Errorf("parent cannot be itself")
+	}
+	// 沿新父链向上走；深度上限防御既有脏数据里的环
+	for cur, depth := parentID, 0; cur != 0 && depth < 64; depth++ {
+		if cur == id {
+			return fmt.Errorf("parent cannot be a descendant of itself")
+		}
+		p, err := s.menuRepo.GetByID(ctx, tid, cur)
+		if err != nil {
+			return nil
+		}
+		cur = p.ParentID
+	}
+	return nil
 }
 
 // Delete 删除菜单后全量重建 Casbin 策略（被删菜单的权限随之失效，防残留）。

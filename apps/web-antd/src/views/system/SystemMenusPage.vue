@@ -1,22 +1,24 @@
 <script lang="ts" setup>
-import type { Menu } from '#/api/admin';
+import type { Menu, MenuPayload } from '#/api/admin';
 import type { VxeGridProps } from '#/adapter/vxe-table';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 
 import { Button, message, Modal as AntdModal } from 'ant-design-vue';
 
+import { ref } from 'vue';
+
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { createMenu, deleteMenu, listMenus } from '#/api/admin';
-import { localPage } from '#/utils/local-page';
+import { createMenu, deleteMenu, listMenus, updateMenu } from '#/api/admin';
 
 defineOptions({ name: 'SystemMenusPage' });
 
 const gridOptions: VxeGridProps<Menu> = {
   columns: [
+    // 树形节点图标/缩进挂在名称列上
+    { field: 'name', title: '名称', minWidth: 200, treeNode: true },
     { field: 'id', title: 'ID', width: 70 },
-    { field: 'parent_id', title: '父ID', width: 80 },
     {
       field: 'type',
       formatter: ({ cellValue }) =>
@@ -24,7 +26,6 @@ const gridOptions: VxeGridProps<Menu> = {
       title: '类型',
       width: 80,
     },
-    { field: 'name', title: '名称', minWidth: 140 },
     { field: 'path', title: '路径', minWidth: 160 },
     { field: 'permission', title: '权限', minWidth: 150 },
     { field: 'sort', title: '排序', width: 70 },
@@ -39,20 +40,25 @@ const gridOptions: VxeGridProps<Menu> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 130,
+      width: 180,
     },
   ],
   height: 'auto',
   keepSource: true,
-  pagerConfig: {},
+  // 树形表：扁平的 parent_id 列表交给 vxe 转成树，默认全部展开、可逐级折叠
+  treeConfig: {
+    expandAll: true,
+    parentField: 'parent_id',
+    rowField: 'id',
+    transform: true,
+  },
+  // 树形结构不能按页切分，一次性加载全量菜单
+  pagerConfig: { enabled: false },
   proxyConfig: {
     ajax: {
-      query: async ({ page }) => {
+      query: async () => {
         const rows = await listMenus();
-        return {
-          items: localPage(rows, page.currentPage, page.pageSize),
-          total: rows.length,
-        };
+        return { items: rows, total: rows.length };
       },
     },
   },
@@ -61,11 +67,15 @@ const gridOptions: VxeGridProps<Menu> = {
 
 const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
 
+/** null=新建；非空=正在编辑该 id 的菜单 */
+const editingId = ref<number | null>(null);
+
 const [Modal, modalApi] = useVbenModal({
   fullscreenButton: false,
   title: '新建菜单',
   onOpenChange(isOpen: boolean) {
     if (isOpen) formApi.resetForm();
+    else editingId.value = null;
   },
   onConfirm: async () => {
     try {
@@ -78,20 +88,14 @@ const [Modal, modalApi] = useVbenModal({
 
 const [Form, formApi] = useVbenForm({
   handleSubmit: async (values) => {
-    await createMenu(
-      values as {
-        component: string;
-        icon: string;
-        name: string;
-        parent_id: number;
-        path: string;
-        permission: string;
-        sort: number;
-        status: number;
-        type: string;
-      },
-    );
-    message.success('创建成功');
+    const payload = values as MenuPayload;
+    if (editingId.value) {
+      await updateMenu(editingId.value, payload);
+      message.success('保存成功');
+    } else {
+      await createMenu(payload);
+      message.success('创建成功');
+    }
     modalApi.close();
     gridApi.reload();
   },
@@ -190,6 +194,31 @@ function onDelete(row: Menu) {
     },
   });
 }
+
+function onCreate() {
+  editingId.value = null;
+  modalApi.setState({ title: '新建菜单' });
+  modalApi.open();
+}
+
+function onEdit(row: Menu) {
+  editingId.value = row.id;
+  modalApi.setState({ title: '编辑菜单' });
+  modalApi.open();
+  // open() 同步触发 onOpenChange 的 resetForm（其 await getForm 先入队），
+  // 随后的 setValues 在其后入队 → 先重置再回填，顺序有保证
+  void formApi.setValues({
+    component: row.component,
+    icon: row.icon,
+    name: row.name,
+    parent_id: row.parent_id,
+    path: row.path,
+    permission: row.permission,
+    sort: row.sort,
+    status: row.status,
+    type: row.type,
+  });
+}
 </script>
 
 <template>
@@ -200,12 +229,20 @@ function onDelete(row: Menu) {
           class="mr-2"
           type="primary"
           v-access:code="['system:menu:*']"
-          @click="() => modalApi.open()"
+          @click="onCreate"
         >
           新建菜单
         </Button>
       </template>
       <template #actions="{ row }">
+        <Button
+          size="small"
+          type="link"
+          v-access:code="['system:menu:*']"
+          @click="onEdit(row)"
+        >
+          编辑
+        </Button>
         <Button
           danger
           size="small"
