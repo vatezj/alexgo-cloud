@@ -210,6 +210,46 @@ func TestValidate_TenantDisabledAfterIssue(t *testing.T) {
 	}
 }
 
+// D9：机机凭证 type 3 允许 UserID==0（ClientID 非空为条件），不发 refresh，
+// Validate 不查库、username 取 ClientID。
+func TestIssue_ClientCredentials_AllowZeroUser(t *testing.T) {
+	svc := newTestService(t)
+	// D9：type 3 + ClientID 非空 → UserID 0 放行
+	issued, err := svc.Issue(context.Background(), IssueParams{
+		UserID: 0, UserType: UserTypeClient, TenantID: 0, ClientID: "svc-bot",
+	})
+	if err != nil {
+		t.Fatalf("type3 UserID=0 应放行, got %v", err)
+	}
+	if issued.RefreshToken != "" {
+		t.Error("机机 token 不应带 refresh")
+	}
+	// Validate：username 取 ClientID
+	claims, err := svc.Validate(context.Background(), issued.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.Username != "svc-bot" || claims.UserType != UserTypeClient {
+		t.Errorf("claims = %+v", claims)
+	}
+}
+
+// D9：type 3 且 ClientID 为空必须拒（放行条件不满足）。
+func TestIssue_ClientCredentials_MissingClientID(t *testing.T) {
+	svc := newTestService(t)
+	if _, err := svc.Issue(context.Background(), IssueParams{UserID: 0, UserType: UserTypeClient}); err == nil {
+		t.Fatal("type3 且 ClientID 空应拒")
+	}
+}
+
+// D9：UserType 枚举白名单——未知类型必须拒（新行为）。
+func TestIssue_UnknownTypeRejected(t *testing.T) {
+	svc := newTestService(t)
+	if _, err := svc.Issue(context.Background(), IssueParams{UserID: 1, UserType: 99}); err == nil {
+		t.Fatal("未知 UserType 应拒")
+	}
+}
+
 // I6：member 分支 Validate roundtrip——scalar Scan 取 nickname（member_user 表），
 // claims.Username=昵称、UserType=2（钉住 raw SQL 的列映射与 user_type 分派）。
 func TestIssue_Validate_MemberRoundtrip(t *testing.T) {

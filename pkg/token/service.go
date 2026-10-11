@@ -44,6 +44,10 @@ func NewService(db *gorm.DB, cfg *config.Config) *Service {
 	return &Service{db: db, cfg: cfg}
 }
 
+// UserTypeClient 机机凭证（D9）：OAuth2 client_credentials，无真实用户，
+// UserID 可为 0（放行条件：ClientID 非空）。
+const UserTypeClient UserType = 3
+
 func randomToken(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -71,8 +75,18 @@ func (s *Service) refreshExpire() time.Duration {
 // Issue 签发令牌。tenant_id=0（平台租户/未解析）跳过租户状态检查；
 // 租户存在且停用则拒绝签发——这是 SaaS 停用租户的第一道闸。
 func (s *Service) Issue(ctx context.Context, p IssueParams) (*Issued, error) {
-	if p.UserID == 0 || p.UserType == 0 {
-		return nil, fmt.Errorf("token: invalid issue params")
+	// D9：UserType 枚举白名单；type 3 允许 UserID==0，当且仅当 ClientID 非空。
+	switch p.UserType {
+	case UserTypeAdmin, UserTypeMember:
+		if p.UserID == 0 {
+			return nil, errors.New("token: user id required")
+		}
+	case UserTypeClient:
+		if p.ClientID == "" {
+			return nil, errors.New("token: client id required for client credentials")
+		}
+	default:
+		return nil, errors.New("token: unknown user type")
 	}
 	if p.TenantID != 0 {
 		var status int
@@ -90,9 +104,12 @@ func (s *Service) Issue(ctx context.Context, p IssueParams) (*Issued, error) {
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := randomToken(24) // 32 字符以内（列宽 varchar(32)，base64url 24字节→32字符）
-	if err != nil {
-		return nil, err
+	refresh := "" // 机机 token 不带 refresh（D9：type 3 不写 refresh）
+	if p.UserType != UserTypeClient {
+		refresh, err = randomToken(24) // 32 字符以内（列宽 varchar(32)，base64url 24字节→32字符）
+		if err != nil {
+			return nil, err
+		}
 	}
 	row := accessToken{
 		UserID:       p.UserID,
@@ -151,6 +168,8 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 			return nil, fmt.Errorf("token: user not found")
 		}
 		claims.Username = nickname
+	case UserTypeClient:
+		claims.Username = row.ClientID // D9：username 取 ClientID，不查库
 	default:
 		return nil, fmt.Errorf("token: unknown user type")
 	}
