@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/infra"
+	"alexGo-cloud/modules/system"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 )
@@ -47,6 +48,25 @@ func runInfra(t *testing.T) (*gorm.DB, *migrate.Runner) {
 	cfg.Migrate.Auto = true
 	cfg.Database.DSN = dsn
 	runner := migrate.NewRunner(db, cfg, []migrate.Source{infra.NewMigrationSource()})
+	return db, runner
+}
+
+// runSystem 与 runInfra 同构，但只跑 system 迁移源（含 20261011000002 codegen 菜单种子）。
+func runSystem(t *testing.T) (*gorm.DB, *migrate.Runner) {
+	t.Helper()
+	chdirRepoRoot(t)
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		t.Skip("DB_DSN not set; skip integration test")
+	}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Skipf("mysql unreachable: %v", err)
+	}
+	cfg := &config.Config{}
+	cfg.Migrate.Auto = true
+	cfg.Database.DSN = dsn
+	runner := migrate.NewRunner(db, cfg, []migrate.Source{system.NewMigrationSource()})
 	return db, runner
 }
 
@@ -101,5 +121,34 @@ func TestInfraMigrations_UpTwiceStable(t *testing.T) {
 		if db.Migrator().HasColumn("codegen_table", col) {
 			t.Errorf("codegen_table 含禁用列 %q（spec §1/§9.3：系统级、硬删除）", col)
 		}
+	}
+}
+
+// 菜单种子双跑幂等：两次 run 后 infra 菜单恒为 5 行
+// （1 目录『代码生成』按 name 匹配 + 1 页面 + 3 按钮按 permission 匹配）。
+func TestInfraSeedMenus_UpTwiceIdempotent(t *testing.T) {
+	db, runner := runSystem(t)
+
+	if err := runner.Run(); err != nil {
+		t.Fatalf("run #1: %v", err)
+	}
+	count := func() int64 {
+		var n int64
+		if err := db.Table("menus").
+			Where("permission LIKE 'infra:codegen%' OR (name = '代码生成' AND type = 'dir' AND deleted = 0)").
+			Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	first := count()
+	if first != 5 {
+		t.Errorf("菜单数 = %d, want 5（目录+页面+3按钮）", first)
+	}
+	if err := runner.Run(); err != nil {
+		t.Fatalf("run #2: %v", err)
+	}
+	if second := count(); second != first {
+		t.Errorf("双跑幂等破坏: %d → %d", first, second)
 	}
 }

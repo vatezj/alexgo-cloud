@@ -20,6 +20,7 @@ import (
 // 种子通配策略（"/api/admin/*"）被移除后所有 UPDATE/DELETE/POST :id 路由会 403。
 // `/*` 经 keyMatch2 转为 "/.*"，同时覆盖集合与其全部子路径。
 var permissionRoutes = map[string][]string{
+	"infra:codegen": {"/api/admin/infra/codegen", "/api/admin/infra/codegen/*"},
 	"system:user":   {"/api/admin/system/users", "/api/admin/system/users/*"},
 	"system:role":   {"/api/admin/system/roles", "/api/admin/system/roles/*"},
 	"system:menu":   {"/api/admin/system/menus", "/api/admin/system/menus/*"},
