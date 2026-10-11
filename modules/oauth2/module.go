@@ -6,6 +6,7 @@ import (
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/oauth2/controller"
+	"alexGo-cloud/modules/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
@@ -21,6 +22,8 @@ var FxModule = fx.Module("oauth2",
 		),
 		oauth2svc.NewCaptchaService,
 		controller.NewProtocolController,
+		repository.NewClientRepository,
+		oauth2svc.NewClientService,
 		fx.Annotate(
 			NewModule,
 			fx.As(new(server.Module)),
