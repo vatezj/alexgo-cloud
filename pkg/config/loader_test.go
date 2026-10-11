@@ -74,3 +74,22 @@ func TestCodegenUnitTestEnable_DefaultTrue(t *testing.T) {
 		t.Error("codegen.unit_test_enable default = false, want true")
 	}
 }
+
+// DEPLOYMENT_MODE / SYSTEM_GRPC_ADDR 也必须被 env 压过（K8s 注入前提）。
+// 此前只测了 DB_DSN/JWT_SECRET/REDIS_PASSWORD——覆盖矩阵缺口。
+func TestLoadGlobalConfig_EnvOverridesDeploymentAndGRPC(t *testing.T) {
+	chdirRepoRoot(t)
+	t.Setenv("DEPLOYMENT_MODE", "micro")
+	t.Setenv("SYSTEM_GRPC_ADDR", ":60051")
+
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig() error = %v", err)
+	}
+	if cfg.Deployment.Mode != "micro" {
+		t.Errorf("Deployment.Mode = %q, want micro", cfg.Deployment.Mode)
+	}
+	if cfg.SystemGRPCAddr != ":60051" {
+		t.Errorf("SystemGRPCAddr = %q, want :60051", cfg.SystemGRPCAddr)
+	}
+}

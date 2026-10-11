@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 
 	"alexGo-cloud/pkg/codegen"
 	"alexGo-cloud/pkg/codegen/builder"
@@ -173,15 +173,12 @@ func parseTables(s string) ([]string, error) {
 	return out, nil
 }
 
+// schemaFromDSN 返回 DSN 中的库名；无库名时返回 ""。
+// 用驱动的 ParseDSN 而非手写切串：unix socket、密码含特殊字符、query 含 / 均正确。
 func schemaFromDSN(dsn string) string {
-	// user:pass@tcp(host:port)/dbname?params
-	slash := strings.LastIndex(dsn, "/")
-	if slash < 0 {
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
 		return ""
 	}
-	rest := dsn[slash+1:]
-	if q := strings.IndexAny(rest, "?"); q >= 0 {
-		rest = rest[:q]
-	}
-	return rest
+	return cfg.DBName
 }

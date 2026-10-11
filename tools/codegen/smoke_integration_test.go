@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,10 +21,15 @@ import (
 	"alexGo-cloud/pkg/config"
 )
 
-const (
-	smokeTable  = "codegen_smoke_item"
-	smokeTable2 = "codegen_smoke_note" // 同模块第二张表：回归双表同包重声明（B1）
-)
+// randSuffix 随机表名后缀：上次运行崩溃留下的残留表不干扰本次
+// （DROP IF EXISTS + CREATE 会悄悄吃掉残留数据/结构变化）。
+func randSuffix() string {
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = "abcdefghijklmnopqrstuvwxyz0123456789"[rand.Intn(36)]
+	}
+	return string(b)
+}
 
 // TestSmoke_RealTableGoBuild 是 M1 验收：真实表 → 生成 → 编译 → 跑生成的单测 → 清理。
 // 需要本地 MySQL（docker compose 起）。DB 不可达时 Skip。
@@ -51,10 +57,13 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 		t.Skipf("mysql unreachable: %v (先 docker compose up mysql)", err)
 	}
 
-	// 1. 建两张冒烟表（同模块，幂等）
+	// 1. 建两张冒烟表（同模块，随机后缀防残留污染）
+	// 第二张表回归双表同包重声明（B1）
+	smokeTable := "codegen_smoke_item_" + randSuffix()
+	smokeTable2 := "codegen_smoke_note_" + randSuffix()
 	for _, name := range []string{smokeTable, smokeTable2} {
-		mustExec(t, db, "DROP TABLE IF EXISTS "+name)
-		mustExec(t, db, `CREATE TABLE `+name+` (
+		mustExec(t, db, "DROP TABLE IF EXISTS `"+name+"`")
+		mustExec(t, db, "CREATE TABLE `"+name+"`"+` (
   id bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   name varchar(64) NOT NULL COMMENT '名称',
   price decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '价格',

@@ -58,3 +58,26 @@ func TestWriteFiles_ForceOverwrites(t *testing.T) {
 		t.Errorf("content = %q, want NEW", got)
 	}
 }
+
+func TestSchemaFromDSN(t *testing.T) {
+	cases := []struct {
+		dsn  string
+		want string
+	}{
+		{"user:pass@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4", "alexgo"},
+		{"user:pass@tcp(127.0.0.1:3306)/alexgo", "alexgo"},
+		// 缺陷①：unix socket 无库名——手写解析返回 "mysqld.sock)"，ParseDSN 返回 ""
+		{"user:pass@unix(/var/run/mysqld/mysqld.sock)", ""},
+		{"user:pass@unix(/var/run/mysqld/mysqld.sock)/alexgo", "alexgo"},
+		// 缺陷②：密码含 @ 的 case 手写 LastIndex("/") 恰好不炸（密码段无 /），
+		// 保留为特征化。query 含未转义 /（dir=/x）按驱动转义规则是非法 DSN——
+		// ParseDSN 报错，契约返回 ""（手写版会错截成 "x"/"db1"）。
+		{"user:p@ss@word@tcp(h:3306)/db1", "db1"},
+		{"user:pass@tcp(h:3306)/db1?dir=/x", ""},
+	}
+	for _, tc := range cases {
+		if got := schemaFromDSN(tc.dsn); got != tc.want {
+			t.Errorf("schemaFromDSN(%q) = %q, want %q", tc.dsn, got, tc.want)
+		}
+	}
+}
