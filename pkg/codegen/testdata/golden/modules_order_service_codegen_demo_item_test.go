@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"alexGo-cloud/modules/order/model"
+	"alexGo-cloud/pkg/tenant"
 )
 
 type fakeCodegenDemoItemRepo struct {
@@ -50,10 +51,14 @@ func (f *fakeCodegenDemoItemRepo) Delete(_ context.Context, _ uint64, id uint64)
 func TestCodegenDemoItemService_CRUD(t *testing.T) {
 	svc := NewCodegenDemoItemService(&fakeCodegenDemoItemRepo{data: map[uint64]*model.CodegenDemoItem{}})
 	ctx := context.Background()
+	ctx = tenant.WithTenantID(ctx, 42)
 
 	e := &model.CodegenDemoItem{}
 	if err := svc.Create(ctx, e); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+	if e.TenantID != 42 {
+		t.Fatalf("Create 应从 ctx 打戳租户 42, got %d", e.TenantID)
 	}
 	if e.ID == 0 {
 		t.Fatal("Create should assign ID")

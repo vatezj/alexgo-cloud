@@ -54,8 +54,11 @@ func Build(meta *metadata.TableMeta, opts Options) (*model.Table, error) {
 		}
 		isPK := c.Key == "PRI"
 		auto := containsAutoIncrement(c.Extra)
+		jsonName := naming.JSONName(c.Name)
 		if c.Name == "tenant_id" {
 			tbl.HasTenant = true
+			// 租户字段客户端不可控（spec §9.2）：json:"-" 后请求体灌不进值，打戳只源自 ctx。
+			jsonName = "-"
 		}
 		required := !c.Nullable && !auto
 		tbl.Columns = append(tbl.Columns, model.Column{
@@ -63,7 +66,7 @@ func Build(meta *metadata.TableMeta, opts Options) (*model.Table, error) {
 			Comment:       flattenComment(c.Comment),
 			GoName:        naming.ToGoName(c.Name),
 			GoType:        goType,
-			JSONName:      naming.JSONName(c.Name),
+			JSONName:      jsonName,
 			GormTag:       BuildGormTag(c),
 			HTMLType:      MySQLTypeToHTML(c, goType),
 			IsPK:          isPK,

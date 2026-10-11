@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"alexGo-cloud/modules/{{.Module}}/model"
+{{- if .HasTenant }}
+	"alexGo-cloud/pkg/tenant"
+{{- end }}
 )
 
 type fake{{.Entity}}Repo struct {
@@ -50,11 +53,19 @@ func (f *fake{{.Entity}}Repo) Delete(_ context.Context{{ if .HasTenant }}, _ uin
 func Test{{.Entity}}Service_CRUD(t *testing.T) {
 	svc := New{{.Entity}}Service(&fake{{.Entity}}Repo{data: map[uint64]*model.{{.Entity}}{}})
 	ctx := context.Background()
+	{{- if .HasTenant }}
+	ctx = tenant.WithTenantID(ctx, 42)
+	{{- end }}
 
 	e := &model.{{.Entity}}{}
 	if err := svc.Create(ctx, e); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	{{- if .HasTenant }}
+	if e.TenantID != 42 {
+		t.Fatalf("Create 应从 ctx 打戳租户 42, got %d", e.TenantID)
+	}
+	{{- end }}
 	if e.ID == 0 {
 		t.Fatal("Create should assign ID")
 	}

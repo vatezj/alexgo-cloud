@@ -4,6 +4,9 @@ import (
 	"context"
 
 	"alexGo-cloud/modules/{{.Module}}/model"
+{{- if .HasTenant }}
+	"alexGo-cloud/pkg/tenant"
+{{- end }}
 	"gorm.io/gorm"
 )
 
@@ -24,6 +27,12 @@ func New{{.Entity}}Repository(db *gorm.DB) {{.Entity}}Repository {
 }
 
 func (r *{{ lower .Entity }}Repo) Create(ctx context.Context, entity *model.{{.Entity}}) error {
+	{{- if .HasTenant }}
+	// 打戳（spec §9.2）：json:"-" 使客户端灌不进来，零值才回填、显式值保留。
+	if entity.TenantID == 0 {
+		entity.TenantID = tenant.TenantIDFromContext(ctx)
+	}
+	{{- end }}
 	return r.db.WithContext(ctx).Create(entity).Error
 }
 
@@ -51,7 +60,15 @@ func (r *{{ lower .Entity }}Repo) GetByID(ctx context.Context{{ if .HasTenant }}
 }
 
 func (r *{{ lower .Entity }}Repo) Update(ctx context.Context, entity *model.{{.Entity}}) error {
+	{{- if .HasTenant }}
+	// 禁用 Save（spec §9.2）：Save 丢弃链式 WHERE，跨租户照改不误。
+	// Select("*") 保证零值也写入（全量覆盖语义），双条件把行锁在本租户内。
+	return r.db.WithContext(ctx).Model(&model.{{.Entity}}{}).
+		Where("id = ? AND tenant_id = ?", entity.ID, tenant.TenantIDFromContext(ctx)).
+		Select("*").Updates(entity).Error
+	{{- else }}
 	return r.db.WithContext(ctx).Save(entity).Error
+	{{- end }}
 }
 
 func (r *{{ lower .Entity }}Repo) Delete(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) error {

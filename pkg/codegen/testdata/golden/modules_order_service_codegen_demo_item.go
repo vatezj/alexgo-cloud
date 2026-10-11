@@ -25,6 +25,7 @@ func NewCodegenDemoItemService(repo repository.CodegenDemoItemRepository) Codege
 }
 
 func (s *codegendemoitemService) Create(ctx context.Context, entity *model.CodegenDemoItem) error {
+	entity.TenantID = tenant.TenantIDFromContext(ctx)
 	return s.repo.Create(ctx, entity)
 }
 
@@ -37,6 +38,7 @@ func (s *codegendemoitemService) GetByID(ctx context.Context, id uint64) (*model
 }
 
 func (s *codegendemoitemService) Update(ctx context.Context, entity *model.CodegenDemoItem) error {
+	entity.TenantID = tenant.TenantIDFromContext(ctx)
 	return s.repo.Update(ctx, entity)
 }
 
