@@ -93,3 +93,18 @@ func TestLoadGlobalConfig_EnvOverridesDeploymentAndGRPC(t *testing.T) {
 		t.Errorf("SystemGRPCAddr = %q, want :60051", cfg.SystemGRPCAddr)
 	}
 }
+
+func TestLoad_AuthCaptchaAndLoginPageDefaults(t *testing.T) {
+	chdirRepoRoot(t)
+	t.Setenv("DB_DSN", "")
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.Captcha.Enabled {
+		t.Errorf("auth.captcha.enabled 默认应为 false, got true")
+	}
+	if cfg.Auth.LoginPage != "/auth/login" {
+		t.Errorf("auth.login_page 默认 = %q, want /auth/login", cfg.Auth.LoginPage)
+	}
+}

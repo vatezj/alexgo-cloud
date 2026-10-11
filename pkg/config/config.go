@@ -100,6 +100,12 @@ type Config struct {
 		Mode            string `mapstructure:"mode"` // token | jwt（回滚开关）
 		AccessExpireHour int    `mapstructure:"access_expire_hour"`
 		RefreshExpireDay int    `mapstructure:"refresh_expire_day"`
+		// Captcha 图形验证码开关（spec §9 D5）：false 时登录跳过校验。
+		Captcha struct {
+			Enabled bool `mapstructure:"enabled"`
+		} `mapstructure:"captcha"`
+		// LoginPage authorize 未认证时 302 的登录页路径（vben LOGIN_PATH 实际值）。
+		LoginPage string `mapstructure:"login_page"`
 	} `mapstructure:"auth"`
 
 	// Deployment：mono=单体一键启动（默认）；micro=双服务部署形态。
