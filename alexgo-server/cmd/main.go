@@ -13,6 +13,7 @@ import (
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/infra"
 	"alexGo-cloud/modules/member"
+	"alexGo-cloud/modules/oauth2"
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/system"
 	"alexGo-cloud/modules/system/grpcserver"
@@ -170,6 +171,8 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		// mono 直接 return——单进程模式 Token 走本地直调，无需监听）。
 		fx.Invoke(grpcserver.StartGRPCServer),
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
+		// oauth2：OAuth2 授权服务骨架——当前仅迁移源（Task 3 起加路由）。
+		oauth2.FxModule,
 		// infra：代码生成配置持久化（M2）——迁移源 + 三层 + admin 路由。
 		infra.FxModule,
 		system.FxModule,

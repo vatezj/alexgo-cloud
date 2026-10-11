@@ -11,6 +11,7 @@ import (
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/member"
+	"alexGo-cloud/modules/oauth2"
 	"alexGo-cloud/pkg/client"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/database"
@@ -116,6 +117,7 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		fx.Invoke(trace.InitTracer),
 		// 迁移：默认启动时执行（migrate.auto 控制）。
 		fx.Invoke(func(r *migrate.Runner) error { return r.Run() }),
+		oauth2.FxModule,
 		member.FxModule,
 	}
 	if !migrateOnly {
