@@ -21,6 +21,7 @@ import (
 // `/*` 经 keyMatch2 转为 "/.*"，同时覆盖集合与其全部子路径。
 var permissionRoutes = map[string][]string{
 	"infra:codegen": {"/api/admin/infra/codegen", "/api/admin/infra/codegen/*"},
+	"oauth2:client": {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"},
 	"system:user":   {"/api/admin/system/users", "/api/admin/system/users/*"},
 	"system:role":   {"/api/admin/system/roles", "/api/admin/system/roles/*"},
 	"system:menu":   {"/api/admin/system/menus", "/api/admin/system/menus/*"},

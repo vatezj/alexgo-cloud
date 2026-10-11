@@ -6,6 +6,7 @@ import (
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/oauth2/controller"
+	"alexGo-cloud/modules/oauth2/controller/admin"
 	"alexGo-cloud/modules/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
@@ -29,6 +30,7 @@ var FxModule = fx.Module("oauth2",
 		oauth2svc.NewUnifiedLogin,
 		oauth2svc.NewTokenService,
 		controller.NewProtocolController,
+		admin.NewClientController,
 		fx.Annotate(
 			NewModule,
 			fx.As(new(server.Module)),
@@ -38,16 +40,22 @@ var FxModule = fx.Module("oauth2",
 )
 
 type oauth2Module struct {
-	proto *controller.ProtocolController
+	proto   *controller.ProtocolController
+	clients *admin.ClientController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
-func NewModule(proto *controller.ProtocolController) server.Module {
-	return &oauth2Module{proto: proto}
+func NewModule(proto *controller.ProtocolController, clients *admin.ClientController) server.Module {
+	return &oauth2Module{proto: proto, clients: clients}
 }
 
 // RegisterRoutes 入参是 /api group（见 server/http.go，infra 同款），
 // 故路径写相对前缀 /oauth2/*。
 func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 	m.proto.Register(r)
+	g := r.Group("/admin/oauth2")
+	g.GET("/clients", m.clients.List)
+	g.POST("/clients", m.clients.Create)
+	g.PUT("/clients/:id", m.clients.Update)
+	g.DELETE("/clients/:id", m.clients.Delete)
 }

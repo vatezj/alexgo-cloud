@@ -16,6 +16,7 @@ import (
 	"alexGo-cloud/modules/oauth2/model"
 	"alexGo-cloud/modules/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
@@ -395,5 +396,119 @@ func TestToken_ClientAuthFail_401(t *testing.T) {
 		`{"grant_type":"password","client_id":"nope"}`)
 	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid_client") {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// —— Task 13：userinfo 自校验 ——
+
+// fakeValidator token.Validator 桩（token 模式 userinfo 用）。
+type fakeValidator struct {
+	claims *token.Claims
+	err    error
+}
+
+func (f *fakeValidator) Validate(context.Context, string) (*token.Claims, error) {
+	return f.claims, f.err
+}
+
+// newValidatorRouter 带 Validator 的协议路由（其余依赖与 newProtoRouter 同款填充）。
+func newValidatorRouter(t *testing.T, cfg *config.Config, v token.Validator) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Oauth2Client{}, &model.Oauth2AuthorizeCode{}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg == nil {
+		cfg = &config.Config{}
+		cfg.Auth.LoginPage = "/auth/login"
+	}
+	proto := NewProtocolController(ProtocolDeps{
+		Captcha:   oauth2svc.NewCaptchaService(oauth2svc.CaptchaDeps{Cfg: cfg}),
+		Codes:     oauth2svc.NewAuthorizeCodeService(repository.NewAuthorizeCodeRepository(db)),
+		Clients:   oauth2svc.NewClientService(repository.NewClientRepository(db)),
+		Cfg:       cfg,
+		Validator: v,
+	})
+	r := gin.New()
+	proto.Register(r.Group("/api"))
+	return r
+}
+
+func userInfoGet(r *gin.Engine, bearer string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth2/userinfo", nil)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// jwt 模式：auth.ParseToken 自校验，恒按管理员回（对齐中间件 parseClaims）。
+func TestUserInfo_JwtMode_OK(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Auth.Mode = "jwt"
+	cfg.System.JWTSecret = "userinfo-secret"
+	tok, err := auth.GenerateToken(3, "alice", 0, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := userInfoGet(newValidatorRouter(t, cfg, nil), tok)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["user_id"] != float64(3) || body["username"] != "alice" ||
+		body["user_type"] != float64(1) || body["scope"] != "all" {
+		t.Errorf("body = %v", body)
+	}
+}
+
+// token 模式：Validator 自校验，user_type/tenant_id 原样透传（member=2）。
+func TestUserInfo_TokenMode_OK(t *testing.T) {
+	v := &fakeValidator{claims: &token.Claims{
+		UserID: 5, Username: "bob", UserType: token.UserTypeMember, TenantID: 7,
+	}}
+	w := userInfoGet(newValidatorRouter(t, nil, v), "opaque-1")
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["user_id"] != float64(5) || body["username"] != "bob" ||
+		body["user_type"] != float64(2) || body["tenant_id"] != float64(7) {
+		t.Errorf("body = %v", body)
+	}
+}
+
+// 缺 token / 坏 token → 401 invalid_token（RFC 信封），绝不 200。
+func TestUserInfo_MissingOrBad_401(t *testing.T) {
+	w := userInfoGet(newValidatorRouter(t, nil, nil), "")
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid_token") {
+		t.Errorf("missing: code=%d body=%s", w.Code, w.Body.String())
+	}
+	cfg := &config.Config{}
+	cfg.Auth.Mode = "jwt"
+	cfg.System.JWTSecret = "s"
+	w = userInfoGet(newValidatorRouter(t, cfg, nil), "garbage")
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid_token") {
+		t.Errorf("bad: code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// token 模式 Validator 未装配 → fail-closed 401（裁决 1：装配错绝不放行）。
+func TestUserInfo_ValidatorMissing_401(t *testing.T) {
+	w := userInfoGet(newValidatorRouter(t, nil, nil), "any-token")
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid_token") {
+		t.Errorf("code=%d body=%s", w.Code, w.Body.String())
 	}
 }

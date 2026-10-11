@@ -65,3 +65,24 @@ func TestInfraSeed_PermsRegistered(t *testing.T) {
 		t.Error("种子迁移未扫到任何权限码——正则或 SQL 结构变了，测试失效")
 	}
 }
+
+// Task 13：oauth2 client 管理路由前缀必须注册——否则 Task 16 菜单种子产生的
+// oauth2:client 权限在 Casbin 无 policy，admin 打 client 管理页 403。
+func TestPermissionRoutes_Oauth2ClientRegistered(t *testing.T) {
+	patterns, ok := permissionRoutes["oauth2:client"]
+	if !ok {
+		t.Fatal("permissionRoutes 缺 oauth2:client（client 管理页会 403）")
+	}
+	want := []string{"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"}
+	for _, w := range want {
+		found := false
+		for _, p := range patterns {
+			if p == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("oauth2:client 缺路由模式 %q, got %v", w, patterns)
+		}
+	}
+}

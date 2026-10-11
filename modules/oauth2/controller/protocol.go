@@ -3,24 +3,28 @@ package controller
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 
 	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/token"
 )
 
 // ProtocolDeps 协议控制器依赖（Task 9 起 fx.In 结构体 ctor——
 // Task 11 加 Login/Tokens、Task 13 加 Validator，ctor 签名不再变）。
 type ProtocolDeps struct {
 	fx.In
-	Captcha *oauth2svc.CaptchaService
-	Codes   *oauth2svc.AuthorizeCodeService
-	Clients *oauth2svc.ClientService
-	Cfg     *config.Config
-	Login   oauth2svc.UnifiedLogin
-	Tokens  *oauth2svc.TokenService
+	Captcha   *oauth2svc.CaptchaService
+	Codes     *oauth2svc.AuthorizeCodeService
+	Clients   *oauth2svc.ClientService
+	Cfg       *config.Config
+	Login     oauth2svc.UnifiedLogin
+	Tokens    *oauth2svc.TokenService
+	Validator token.Validator `optional:"true"` // Task 13 追加
 }
 
 // ProtocolController 协议端点（RFC 6749 信封 {"error","error_description"}，
@@ -39,6 +43,7 @@ func (p *ProtocolController) Register(r gin.IRouter) {
 	r.GET("/oauth2/authorize", p.authorize)
 	r.POST("/oauth2/authorize/login", p.authorizeLogin)
 	r.POST("/oauth2/token", p.token)
+	r.GET("/oauth2/userinfo", p.userInfo)
 }
 
 // protocolErr 写 RFC 6749 错误信封；不设 Location（400 绝不 302 的结构保证）。
@@ -212,4 +217,50 @@ func (p *ProtocolController) token(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// userInfo GET /api/oauth2/userinfo —— 按 token 取当前账号信息（spec §5，第三方接入常用）。
+// 公开路径无中间件 claims，故自校验（裁决 1）：
+// jwt 模式 auth.ParseToken 并恒回 user_type=1（对齐中间件 parseClaims——旧静态 JWT
+// 仅管理端签发）；token 模式 Validator.Validate 原样透传；Validator 未装配 fail-closed 401。
+// 失败/缺 token 一律 RFC 6749 信封 401 invalid_token。
+func (p *ProtocolController) userInfo(c *gin.Context) {
+	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(c.GetHeader("Authorization")), "Bearer "))
+	if raw == "" {
+		p.protocolErr(c, http.StatusUnauthorized, "invalid_token", "缺少 access token")
+		return
+	}
+	var (
+		uid    uint64
+		name   string
+		utype  int
+		tenant uint64
+	)
+	if p.deps.Cfg != nil && p.deps.Cfg.Auth.Mode == "jwt" {
+		cl, err := auth.ParseToken(raw, p.deps.Cfg)
+		if err != nil {
+			p.protocolErr(c, http.StatusUnauthorized, "invalid_token", "token 无效或已过期")
+			return
+		}
+		uid, name, tenant = cl.UserID, cl.Username, cl.TenantID
+		utype = int(token.UserTypeAdmin) // 旧静态 JWT 恒管理员（与中间件一致）
+	} else {
+		if p.deps.Validator == nil {
+			p.protocolErr(c, http.StatusUnauthorized, "invalid_token", "token 校验器未装配")
+			return
+		}
+		cl, err := p.deps.Validator.Validate(c.Request.Context(), raw)
+		if err != nil {
+			p.protocolErr(c, http.StatusUnauthorized, "invalid_token", "token 无效或已过期")
+			return
+		}
+		uid, name, utype, tenant = cl.UserID, cl.Username, int(cl.UserType), cl.TenantID
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":   uid,
+		"username":  name,
+		"user_type": utype,
+		"tenant_id": tenant,
+		"scope":     "all", // spec：不做 scope 树，默认 all 单值
+	})
 }
