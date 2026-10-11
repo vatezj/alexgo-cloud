@@ -295,6 +295,45 @@ func TestExchange_AuthCode_BadCode_400(t *testing.T) {
 	}
 }
 
+// Review Focus #3（授权码支）：账号类型白名单同样拦 authorization_code 换 token——
+// member 授权码 + system-only client → 400 unauthorized_client，且不得签发。
+// CAS 语义：Exchange 的 MarkRevoked 先于白名单检查，故白名单失败当次码即被消费，
+// 重放必须 400 invalid_grant（钉死「消费不回滚」的实际行为）。
+func TestExchange_AuthCode_AccountTypeNotAllowed(t *testing.T) {
+	svc, clients, codes, ul, _ := newTestTokenSvc(t, "token")
+	seedAdminClient(t, clients) // AccountTypes: "system"
+	redirect := "http://localhost:5173/callback"
+	code, err := codes.Issue(context.Background(), IssueCodeParams{
+		ClientID: "alexgo-admin", UserID: 5, Username: "13800000001",
+		AccountType: AccountTypeMember, TenantID: 0,
+		RedirectURI: redirect, Scopes: "all",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &TokenRequest{
+		GrantType: GrantAuthorizationCode, ClientID: "alexgo-admin",
+		Code: code, RedirectURI: redirect,
+	}
+
+	res, perr := svc.Exchange(context.Background(), req)
+	if res != nil {
+		t.Errorf("应拒, res = %+v", res)
+	}
+	if perr == nil || perr.Status != 400 || perr.Code != "unauthorized_client" {
+		t.Fatalf("perr = %+v, want 400 unauthorized_client", perr)
+	}
+	if len(ul.issued) != 0 {
+		t.Errorf("白名单拒后不得签发, issued = %d", len(ul.issued))
+	}
+
+	// 码已在白名单检查前被 CAS 消费：重放 → invalid_grant（而非再次 unauthorized_client）。
+	_, perr2 := svc.Exchange(context.Background(), req)
+	if perr2 == nil || perr2.Status != 400 || perr2.Code != "invalid_grant" {
+		t.Fatalf("重放 perr = %+v, want 400 invalid_grant", perr2)
+	}
+}
+
 func TestLoginProtoErr_Mapping(t *testing.T) {
 	cases := []struct {
 		err    error
