@@ -149,13 +149,105 @@ func (s *codegenService) ListColumns(ctx context.Context, tableID uint64) ([]*mo
 	return s.repo.ListColumns(ctx, tableID)
 }
 
-// Sync：未导入的表 → ErrTableNotFound（不静默建行）。
-// diff 分类与落库在 Task 6 补全；此处先钉前置校验语义。
+// Sync 重读元数据并按 spec §9.4 分类：新列全关插入、消失列标 deprecated、
+// 快照刷新不碰配置、重现恢复。整个落库走 repo.ApplySync 单事务。
 func (s *codegenService) Sync(ctx context.Context, tableID uint64) (*model.SyncResult, error) {
-	if _, err := s.repo.GetTable(ctx, tableID); err != nil {
+	t, err := s.repo.GetTable(ctx, tableID)
+	if err != nil {
 		return nil, fmt.Errorf("%w: table %d not imported", cgmodel.ErrTableNotFound, tableID)
 	}
-	return nil, errors.New("sync diff not implemented yet")
+	meta, err := s.reader.ReadTable(ctx, t.Name)
+	if err != nil {
+		return nil, err
+	}
+	tbl, err := builder.Build(meta, s.opts)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := s.repo.ListColumns(ctx, tableID)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]*model.CodegenColumn, len(existing))
+	for _, c := range existing {
+		byName[c.Name] = c
+	}
+	// 快照 Type 取元数据 ColumnType（model.Column 无 DBType，按列名联表）。
+	metaByName := make(map[string]*metadata.ColumnMeta, len(meta.Columns))
+	for i := range meta.Columns {
+		metaByName[meta.Columns[i].Name] = &meta.Columns[i]
+	}
+
+	diff := model.SyncDiff{}
+	res := &model.SyncResult{}
+	maxSort := -1
+	for _, c := range existing {
+		if c.SortOrder > maxSort {
+			maxSort = c.SortOrder
+		}
+	}
+
+	seen := make(map[string]bool, len(tbl.Columns))
+	for _, gc := range tbl.Columns {
+		seen[gc.Name] = true
+		cm := metaByName[gc.Name]
+		if cm == nil {
+			return nil, fmt.Errorf("%w: %s: column %q missing in metadata", cgmodel.ErrColumnInvalid, meta.Name, gc.Name)
+		}
+		cur, ok := byName[gc.Name]
+		if !ok {
+			// 新列：全部开关默认关闭（§9.4），sort 接在既有最大之后
+			maxSort++
+			diff.Added = append(diff.Added, &model.CodegenColumn{
+				Name: gc.Name, Type: cm.ColumnType, Comment: gc.Comment,
+				GoType: gc.GoType, JSONName: gc.JSONName,
+				IsPK: gc.IsPK, AutoIncrement: gc.AutoIncrement, Nullable: gc.Nullable,
+				HTMLType: "", ListEnable: false, FormEnable: false, QueryEnable: false,
+				QueryOperation: "eq", SortOrder: maxSort, Deprecated: false,
+			})
+			res.Added++
+			continue
+		}
+		// 快照对比：命中差异或从 deprecated 复活 → Refresh（配置字段不进 diff）
+		changed := cur.Type != cm.ColumnType || cur.Comment != gc.Comment ||
+			cur.GoType != gc.GoType || cur.JSONName != gc.JSONName ||
+			cur.IsPK != gc.IsPK || cur.AutoIncrement != gc.AutoIncrement ||
+			cur.Nullable != gc.Nullable
+		if changed || cur.Deprecated {
+			refresh := *cur
+			refresh.Type = cm.ColumnType
+			refresh.Comment = gc.Comment
+			refresh.GoType = gc.GoType
+			refresh.JSONName = gc.JSONName
+			refresh.IsPK = gc.IsPK
+			refresh.AutoIncrement = gc.AutoIncrement
+			refresh.Nullable = gc.Nullable
+			refresh.Deprecated = false
+			diff.Refresh = append(diff.Refresh, &refresh)
+			res.Updated++
+		} else {
+			res.Unchanged++
+		}
+	}
+	for _, c := range existing {
+		if !seen[c.Name] {
+			// §9.4：只对 deprecated=0 的行标 deprecated；已标过的本轮无变化。
+			if c.Deprecated {
+				res.Unchanged++
+				continue
+			}
+			diff.Deprecated = append(diff.Deprecated, c.ID)
+			res.Deprecated++
+		}
+	}
+
+	if len(diff.Added) > 0 || len(diff.Refresh) > 0 || len(diff.Deprecated) > 0 ||
+		t.TableComment != meta.Comment {
+		if err := s.repo.ApplySync(ctx, tableID, meta.Comment, diff); err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
 }
 
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)

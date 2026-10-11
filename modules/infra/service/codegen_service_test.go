@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -36,9 +37,15 @@ func (f *fakeReader) ReadTable(_ context.Context, name string) (*metadata.TableM
 	return &cp, nil
 }
 
+// col 构造元数据列：dataType 传完整类型（如 "varchar(255)"），
+// DataType 取基准类型（builder 按 DataType 映射），ColumnType 存完整类型。
 func col(name, dataType, key, extra string) metadata.ColumnMeta {
+	base := dataType
+	if i := strings.Index(dataType, "("); i > 0 {
+		base = dataType[:i]
+	}
 	return metadata.ColumnMeta{
-		Name: name, DataType: dataType, ColumnType: dataType, Key: key, Extra: extra,
+		Name: name, DataType: base, ColumnType: dataType, Key: key, Extra: extra,
 	}
 }
 
