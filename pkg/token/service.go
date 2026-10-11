@@ -104,12 +104,11 @@ func (s *Service) Issue(ctx context.Context, p IssueParams) (*Issued, error) {
 	if err != nil {
 		return nil, err
 	}
-	refresh := "" // 机机 token 不带 refresh（D9：type 3 不写 refresh）
-	if p.UserType != UserTypeClient {
-		refresh, err = randomToken(24) // 32 字符以内（列宽 varchar(32)，base64url 24字节→32字符）
-		if err != nil {
-			return nil, err
-		}
+	// 全类型恒生成随机 refresh 落库（含 type 3）：生产表 uk_refresh_token 非空唯一，
+	// type-3 恒写 '' 会让第二笔 client_credentials 撞 1062 → 500（Critical #1）。
+	refresh, err := randomToken(24) // 32 字符以内（列宽 varchar(32)，base64url 24字节→32字符）
+	if err != nil {
+		return nil, err
 	}
 	row := accessToken{
 		UserID:       p.UserID,
@@ -124,7 +123,11 @@ func (s *Service) Issue(ctx context.Context, p IssueParams) (*Issued, error) {
 	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
 	}
-	return &Issued{AccessToken: access, RefreshToken: refresh, ExpiresIn: int64(s.accessExpire().Seconds())}, nil
+	returned := refresh
+	if p.UserType == UserTypeClient {
+		returned = "" // D9 响应契约：机机 token 不带 refresh（仅对调用方隐藏，落库仍是上面的随机串）
+	}
+	return &Issued{AccessToken: access, RefreshToken: returned, ExpiresIn: int64(s.accessExpire().Seconds())}, nil
 }
 
 // Validate 查库校验（DB 为权威，无进程内缓存）。username/dept_id 从对应用户表加载
@@ -193,6 +196,12 @@ func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims,
 // Refresh 轮换：刷新窗口 = create_time + refreshExpireDay（不是 access 的 expires_time——
 // access 过期后 7 天内仍可刷新，与 SweepExpired 的 7 天保留期对齐），旧 refresh 单次使用。
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Issued, error) {
+	// T6 收口（Important #2）：空串必须在**源头**拒——gRPC RefreshToken 直通调用方，
+	// 库内存在 refresh_token='' 残留行（列 DEFAULT ''）时，空串会命中该行并
+	//「刷」出新 token（删行+轮换）。在此拒绝一处覆盖全部调用方。
+	if refreshToken == "" {
+		return nil, fmt.Errorf("token: invalid refresh token")
+	}
 	var row accessToken
 	err := s.db.WithContext(ctx).Where("refresh_token = ?", refreshToken).First(&row).Error
 	if err != nil || time.Since(row.CreatedAt) > s.refreshExpire() {

@@ -242,6 +242,67 @@ func TestIssue_ClientCredentials_MissingClientID(t *testing.T) {
 	}
 }
 
+// Critical #1：机机 token 落库必须带随机 refresh——生产表 uk_refresh_token
+// 非空唯一，type-3 恒写 '' 会让第二笔 client_credentials 撞 1062 → 500。
+// 响应契约不变（D9 机机不带 refresh）：返回值恒为空串。
+func TestIssue_ClientCredentials_MultipleIssuances_OK(t *testing.T) {
+	svc := newTestService(t)
+	// sqlite AutoMigrate 不建 uk_refresh_token（模型未打 uniqueIndex 标签），
+	// 手工补生产唯一索引——否则单元层看不见 1062 冲突（对齐 MySQL DDL 第 18 行）。
+	if err := svc.db.Exec(
+		`CREATE UNIQUE INDEX uk_refresh_token ON system_oauth2_access_token(refresh_token)`,
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 2; i++ {
+		issued, err := svc.Issue(context.Background(), IssueParams{
+			UserID: 0, UserType: UserTypeClient, TenantID: 0, ClientID: "svc-bot",
+		})
+		if err != nil {
+			t.Fatalf("第 %d 笔机机签发失败（refresh 空串单槽撞唯一键？）: %v", i, err)
+		}
+		if issued.RefreshToken != "" {
+			t.Fatalf("第 %d 笔响应不该带 refresh（D9 契约）, got %q", i, issued.RefreshToken)
+		}
+	}
+}
+
+// Important #2（T6 收口）：Refresh 必须在源头拒空串——gRPC RefreshToken 直通，
+// 库内存在 refresh_token='' 残留行（修复前 type-3 落库形态 / 列 DEFAULT ''）时，
+// 空串不得命中、删行或轮换。
+func TestRefresh_EmptyStringRejected_NoRowTouched(t *testing.T) {
+	svc := newTestService(t)
+	normal := mustIssue(t, svc)
+	// 造 refresh_token='' 的残留行（模拟修复前 type-3 落库形态）。
+	if err := svc.db.Exec(
+		`INSERT INTO system_oauth2_access_token
+			(user_id, user_type, access_token, refresh_token, client_id, scopes, expires_time, create_time, tenant_id)
+		 VALUES (9, 1, 'legacy-access', '', 'legacy-client', 'all', ?, ?, 1)`,
+		time.Now().Add(time.Hour), time.Now(),
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.Refresh(context.Background(), ""); err == nil {
+		t.Fatal(`Refresh("") 必须拒绝`)
+	}
+
+	// 拒绝必须发生在查库之前：残留行未被删/轮换，正常 token 不受牵连。
+	var n int64
+	if err := svc.db.Model(&accessToken{}).Where("refresh_token = ''").Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("空串刷新不得删行, n = %d, want 1", n)
+	}
+	if _, err := svc.Validate(context.Background(), "legacy-access"); err != nil {
+		t.Errorf("残留行不得被轮换删除: %v", err)
+	}
+	if _, err := svc.Validate(context.Background(), normal.AccessToken); err != nil {
+		t.Errorf("正常 token 不得受牵连: %v", err)
+	}
+}
+
 // D9：UserType 枚举白名单——未知类型必须拒（新行为）。
 func TestIssue_UnknownTypeRejected(t *testing.T) {
 	svc := newTestService(t)
