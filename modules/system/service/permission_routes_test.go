@@ -86,3 +86,35 @@ func TestPermissionRoutes_Oauth2ClientRegistered(t *testing.T) {
 		}
 	}
 }
+
+// 扫 oauth2 菜单种子 SQL：出现的 oauth2:client* 权限码前缀必须都已注册路由——
+// 否则 Task 16 种子产生的页面/按钮在 Casbin 无 policy，admin 403。
+// 正则要求冒号：目录权限字面量 'oauth2' 与 LIKE 'oauth2:%' 天然排除
+//（前者无冒号不匹配；后者冒号后是 %，不在 [a-z0-9_:] 字符类内）。
+func TestOauth2Seed_PermsRegistered(t *testing.T) {
+	migPath := filepath.Join("..", "migrations")
+	entries, err := os.ReadDir(migPath)
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	permRe := regexp.MustCompile(`'(oauth2:[a-z0-9_:]+)'`)
+	checked := 0
+	for _, e := range entries {
+		if !strings.Contains(e.Name(), "oauth2_client_menu") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(migPath, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range permRe.FindAllStringSubmatch(string(b), -1) {
+			checked++
+			if _, ok := permissionRoutes[permPrefix(m[1])]; !ok {
+				t.Errorf("%s 中权限码 %q 前缀 %q 未注册路由", e.Name(), m[1], permPrefix(m[1]))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("oauth2 菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
+	}
+}

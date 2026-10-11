@@ -300,3 +300,45 @@ func restoreSeedMenus(t *testing.T, raw *sql.DB) {
 		t.Errorf("还原角色绑定: %v", err)
 	}
 }
+
+const oauth2SeedSQLPath = "modules/system/migrations/20261011000003_oauth2_client_menu.up.sql"
+
+// oauth2SeedMenuCount 与 runner 双跑测试同口径的种子行计数：
+// 目录/页面按 path+type，按钮按 permission（页面两条件 OR 命中去重，恒计 1 行）。
+func oauth2SeedMenuCount(t *testing.T, raw *sql.DB) int64 {
+	t.Helper()
+	var n int64
+	if err := raw.QueryRow(`SELECT COUNT(*) FROM menus
+		WHERE (path IN ('/oauth2','/oauth2/clients') AND type IN ('dir','menu') AND deleted = 0)
+		   OR (permission LIKE 'oauth2:%' AND deleted = 0)`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// 直跑 up.sql 原文两遍：对 NOT EXISTS 守卫的真断言——守卫被删时本测试必须失败
+//（runner 双跑测不出，评审 Important#3 的既定模式，抄 TestInfraSeedMenus_SQLFileExecutedTwiceStable）。
+func TestOauth2MenuSeed_SQLFileExecutedTwiceStable(t *testing.T) {
+	raw := openMultiStmtDB(t)
+	_, runner := runSystem(t)
+	if err := runner.Run(); err != nil {
+		t.Fatalf("baseline run: %v", err)
+	}
+	src, err := os.ReadFile(oauth2SeedSQLPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := oauth2SeedMenuCount(t, raw)
+	for i := 1; i <= 2; i++ {
+		if _, err := raw.Exec(string(src)); err != nil {
+			t.Fatalf("直跑 SQL #%d: %v", i, err)
+		}
+	}
+	after := oauth2SeedMenuCount(t, raw)
+	if after != before {
+		t.Errorf("直跑两遍行数变化: %d → %d", before, after)
+	}
+	if after != 5 {
+		t.Errorf("菜单数 = %d, want 5（目录+页面+3按钮）", after)
+	}
+}
