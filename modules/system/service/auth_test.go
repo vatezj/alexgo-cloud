@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
@@ -71,40 +72,6 @@ func hashOf(pw string) string {
 	return string(h)
 }
 
-func TestLogin_IssuesToken(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Auth.Mode = "token"
-	iss := &fakeIssuer{issued: &token.Issued{AccessToken: "a1", RefreshToken: "r1", ExpiresIn: 7200}}
-	svc := NewAuthService(cfg, &fakeUserRepo{user: enabledUser()}, fakePerm{}, iss)
-
-	res, u, err := svc.Login(context.Background(), "alice", "pw")
-	if err != nil {
-		t.Fatalf("Login() error = %v", err)
-	}
-	if res.AccessToken != "a1" || res.RefreshToken != "r1" || res.ExpiresIn != 7200 {
-		t.Errorf("res = %+v", res)
-	}
-	if u.ID != 3 {
-		t.Errorf("user = %+v", u)
-	}
-	if iss.issueCalls != 1 {
-		t.Errorf("Issue calls = %d, want 1", iss.issueCalls)
-	}
-}
-
-func TestLogin_BadPassword_NoIssue(t *testing.T) {
-	cfg := &config.Config{}
-	iss := &fakeIssuer{issued: &token.Issued{AccessToken: "a1", RefreshToken: "r1", ExpiresIn: 7200}}
-	svc := NewAuthService(cfg, &fakeUserRepo{user: enabledUser()}, fakePerm{}, iss)
-	if _, _, err := svc.Login(context.Background(), "alice", "wrong"); err == nil {
-		t.Fatal("wrong password must fail")
-	}
-	// 判别性断言：密码错误绝不允许触碰签发器。
-	if iss.issueCalls != 0 {
-		t.Errorf("Issue calls = %d, want 0（must not issue on bad password）", iss.issueCalls)
-	}
-}
-
 func TestLogout_Revoke(t *testing.T) {
 	iss := &fakeIssuer{}
 	svc := NewAuthService(&config.Config{}, &fakeUserRepo{}, fakePerm{}, iss)
@@ -116,22 +83,29 @@ func TestLogout_Revoke(t *testing.T) {
 	}
 }
 
-// TestLogin_JwtRollbackMode：回滚开关（spec §4.2.6）端到端——mode=jwt 时
-// 登录必须签发旧静态 JWT（中间件 jwt 分支用 auth.ParseToken 校验），
-// 且绝不触碰 token.Issuer；Refresh 快速拒绝、Logout 幂等 no-op。
+// TestLogin_JwtRollbackMode：回滚开关端到端——mode=jwt 时统一登录必须签发旧静态
+// JWT（auth.ParseToken 可解析），且绝不触碰 token.Issuer；Refresh 快速拒绝、Logout 幂等。
 func TestLogin_JwtRollbackMode(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Auth.Mode = "jwt"
 	cfg.System.JWTSecret = "rollback-secret"
 	iss := &fakeIssuer{issued: &token.Issued{AccessToken: "a1", RefreshToken: "r1", ExpiresIn: 7200}}
-	svc := NewAuthService(cfg, &fakeUserRepo{user: enabledUser()}, fakePerm{}, iss)
+	ul := oauth2svc.NewUnifiedLogin(oauth2svc.UnifiedDeps{
+		Cfg:      cfg,
+		Issuer:   iss,
+		Captcha:  oauth2svc.NewCaptchaService(oauth2svc.CaptchaDeps{Cfg: cfg}),
+		UserAuth: NewUserAuthenticator(&fakeUserRepo{user: enabledUser()}, fakePerm{}),
+		JWTGen:   NewJWTGenerator(cfg),
+	})
 
-	res, u, err := svc.Login(context.Background(), "alice", "pw")
+	res, _, err := ul.Login(context.Background(), oauth2svc.LoginParams{
+		AccountType: oauth2svc.AccountTypeSystem,
+		Username:    "alice",
+		Password:    "pw",
+		ClientID:    "alexgo-admin",
+	})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
-	}
-	if u.ID != 3 {
-		t.Errorf("user = %+v", u)
 	}
 	// 判别性①：jwt 回滚绝不走不透明令牌签发器。
 	if iss.issueCalls != 0 {
@@ -145,11 +119,11 @@ func TestLogin_JwtRollbackMode(t *testing.T) {
 	if claims.UserID != 3 || claims.Username != "alice" {
 		t.Errorf("claims = %+v", claims)
 	}
-	// 判别性③：jwt 模式下 Refresh 快速拒绝（无轮换语义）。
+	// 判别性③：Refresh 快速拒绝 / Logout 幂等 —— 归属未缩的 AuthService。
+	svc := NewAuthService(cfg, &fakeUserRepo{}, fakePerm{}, iss)
 	if _, rerr := svc.Refresh(context.Background(), "r1"); rerr == nil {
 		t.Error("Refresh must be rejected in jwt mode")
 	}
-	// 静态 JWT 无状态无法吊销 → logout 幂等成功。
 	if lerr := svc.Logout(context.Background(), res.AccessToken); lerr != nil {
 		t.Errorf("Logout() in jwt mode = %v, want nil", lerr)
 	}

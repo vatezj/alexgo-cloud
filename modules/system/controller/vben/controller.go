@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
 )
@@ -17,23 +18,23 @@ import (
 var errInvalidCredentials = errors.New("invalid username or password")
 
 type Controller struct {
-	authSvc  service.AuthService
-	auditSvc service.AuditService
-	permSvc  service.PermissionService
-	userSvc  service.UserService
+	unified oauth2svc.UnifiedLogin
+	authSvc service.AuthService
+	permSvc service.PermissionService
+	userSvc service.UserService
 }
 
 func NewController(
+	login oauth2svc.UnifiedLogin,
 	authSvc service.AuthService,
-	auditSvc service.AuditService,
 	permSvc service.PermissionService,
 	userSvc service.UserService,
 ) *Controller {
 	return &Controller{
-		authSvc:  authSvc,
-		auditSvc: auditSvc,
-		permSvc:  permSvc,
-		userSvc:  userSvc,
+		unified: login,
+		authSvc: authSvc,
+		permSvc: permSvc,
+		userSvc: userSvc,
 	}
 }
 
@@ -56,29 +57,37 @@ func fail(c *gin.Context, status int, msg string) {
 	c.JSON(status, gin.H{"code": status, "data": nil, "error": msg, "message": msg})
 }
 
-// Login POST /api/auth/login —— vben 登录页契约。
-// 失败：401 + 信封（errorMessage 拦截器会把 error 文案弹给用户）。
+// Login POST /api/auth/login —— vben 登录页契约（内部走统一登录；D13 审计在服务层恰一次）。
+// 映射：captcha 拒绝 → 400；其余错误 → 401 固定文案（契约不变，防枚举）。
 func (ctrl *Controller) Login(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		CaptchaUUID string `json:"captcha_uuid"`
+		CaptchaCode string `json:"captcha_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	ip, ua := c.ClientIP(), c.GetHeader("User-Agent")
-	res, u, err := ctrl.authSvc.Login(c.Request.Context(), req.Username, req.Password)
+	res, _, err := ctrl.unified.Login(c.Request.Context(), oauth2svc.LoginParams{
+		AccountType: oauth2svc.AccountTypeSystem,
+		Username:    req.Username,
+		Password:    req.Password,
+		ClientID:    "alexgo-admin",
+		CaptchaUUID: req.CaptchaUUID,
+		CaptchaCode: req.CaptchaCode,
+		IP:          c.ClientIP(),
+		UserAgent:   c.GetHeader("User-Agent"),
+	})
 	if err != nil {
-		_ = ctrl.auditSvc.RecordLogin(c.Request.Context(), req.Username, 0, ip, ua, false, err.Error())
+		if errors.Is(err, oauth2svc.ErrCaptchaInvalid) {
+			fail(c, http.StatusBadRequest, "captcha invalid")
+			return
+		}
 		fail(c, http.StatusUnauthorized, errInvalidCredentials.Error())
 		return
 	}
-	var userID uint64
-	if u != nil {
-		userID = u.ID
-	}
-	_ = ctrl.auditSvc.RecordLogin(c.Request.Context(), req.Username, userID, ip, ua, true, "ok")
 	ok(c, gin.H{
 		"accessToken":  res.AccessToken,
 		"refreshToken": res.RefreshToken,

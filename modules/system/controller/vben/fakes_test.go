@@ -3,22 +3,14 @@ package vben
 import (
 	"context"
 
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/service"
 )
 
-// fakeAuth 实现 service.AuthService：Login 按注入值返回；Logout 记账。
+// fakeAuth 实现缩编后的 service.AuthService（Login 已下线）：Logout 记账。
 type fakeAuth struct {
-	loginRes    *service.LoginResult
-	loginErr    error
 	logoutCount int
-}
-
-func (f *fakeAuth) Login(_ context.Context, _, _ string) (*service.LoginResult, *model.User, error) {
-	if f.loginErr != nil {
-		return nil, nil, f.loginErr
-	}
-	return f.loginRes, &model.User{ID: 7, Username: "admin"}, nil
 }
 
 func (f *fakeAuth) Refresh(_ context.Context, _ string) (*service.LoginResult, error) {
@@ -30,23 +22,33 @@ func (f *fakeAuth) Logout(_ context.Context, _ string) error {
 	return nil
 }
 
-// fakeAudit 实现 service.AuditService：记录 RecordLogin 的 success 序列。
-type fakeAudit struct {
-	successes []bool
+// fakeUnified 实现 oauth2svc.UnifiedLogin：Login 按注入值返回并记账（断言 AccountType/ClientID）。
+type fakeUnified struct {
+	res    *oauth2svc.LoginResult
+	err    error
+	logins []oauth2svc.LoginParams
 }
 
-func (f *fakeAudit) RecordLogin(_ context.Context, _ string, _ uint64, _, _ string, success bool, _ string) error {
-	f.successes = append(f.successes, success)
-	return nil
+func (f *fakeUnified) Login(_ context.Context, p oauth2svc.LoginParams) (*oauth2svc.LoginResult, *oauth2svc.AuthIdentity, error) {
+	f.logins = append(f.logins, p)
+	if f.err != nil {
+		return nil, nil, f.err
+	}
+	return f.res, &oauth2svc.AuthIdentity{UserID: 7, Username: p.Username, AccountType: p.AccountType}, nil
 }
-
-func (f *fakeAudit) RecordOperate(context.Context, uint64, string, string, string, int, int64, string) error {
-	return nil
+func (f *fakeUnified) AuthorizeLogin(_ context.Context, p oauth2svc.LoginParams) (*oauth2svc.AuthIdentity, error) {
+	f.logins = append(f.logins, p)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &oauth2svc.AuthIdentity{UserID: 7, Username: p.Username, AccountType: p.AccountType}, nil
 }
-
-func (f *fakeAudit) ListLogin(context.Context, int) ([]*model.LoginLog, error) { return nil, nil }
-
-func (f *fakeAudit) ListOperate(context.Context, int) ([]*model.OperateLog, error) { return nil, nil }
+func (f *fakeUnified) IssueFor(_ context.Context, _ *oauth2svc.AuthIdentity, _ string) (*oauth2svc.LoginResult, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.res, nil
+}
 
 // fakePerm 实现 service.PermissionService（本阶段 Login 不触达，返回空）。
 type fakePerm struct {

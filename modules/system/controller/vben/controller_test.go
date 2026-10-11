@@ -9,16 +9,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
 )
 
-func newTestRouter(auth *fakeAuth, audit *fakeAudit, perm *fakePerm, user *fakeUser) *gin.Engine {
+func newTestRouter(auth *fakeAuth, unified *fakeUnified, perm *fakePerm, user *fakeUser) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	// Register 挂在 /api 根组上（全路径 /api/auth/login），与 server 装配一致。
-	NewController(auth, audit, perm, user).Register(r.Group("/api"))
+	NewController(unified, auth, perm, user).Register(r.Group("/api"))
 	return r
 }
 
@@ -31,11 +32,8 @@ func postJSON(r *gin.Engine, path, body string) *httptest.ResponseRecorder {
 }
 
 func TestLogin_Success_Envelope(t *testing.T) {
-	auth := &fakeAuth{loginRes: &service.LoginResult{
-		AccessToken: "at-1", RefreshToken: "rt-1", ExpiresIn: 7200,
-	}}
-	audit := &fakeAudit{}
-	w := postJSON(newTestRouter(auth, audit, &fakePerm{}, &fakeUser{}),
+	unified := &fakeUnified{res: &oauth2svc.LoginResult{AccessToken: "at-1", RefreshToken: "rt-1", ExpiresIn: 7200}}
+	w := postJSON(newTestRouter(&fakeAuth{}, unified, &fakePerm{}, &fakeUser{}),
 		"/api/auth/login", `{"username":"admin","password":"admin123"}`)
 
 	if w.Code != http.StatusOK {
@@ -59,15 +57,16 @@ func TestLogin_Success_Envelope(t *testing.T) {
 	if resp.Data.AccessToken != "at-1" || resp.Data.RefreshToken != "rt-1" || resp.Data.ExpiresIn != 7200 {
 		t.Errorf("data = %+v, want vben accessToken/refreshToken/expiresIn", resp.Data)
 	}
-	if len(audit.successes) != 1 || !audit.successes[0] {
-		t.Errorf("audit successes = %v, want [true]", audit.successes)
+	if len(unified.logins) != 1 ||
+		unified.logins[0].AccountType != oauth2svc.AccountTypeSystem ||
+		unified.logins[0].ClientID != "alexgo-admin" {
+		t.Errorf("logins = %+v, want 恰一次且 account_type=system client_id=alexgo-admin", unified.logins)
 	}
 }
 
 func TestLogin_WrongPassword_401Envelope(t *testing.T) {
-	auth := &fakeAuth{loginErr: errInvalidCredentials}
-	audit := &fakeAudit{}
-	w := postJSON(newTestRouter(auth, audit, &fakePerm{}, &fakeUser{}),
+	unified := &fakeUnified{err: oauth2svc.ErrInvalidCredentials}
+	w := postJSON(newTestRouter(&fakeAuth{}, unified, &fakePerm{}, &fakeUser{}),
 		"/api/auth/login", `{"username":"admin","password":"nope"}`)
 
 	if w.Code != http.StatusUnauthorized {
@@ -84,13 +83,22 @@ func TestLogin_WrongPassword_401Envelope(t *testing.T) {
 	if resp.Code != 401 || resp.Error == "" || resp.Data != nil {
 		t.Errorf("envelope = %+v, want {code:401, data:null, error:非空}", resp)
 	}
-	if len(audit.successes) != 1 || audit.successes[0] {
-		t.Errorf("audit successes = %v, want [false]", audit.successes)
+}
+
+func TestLogin_CaptchaInvalid_400(t *testing.T) {
+	unified := &fakeUnified{err: oauth2svc.ErrCaptchaInvalid}
+	w := postJSON(newTestRouter(&fakeAuth{}, unified, &fakePerm{}, &fakeUser{}),
+		"/api/auth/login", `{"username":"admin","password":"x","captcha_uuid":"u","captcha_code":"y"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":400`) {
+		t.Errorf("body = %s", w.Body.String())
 	}
 }
 
 func TestLogin_BadBody_400(t *testing.T) {
-	w := postJSON(newTestRouter(&fakeAuth{}, &fakeAudit{}, &fakePerm{}, &fakeUser{}),
+	w := postJSON(newTestRouter(&fakeAuth{}, &fakeUnified{}, &fakePerm{}, &fakeUser{}),
 		"/api/auth/login", `not-json`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400; body=%s", w.Code, w.Body.String())
@@ -109,7 +117,7 @@ func withClaims(r *gin.Engine, path string, cl *auth.Claims, h gin.HandlerFunc) 
 
 func TestLogout_NoToken_Still200(t *testing.T) {
 	authSvc := &fakeAuth{}
-	r := newTestRouter(authSvc, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	r := newTestRouter(authSvc, &fakeUnified{res: &oauth2svc.LoginResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 1}}, &fakePerm{}, &fakeUser{})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -126,7 +134,7 @@ func TestLogout_NoToken_Still200(t *testing.T) {
 
 func TestLogout_WithBearer_CallsService(t *testing.T) {
 	authSvc := &fakeAuth{}
-	r := newTestRouter(authSvc, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	r := newTestRouter(authSvc, &fakeUnified{res: &oauth2svc.LoginResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 1}}, &fakePerm{}, &fakeUser{})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	req.Header.Set("Authorization", "Bearer the-token")
 	w := httptest.NewRecorder()
@@ -142,7 +150,7 @@ func TestCodes_ReturnsRawPermStrings(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	withClaims(r, "/api/auth/codes", &auth.Claims{UserID: 9, Username: "alice"}, func(c *gin.Context) {
-		NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{codes: []string{"order:order:*", "system:role:*"}}, &fakeUser{}).Codes(c)
+		NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{codes: []string{"order:order:*", "system:role:*"}}, &fakeUser{}).Codes(c)
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/codes", nil)
 	w := httptest.NewRecorder()
@@ -163,7 +171,7 @@ func TestCodes_ReturnsRawPermStrings(t *testing.T) {
 }
 
 func TestCodes_NilCodes_ReturnEmptyArray(t *testing.T) {
-	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{codes: nil}, &fakeUser{})
+	ctrl := NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{codes: nil}, &fakeUser{})
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/api/auth/codes", func(c *gin.Context) {
@@ -179,7 +187,7 @@ func TestCodes_NilCodes_ReturnEmptyArray(t *testing.T) {
 }
 
 func TestUserInfo_StringUserIDAndRequiredFields(t *testing.T) {
-	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{
+	ctrl := NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{
 		roles: []*model.Role{{Code: "admin"}, {Code: "ops"}},
 	}, &fakeUser{user: &model.User{Nickname: "管理员", Avatar: "http://a/x.png"}})
 	gin.SetMode(gin.TestMode)
@@ -226,7 +234,7 @@ func TestUserInfo_StringUserIDAndRequiredFields(t *testing.T) {
 }
 
 func TestUserInfo_NoClaims_401(t *testing.T) {
-	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	ctrl := NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{}, &fakeUser{})
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/api/user/info", ctrl.UserInfo) // 无 claims 注入
@@ -238,7 +246,7 @@ func TestUserInfo_NoClaims_401(t *testing.T) {
 }
 
 func TestMenuAll_LAYOUTBlankedAndTreeKept(t *testing.T) {
-	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{
+	ctrl := NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{
 		routes: []*service.VbenRoute{
 			{
 				Path: "/system", Name: "system", Component: "LAYOUT",
@@ -281,7 +289,7 @@ func TestMenuAll_LAYOUTBlankedAndTreeKept(t *testing.T) {
 }
 
 func TestMenuAll_NilRoutes_EmptyArray(t *testing.T) {
-	ctrl := NewController(&fakeAuth{}, &fakeAudit{}, &fakePerm{routes: nil}, &fakeUser{})
+	ctrl := NewController(&fakeUnified{}, &fakeAuth{}, &fakePerm{routes: nil}, &fakeUser{})
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/api/menu/all", func(c *gin.Context) {
@@ -297,10 +305,9 @@ func TestMenuAll_NilRoutes_EmptyArray(t *testing.T) {
 
 // Register 必须挂齐 5 条路由：任一缺失在 vben 运行期表现为 404 → 登录流程卡死。
 func TestRegister_MountsAllFiveRoutes(t *testing.T) {
-	// 强制修复：brief 原文用 &fakeAuth{}（loginRes 为 nil 且 err 为 nil），
-	// 循环里 POST /api/auth/login 会让 Login 解引用 res.AccessToken → nil panic；
-	// 仅补 fixture 的 loginRes，断言保持逐字节不变。
-	r := newTestRouter(&fakeAuth{loginRes: &service.LoginResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 1}}, &fakeAudit{}, &fakePerm{}, &fakeUser{})
+	// fixture 必须给 unified 注入非 nil 的 LoginResult：循环里 POST /api/auth/login
+	// 会让 Login 解引用 res.AccessToken → nil panic（断言保持逐字节不变）。
+	r := newTestRouter(&fakeAuth{}, &fakeUnified{res: &oauth2svc.LoginResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 1}}, &fakePerm{}, &fakeUser{})
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodPost, "/api/auth/login"},
 		{http.MethodPost, "/api/auth/logout"},

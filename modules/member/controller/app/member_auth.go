@@ -9,16 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/member/service"
+	oauth2svc "alexGo-cloud/modules/oauth2/service"
 )
 
 // AuthController app 端会员鉴权接口（register/login/refresh/logout 全部公开入口：
 // refresh/logout 是 possession-based，由 controller 持有的 token 本身鉴权）。
 type AuthController struct {
-	svc service.MemberService
+	svc     service.MemberService
+	unified oauth2svc.UnifiedLogin
 }
 
-// NewAuthController 构造控制器（fx 注入 MemberService）。
-func NewAuthController(svc service.MemberService) *AuthController { return &AuthController{svc: svc} }
+// NewAuthController 构造控制器（fx 注入 MemberService + 统一登录门面）。
+func NewAuthController(svc service.MemberService, unified oauth2svc.UnifiedLogin) *AuthController {
+	return &AuthController{svc: svc, unified: unified}
+}
 
 type registerRequest struct {
 	Mobile   string `json:"mobile"`
@@ -27,8 +31,10 @@ type registerRequest struct {
 }
 
 type loginRequest struct {
-	Mobile   string `json:"mobile"`
-	Password string `json:"password"`
+	Mobile      string `json:"mobile"`
+	Password    string `json:"password"`
+	CaptchaUUID string `json:"captcha_uuid"`
+	CaptchaCode string `json:"captcha_code"`
 }
 
 func errJSON(c *gin.Context, code int, err error) {
@@ -50,21 +56,33 @@ func (c *AuthController) Register(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"data": u})
 }
 
-// Login 会员登录（公开接口），成功返回 access/refresh token。
+// Login 会员登录（公开接口）——内部走统一登录（account_type=member，client=alexgo-app）。
+// 映射：签发/装配故障 → 503（不冒充 401）；captcha 拒绝 → 400；其余 → 401。
 func (c *AuthController) Login(ctx *gin.Context) {
 	var req loginRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		errJSON(ctx, http.StatusBadRequest, err)
 		return
 	}
-	res, err := c.svc.Login(ctx.Request.Context(), req.Mobile, req.Password, ctx.ClientIP())
+	res, _, err := c.unified.Login(ctx.Request.Context(), oauth2svc.LoginParams{
+		AccountType: oauth2svc.AccountTypeMember,
+		Username:    req.Mobile,
+		Password:    req.Password,
+		ClientID:    "alexgo-app",
+		CaptchaUUID: req.CaptchaUUID,
+		CaptchaCode: req.CaptchaCode,
+		IP:          ctx.ClientIP(),
+		UserAgent:   ctx.GetHeader("User-Agent"),
+	})
 	if err != nil {
-		// 签发失败（I2）：凭据已通过，是 token.Issuer 侧故障 → 503，不冒充 401。
-		if errors.Is(err, service.ErrIssuance) {
+		switch {
+		case errors.Is(err, oauth2svc.ErrIssuance), errors.Is(err, oauth2svc.ErrAuthenticatorMissing):
 			errJSON(ctx, http.StatusServiceUnavailable, fmt.Errorf("auth service unavailable"))
-			return
+		case errors.Is(err, oauth2svc.ErrCaptchaInvalid):
+			errJSON(ctx, http.StatusBadRequest, err)
+		default:
+			errJSON(ctx, http.StatusUnauthorized, err)
 		}
-		errJSON(ctx, http.StatusUnauthorized, err)
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{
