@@ -203,3 +203,27 @@ POST /oauth2/token
 - **M2**：`/oauth2/token` 四 grant + 登录服务 + refresh/登出吊销
 - **M3**：authorize 授权码流 + SPA 登录页/回调改造（web-antd）+ 老端点兼容层切换
 - **M4**：client 管理 CRUD + 权限码/菜单种子 + 集成端到端 + 兼容层下线评估
+
+## 9. 勘误与实现裁决（writing-plans 前代码调研追加）
+
+对照仓库现实逐条修正 §1–§8；**本节覆盖与前文冲突处**，实施计划（`docs/superpowers/plans/2026-10-11-unified-login.md`）按本节裁决执行。
+
+| # | 原文 | 裁决 |
+|---|---|---|
+| D1 | §2 库选型 `go-oauth2/oauth2` v4 | **作废**：四种 grant + PKCE 的状态机足够薄，协议层手写；唯一新依赖 `github.com/mojocn/base64Captcha@v1.3.8`（验证码）。 |
+| D2 | §4.1 "access=JWT，中间件零改动" | **token 模式（默认）**走 `pkg/token` 不透明令牌，中间件/Casbin 零改动；jwt 回滚模式由 system 提供 `JWTGenerator`（wrap `auth.GenerateToken`），统一登录在 `mode=jwt` 且 `account_type=system` 时签 JWT（无 refresh）。 |
+| D3 | §5 `/oauth2/token` 不带 `/api` | 全部端点挂 **`/api/oauth2/*`**（Module 只拿 /api 组，公开路径规则已放行，无须动中间件链）。 |
+| D4 | §3 四张表 | 只新建 **两表**：`oauth2_client`（无 `tenant_id`/`deleted` 列→租户插件跳过，硬删除）、`oauth2_authorize_code`（租户列 Go 字段名 `OwnerTenantID` 规避插件注入；含 `username` 列供 jwt 模式授权码流）。§3.3 签发台账**作废**——复用既有 `system_oauth2_access_token`（`pkg/token` 管理）。 |
+| D5 | §3.4 TTL 1800s/30d、per-client TTL | **作废**：沿用 `auth.access_expire_hour=2` / `auth.refresh_expire_day=7`。config 只新增 `auth.captcha.enabled`（默认 false）与 `auth.login_page`（默认 **`/auth/login`**——vben `LOGIN_PATH` 实际值，原文 `/login` 有误）。 |
+| D6 | §3.4 验证码存 `pkg/appredis` | 用 **`pkg/redis`**：redis 可用则 key `captcha:{uuid}` TTL 2 分钟，否则回退内存 store（`*redis.Client` 在 deps 标 `optional`，member 进程无 redis 也能装配）。 |
+| D7 | （前文未写）模块装配 | `oauth2.FxModule` **硬编码进** `alexgo-server/cmd/main.go` 与 `modules/member/cmd/main.go`（config modules map 不动）；member 进程也装——member 兼容层消费 `UnifiedLogin`，迁移同库幂等。 |
+| D8 | §6 逐端点限流 | **作废**：复用既有全局 RateLimitAndBreaker（已覆盖全路径）。 |
+| D9 | （前文未写）client_credentials | 新增 `token.UserTypeClient=3`；`Issue` 允许 `UserID==0` 当且仅当 `UserType==3` 且 `ClientID` 非空；`Validate` 对 type 3 以 `ClientID` 为 username；机机 token 不带 refresh，**jwt 模式也签不透明机机 token**。 |
+| D10 | §4.3 内部 client 名 `app`/`member_portal` | 种子 client（`20261011000002_oauth2_seed_clients`，NOT EXISTS 幂等）：**`alexgo-admin`**（secret 空=公开客户端，grants `authorization_code,password,refresh_token`，account_types `system`，redirect 白名单 `http://localhost:5173/callback\nhttp://localhost:8080/callback`）与 **`alexgo-app`**（机密，grants `password,refresh_token`，account_types `member`）。公开规则：库中 secret 为空 → 跳过 bcrypt（授权码流靠 PKCE）。 |
+| D11 | §1 表 app 端点 `/api/app/auth/login` | 实际路径为 **`POST /api/app/system/auth/login`**（既有行为不变，勘误笔误）。 |
+| D12 | §4.3 验证码字段 `captcha_token` | 请求字段改为 **`captcha_uuid` + `captcha_code`** 两个。 |
+| D13 | §4.5 "复用 RecordLogin 审计" | 审计职责**移入统一登录服务**（兼容层 controller 不再内联记账，防双记）；`LoginLog` 无 source 列 → msg 统一加前缀 `"oauth2: "`。 |
+| D14 | （前文未写）refresh 绑定 | refresh **不做 client 绑定**（refresh token 即凭证）；只校验 client 存在+活跃+grant 白名单含 `refresh_token`。 |
+| D15 | §4.2 SPA 时序 | 前端登录页生成 state/verifier（crypto.getRandomValues 32B base64url）+ S256 challenge → sessionStorage → `fetch POST /api/oauth2/authorize/login`（`redirect:'follow'`，从 `resp.url` 提取 code 并比对 state）→ `router.push('/callback?code&state')` → **/callback 路由**（进 coreRoutes，免权限）校验 PKCE session、`POST /api/oauth2/token`、setAccessToken+fetchUserInfo+权限码后跳转。前端固定使用 client `alexgo-admin`、redirect `origin+/callback`（自造 PKCE），不消费 authorize 回带参数；GET `/api/oauth2/authorize` 302→login_page 保留供外部/深链（e2e 覆盖服务端时序）。 |
+
+补充语义（计划按此实现）：授权码 TTL **2 分钟**、`code`=32B crypto/rand base64url；**首次 exchange 尝试即 MarkRevoked（无论 verifier 对错，CAS 单次消费）**；redirect_uri **精确匹配、失效/篡改一律 400 绝不 302**；`authorize/login` 请求体含可选 `account_type`（缺省 `system`）。
