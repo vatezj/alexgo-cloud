@@ -17,6 +17,7 @@ import (
 	"alexGo-cloud/modules/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/token"
 )
 
 // newProtoRouter 搭 /api 组下的协议端点测试路由（Task 9/11/13 共用夹具）。
@@ -175,5 +176,224 @@ func TestGrant_NotAllowed_400(t *testing.T) {
 	}
 	if loc := w.Header().Get("Location"); loc != "" {
 		t.Errorf("不得带 Location, got %q", loc)
+	}
+}
+
+// —— Task 11 夹具：真 UnifiedLogin + 真 TokenService 的协议全栈 ——
+
+// stubUA UserAuthenticator 桩：记账调用——验证码/白名单拒绝时不得触达凭据校验（ua.calls==0 断言）。
+type stubUA struct {
+	ident *oauth2svc.AuthIdentity
+	err   error
+	calls []string
+}
+
+func (s *stubUA) Authenticate(_ context.Context, username, _ string) (*oauth2svc.AuthIdentity, error) {
+	s.calls = append(s.calls, username)
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.ident != nil {
+		return s.ident, nil
+	}
+	return &oauth2svc.AuthIdentity{UserID: 3, Username: username, AccountType: oauth2svc.AccountTypeSystem}, nil
+}
+
+// fakeIssuer token.Issuer 桩：Issue 恒出 at-1/rt-1，Refresh 出 at-2/rt-2。
+type fakeIssuer struct{}
+
+func (fakeIssuer) Issue(context.Context, token.IssueParams) (*token.Issued, error) {
+	return &token.Issued{AccessToken: "at-1", RefreshToken: "rt-1", ExpiresIn: 7200}, nil
+}
+func (fakeIssuer) Refresh(context.Context, string) (*token.Issued, error) {
+	return &token.Issued{AccessToken: "at-2", RefreshToken: "rt-2", ExpiresIn: 7200}, nil
+}
+func (fakeIssuer) Revoke(context.Context, string) error                   { return nil }
+func (fakeIssuer) RevokeAll(context.Context, token.UserType, uint64) error { return nil }
+
+type fullEnv struct {
+	clients *oauth2svc.ClientService
+	codes   *oauth2svc.AuthorizeCodeService
+	ua      *stubUA
+}
+
+// newFullRouter 搭真 UnifiedLogin + 真 TokenService 的协议全栈（cfg nil → 默认 LoginPage）。
+// 与 newProtoRouter（Task 9，无 Login/Tokens）并存：老测试不动，新测试用本夹具。
+func newFullRouter(t *testing.T, cfg *config.Config) (*gin.Engine, *fullEnv) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Oauth2Client{}, &model.Oauth2AuthorizeCode{}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg == nil {
+		cfg = &config.Config{}
+		cfg.Auth.LoginPage = "/auth/login"
+	}
+	clients := oauth2svc.NewClientService(repository.NewClientRepository(db))
+	codes := oauth2svc.NewAuthorizeCodeService(repository.NewAuthorizeCodeRepository(db))
+	ua := &stubUA{}
+	iss := fakeIssuer{}
+	captcha := oauth2svc.NewCaptchaService(oauth2svc.CaptchaDeps{Cfg: cfg})
+	ul := oauth2svc.NewUnifiedLogin(oauth2svc.UnifiedDeps{
+		Cfg: cfg, Issuer: iss, Captcha: captcha, UserAuth: ua,
+	})
+	ts := oauth2svc.NewTokenService(oauth2svc.TokenServiceDeps{
+		Cfg: cfg, Clients: clients, Codes: codes, Login: ul, Issuer: iss,
+	})
+	proto := NewProtocolController(ProtocolDeps{
+		Captcha: captcha, Codes: codes, Clients: clients, Cfg: cfg,
+		Login: ul, Tokens: ts,
+	})
+	r := gin.New()
+	proto.Register(r.Group("/api"))
+	return r, &fullEnv{clients: clients, codes: codes, ua: ua}
+}
+
+func postJSON(r *gin.Engine, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// Review Focus #1：authorize/login 的 redirect 篡改 → 400 且无 Location，
+// 且拒绝必须发生在凭据校验之前（ua.calls==0）。
+func TestAuthorizeLogin_RedirectTamper_400NoLocation(t *testing.T) {
+	r, env := newFullRouter(t, nil)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/authorize/login",
+		`{"client_id":"spa","redirect_uri":"http://evil.example/steal","username":"alice","password":"pw"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("篡改 redirect 不得带 Location, got %q", loc)
+	}
+	if !strings.Contains(w.Body.String(), `"error":"invalid_request"`) {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if len(env.ua.calls) != 0 {
+		t.Errorf("Authenticate calls = %v, want 0（redirect 校验先于凭据）", env.ua.calls)
+	}
+}
+
+// 成功：302 回跳带 code/state，回跳的 code 可被 Exchange 消费，凭据恰校验一次。
+func TestAuthorizeLogin_OK_302WithCode(t *testing.T) {
+	r, env := newFullRouter(t, nil)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/authorize/login",
+		`{"client_id":"spa","redirect_uri":"http://localhost:5173/callback","state":"xyz","scope":"all","username":"alice","password":"pw"}`)
+	if w.Code != http.StatusFound {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, "http://localhost:5173/callback?") {
+		t.Fatalf("Location = %q", loc)
+	}
+	for _, want := range []string{"code=", "state=xyz"} {
+		if !strings.Contains(loc, want) {
+			t.Errorf("Location 缺 %q: %q", want, loc)
+		}
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := u.Query().Get("code")
+	if code == "" {
+		t.Fatal("回跳缺 code")
+	}
+	if _, err := env.codes.Exchange(context.Background(), oauth2svc.ExchangeParams{
+		Code: code, ClientID: "spa", RedirectURI: "http://localhost:5173/callback",
+	}); err != nil {
+		t.Errorf("回跳 code 应可消费: %v", err)
+	}
+	if len(env.ua.calls) != 1 {
+		t.Errorf("Authenticate calls = %v, want 恰一次", env.ua.calls)
+	}
+}
+
+// Review Focus #2：开关开 → 缺 captcha 字段 400 captcha_invalid，凭据不触达（authorize/login 路径）。
+func TestAuthorizeLogin_Captcha_400(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Auth.LoginPage = "/auth/login"
+	cfg.Auth.Captcha.Enabled = true
+	r, env := newFullRouter(t, cfg)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/authorize/login",
+		`{"client_id":"spa","redirect_uri":"http://localhost:5173/callback","username":"alice","password":"pw"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "captcha_invalid") {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("失败不得带 Location, got %q", loc)
+	}
+	if len(env.ua.calls) != 0 {
+		t.Errorf("Authenticate calls = %v, want 0（captcha 先于凭据）", env.ua.calls)
+	}
+}
+
+func TestToken_Password_OK_200(t *testing.T) {
+	r, env := newFullRouter(t, nil)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/token",
+		`{"grant_type":"password","client_id":"spa","username":"alice","password":"pw"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.AccessToken != "at-1" || resp.RefreshToken != "rt-1" || resp.ExpiresIn != 7200 || resp.TokenType != "Bearer" {
+		t.Errorf("resp = %+v", resp)
+	}
+	if len(env.ua.calls) != 1 {
+		t.Errorf("Authenticate calls = %v, want 恰一次", env.ua.calls)
+	}
+}
+
+// Review Focus #2：开关开 + 错误验证码 → 400 captcha_invalid（/token 路径），凭据不触达。
+func TestToken_CaptchaInvalid_400(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Auth.Captcha.Enabled = true
+	r, env := newFullRouter(t, cfg)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/token",
+		`{"grant_type":"password","client_id":"spa","username":"alice","password":"pw","captcha_uuid":"u1","captcha_code":"0000-wrong"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "captcha_invalid") {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if len(env.ua.calls) != 0 {
+		t.Errorf("Authenticate calls = %v, want 0（captcha 先于凭据）", env.ua.calls)
+	}
+}
+
+func TestToken_UnknownGrant_400(t *testing.T) {
+	r, env := newFullRouter(t, nil)
+	seedSpaClient(t, env.clients)
+	w := postJSON(r, "/api/oauth2/token",
+		`{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"spa"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "unsupported_grant_type") {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestToken_ClientAuthFail_401(t *testing.T) {
+	r, _ := newFullRouter(t, nil)
+	w := postJSON(r, "/api/oauth2/token",
+		`{"grant_type":"password","client_id":"nope"}`)
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid_client") {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
 }

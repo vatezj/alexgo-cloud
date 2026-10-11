@@ -27,6 +27,7 @@ var FxModule = fx.Module("oauth2",
 		oauth2svc.NewClientService,
 		oauth2svc.NewAuthorizeCodeService,
 		oauth2svc.NewUnifiedLogin,
+		oauth2svc.NewTokenService,
 		controller.NewProtocolController,
 		fx.Annotate(
 			NewModule,

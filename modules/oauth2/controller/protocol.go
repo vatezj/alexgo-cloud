@@ -19,6 +19,8 @@ type ProtocolDeps struct {
 	Codes   *oauth2svc.AuthorizeCodeService
 	Clients *oauth2svc.ClientService
 	Cfg     *config.Config
+	Login   oauth2svc.UnifiedLogin
+	Tokens  *oauth2svc.TokenService
 }
 
 // ProtocolController 协议端点（RFC 6749 信封 {"error","error_description"}，
@@ -35,6 +37,8 @@ func NewProtocolController(deps ProtocolDeps) *ProtocolController {
 func (p *ProtocolController) Register(r gin.IRouter) {
 	r.GET("/oauth2/captcha", p.captchaImage)
 	r.GET("/oauth2/authorize", p.authorize)
+	r.POST("/oauth2/authorize/login", p.authorizeLogin)
+	r.POST("/oauth2/token", p.token)
 }
 
 // protocolErr 写 RFC 6749 错误信封；不设 Location（400 绝不 302 的结构保证）。
@@ -105,4 +109,107 @@ func (p *ProtocolController) authorize(c *gin.Context) {
 		}
 	}
 	c.Redirect(http.StatusFound, loginPage+"?"+vals.Encode())
+}
+
+// authorizeLogin 统一登录表单提交（spec §4.2 ②③；JSON body——裁决见任务头）。
+// 校验顺序与 GET /authorize 一致：形状/白名单校验全部先于凭据，
+// **前 6 步失败一律 400 且无 Location**（失效/篡改绝不 302，D15 补充语义）；
+// 凭据经 Login.AuthorizeLogin（不签发 token）；成功才 Codes.Issue 并 302 回跳。
+func (p *ProtocolController) authorizeLogin(c *gin.Context) {
+	var req struct {
+		ClientID            string `json:"client_id"`
+		RedirectURI         string `json:"redirect_uri"`
+		State               string `json:"state"`
+		Scope               string `json:"scope"`
+		ResponseType        string `json:"response_type"`
+		Username            string `json:"username"`
+		Password            string `json:"password"`
+		AccountType         string `json:"account_type"`
+		CaptchaUUID         string `json:"captcha_uuid"`
+		CaptchaCode         string `json:"captcha_code"`
+		CodeChallenge       string `json:"code_challenge"`
+		CodeChallengeMethod string `json:"code_challenge_method"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_request", "请求体必须是 JSON 对象")
+		return
+	}
+	if req.ClientID == "" || req.RedirectURI == "" {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_request", "缺少 client_id/redirect_uri")
+		return
+	}
+	ctx := c.Request.Context()
+	client, err := p.deps.Clients.Get(ctx, req.ClientID)
+	if err != nil {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_client", "未知或停用的 client")
+		return
+	}
+	if !client.AllowsGrant(oauth2svc.GrantAuthorizationCode) {
+		p.protocolErr(c, http.StatusBadRequest, "unauthorized_client", "client 未获授权码许可")
+		return
+	}
+	if !client.AllowsRedirect(req.RedirectURI) {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_request", "redirect_uri 不在白名单")
+		return
+	}
+	if req.ResponseType != "" && req.ResponseType != "code" {
+		p.protocolErr(c, http.StatusBadRequest, "unsupported_response_type", "仅支持 response_type=code")
+		return
+	}
+	if req.CodeChallenge != "" && req.CodeChallengeMethod != "S256" {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_request", "PKCE 仅支持 S256")
+		return
+	}
+	ident, lerr := p.deps.Login.AuthorizeLogin(ctx, oauth2svc.LoginParams{
+		AccountType: req.AccountType, // 空值由统一登录缺省 system（Task 8 checkAndRoute）
+		Username:    req.Username,
+		Password:    req.Password,
+		ClientID:    req.ClientID,
+		CaptchaUUID: req.CaptchaUUID,
+		CaptchaCode: req.CaptchaCode,
+		IP:          c.ClientIP(),
+		UserAgent:   c.GetHeader("User-Agent"),
+	})
+	if lerr != nil {
+		pe := oauth2svc.LoginProtoErr(lerr)
+		p.protocolErr(c, pe.Status, pe.Code, pe.Description)
+		return
+	}
+	code, ierr := p.deps.Codes.Issue(ctx, oauth2svc.IssueCodeParams{
+		ClientID: req.ClientID, UserID: ident.UserID, Username: ident.Username,
+		AccountType: ident.AccountType, TenantID: ident.TenantID,
+		RedirectURI: req.RedirectURI, Scopes: req.Scope,
+		CodeChallenge: req.CodeChallenge, CodeChallengeMethod: req.CodeChallengeMethod,
+	})
+	if ierr != nil {
+		p.protocolErr(c, http.StatusInternalServerError, "server_error", "签发授权码失败")
+		return
+	}
+	vals := url.Values{}
+	vals.Set("code", code)
+	if req.State != "" {
+		vals.Set("state", req.State)
+	}
+	if req.Scope != "" {
+		vals.Set("scope", req.Scope)
+	}
+	c.Redirect(http.StatusFound, req.RedirectURI+"?"+vals.Encode())
+}
+
+// token 四 grant 统一换 token（spec §5；JSON body——裁决见任务头）。
+// 成功 200 信封 TokenResponse；失败把 TokenService 的 *ProtocolError 原样写出。
+func (p *ProtocolController) token(c *gin.Context) {
+	var req oauth2svc.TokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		p.protocolErr(c, http.StatusBadRequest, "invalid_request", "请求体必须是 JSON 对象")
+		return
+	}
+	req.IP = c.ClientIP()
+	req.UserAgent = c.GetHeader("User-Agent")
+	resp, perr := p.deps.Tokens.Exchange(c.Request.Context(), &req)
+	if perr != nil {
+		p.protocolErr(c, perr.Status, perr.Code, perr.Description)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
