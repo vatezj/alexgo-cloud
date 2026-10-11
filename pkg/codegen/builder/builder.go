@@ -23,6 +23,9 @@ func Build(meta *metadata.TableMeta, opts Options) (*model.Table, error) {
 	if len(meta.Columns) == 0 {
 		return nil, fmt.Errorf("%w: %s: no columns", model.ErrColumnInvalid, meta.Name)
 	}
+	if err := validateSinglePK(meta); err != nil {
+		return nil, err
+	}
 
 	tt := opts.TemplateType
 	if tt == 0 {
@@ -100,4 +103,27 @@ func queryOp(goType string) string {
 
 func containsAutoIncrement(extra string) bool {
 	return strings.Contains(strings.ToLower(extra), "auto_increment")
+}
+
+// validateSinglePK：仅支持单列 `id` 主键（spec §9.1）。无主键 / 复合主键 / 非 `id`
+// 主键在构建期拒绝，防止坏配置入库与生成物写进非法路径。
+func validateSinglePK(meta *metadata.TableMeta) error {
+	pks := 0
+	for _, c := range meta.Columns {
+		if c.Key != "PRI" {
+			continue
+		}
+		pks++
+		if c.Name != "id" {
+			return fmt.Errorf("%w: %s: primary key must be `id`, got %q",
+				model.ErrColumnInvalid, meta.Name, c.Name)
+		}
+	}
+	if pks == 0 {
+		return fmt.Errorf("%w: %s: no primary key", model.ErrColumnInvalid, meta.Name)
+	}
+	if pks > 1 {
+		return fmt.Errorf("%w: %s: composite primary key not supported", model.ErrColumnInvalid, meta.Name)
+	}
+	return nil
 }

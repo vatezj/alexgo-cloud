@@ -259,3 +259,44 @@ go run ./tools/codegen --dsn=... --tables=t1 --import       # 现场读元数据
 **依赖**：M1→M2→M3 严格串行；M4 在 M3 后；M5/M6 依赖 M4；M7 收尾。
 
 **贯穿约定**：每里程碑 TDD；每个里程碑独立提交进 main（项目约定直接在 main 工作）。
+
+## 9. 勘误（2026-10-11，M2 实施前回填）
+
+以下四条为 M1 实施后裁决的补充约定，随 M2 落地（优先级等同正文）。
+
+### 9.1 主键约定：仅支持单列 `id` 主键
+
+- 生成器只支持主键恰为单列 `id`（通常自增）的表；无主键、复合主键、主键非 `id`
+  （如 `item_id`）的表**在构建期拒绝**：`builder.Build` 返回 `ErrColumnInvalid`，
+  坏配置不入库、生成物不落非法路径。
+- 覆盖全部模板类型（single/tree/main_sub 共用同一约定，M5/M6 不另行放宽）。
+
+### 9.2 租户写路径（M1 缺口，M2 内修复）
+
+- 生成模型的 `tenant_id` 字段 JSON tag 固定为 `"-"`：客户端请求体永远灌不进租户值。
+- repository `Create` 打戳：`entity.TenantID` 为零时从 `tenant.TenantIDFromContext(ctx)` 回填。
+- repository `Update` 禁用 `Save`：必须 `Where("id = ? AND tenant_id = ?", ...)` +
+  `Select("*").Updates(...)`——gorm 的 `Save` 丢弃链式 WHERE，跨租户照改不误
+  （语义镜像测试钉死：`pkg/codegen/template/tenant_writepath_test.go`）。
+- service `Create`/`Update` 从 ctx 取租户写入 entity。
+
+### 9.3 配置删除 = 硬删除
+
+- `codegen_table` / `codegen_column` 不设 `deleted` 列：DELETE 在事务内物理删行
+  （级联删字段配置）。配置是系统级管理数据，无审计恢复诉求；软删还会让
+  `table_name` 唯一键在「删了再导」时冲突。
+
+### 9.4 同步语义（§4「导入/同步语义」的可执行定义）
+
+对「既有配置行 vs 当前元数据列」按列名做 diff：
+
+| 情形 | 动作 | 计数 |
+|---|---|---|
+| 元数据有、配置无 | 追加新配置行，**全部开关默认关闭**（list/form/query=false、required=false） | added |
+| 配置有、元数据无、且 `deprecated=0` | 置 `deprecated=1`，**不物理删** | deprecated |
+| 两边都有 | 只刷新快照字段 `type/comment/go_type/json_name/is_pk/auto_increment/nullable`；**开关与配置字段（`html_type/query_operation/dict_type/sort_order`）一律不覆盖** | 快照有变化才计 updated |
+| 曾 `deprecated=1` 的列重新出现 | 清 `deprecated=0` + 刷新快照 | 计 updated |
+| 两边都有且快照无变化 | 不写库 | unchanged |
+
+- 表级同步同时刷新 `table_comment` 快照；`module/class_name/template_type/front_type/remark`
+  等表级配置不覆盖。

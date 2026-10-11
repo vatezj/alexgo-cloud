@@ -112,3 +112,33 @@ func TestBuild_EmptyMeta(t *testing.T) {
 		t.Fatal("nil meta should error")
 	}
 }
+
+// 三类主键拒绝（spec §9.1）：坏表在构建期就报 ErrColumnInvalid，不进入配置/生成链路。
+func TestBuild_PrimaryKeyRejections(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*metadata.TableMeta)
+	}{
+		{"no primary key", func(m *metadata.TableMeta) {
+			for i := range m.Columns {
+				m.Columns[i].Key = ""
+			}
+		}},
+		{"composite primary key", func(m *metadata.TableMeta) {
+			m.Columns[1].Key = "PRI" // id 已是 PRI → 两列复合
+		}},
+		{"non-id primary key", func(m *metadata.TableMeta) {
+			m.Columns[0].Name = "item_id" // PRI 列不叫 id
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			meta := fixtureMeta()
+			c.mutate(meta)
+			_, err := builder.Build(meta, builder.Options{Module: "order"})
+			if !errors.Is(err, model.ErrColumnInvalid) {
+				t.Fatalf("Build() err = %v, want ErrColumnInvalid", err)
+			}
+		})
+	}
+}
