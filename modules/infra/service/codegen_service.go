@@ -71,7 +71,7 @@ func (s *codegenService) ImportTable(ctx context.Context, tableName string) (*mo
 	}
 	for _, n := range names {
 		if n == tableName {
-			return nil, fmt.Errorf("table %q already imported", tableName)
+			return nil, fmt.Errorf("%w: table %q already imported", cgmodel.ErrTableInvalid, tableName)
 		}
 	}
 	// 2) 读元数据（不存在 → ErrTableNotFound，原样上抛给 400）
@@ -127,11 +127,66 @@ func (s *codegenService) ImportTable(ctx context.Context, tableName string) (*mo
 	return t, nil
 }
 
+// UpdateTable 白名单合并进既有行（评审 Important#1）：
+// gorm Save 全量覆盖含零值，部分 body 会把 table_name/module/created_at 清零——
+// table_name 一空 Sync 永久失效（它定位物理表）。故 body 只放行可编辑配置字段，
+// 快照/系统字段（table_name、created_at、table_comment）一律取库中现值。
 func (s *codegenService) UpdateTable(ctx context.Context, t *model.CodegenTable) error {
-	if _, err := s.repo.GetTable(ctx, t.ID); err != nil {
+	existing, err := s.repo.GetTable(ctx, t.ID)
+	if err != nil {
 		return err
 	}
-	return s.repo.UpdateTable(ctx, t)
+	if t.Module != "" {
+		existing.Module = t.Module
+	}
+	if t.BusinessName != "" {
+		existing.BusinessName = t.BusinessName
+	}
+	if t.ClassName != "" {
+		existing.ClassName = t.ClassName
+	}
+	if t.TemplateType != 0 {
+		existing.TemplateType = t.TemplateType
+	}
+	if t.FrontType != 0 {
+		existing.FrontType = t.FrontType
+	}
+	if t.Remark != "" {
+		existing.Remark = t.Remark
+	}
+	if t.ParentTableID != 0 {
+		existing.ParentTableID = t.ParentTableID
+	}
+	if err := s.validateConfig(ctx, existing); err != nil {
+		return err
+	}
+	return s.repo.UpdateTable(ctx, existing)
+}
+
+// validateConfig 更新前校验（评审 Important#2）：module/class_name 拼进生成物
+// 路径与包名——路径穿越、非法标识符、类名冲突必须在入库前拒绝（Focus #3），
+// 否则 M3 生成期才爆，坏配置已污染库。
+func (s *codegenService) validateConfig(ctx context.Context, t *model.CodegenTable) error {
+	if !identRe.MatchString(t.Module) || len(t.Module) > 128 {
+		return fmt.Errorf("%w: invalid module %q", cgmodel.ErrTableInvalid, t.Module)
+	}
+	if !goExportedRe.MatchString(t.ClassName) || len(t.ClassName) > 128 {
+		return fmt.Errorf("%w: invalid class_name %q", cgmodel.ErrTableInvalid, t.ClassName)
+	}
+	if !identRe.MatchString(t.BusinessName) || len(t.BusinessName) > 128 {
+		return fmt.Errorf("%w: invalid business_name %q", cgmodel.ErrTableInvalid, t.BusinessName)
+	}
+	all, err := s.repo.ListAllTables(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range all {
+		if o.ID != t.ID && o.Module == t.Module && o.ClassName == t.ClassName {
+			return fmt.Errorf("%w: class %s.%s already used by table %q",
+				cgmodel.ErrTableInvalid, t.Module, t.ClassName, o.Name)
+		}
+	}
+	return nil
 }
 
 func (s *codegenService) DeleteTable(ctx context.Context, id uint64) error {
@@ -251,6 +306,10 @@ func (s *codegenService) Sync(ctx context.Context, tableID uint64) (*model.SyncR
 }
 
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// goExportedRe：class_name 是生成物的 Go 类型名，必须是导出标识符——
+// 含 `-`/`.`/小写开头的值会让生成物编译失败。
+var goExportedRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
 
 // validateIdent 表名只允许小写 snake——它是拼进 SQL/文件名的输入面。
 func validateIdent(name string) error {

@@ -30,7 +30,7 @@ JOIN (
   UNION ALL SELECT '删除', 'infra:codegen:delete', 3
 ) t
 WHERE m.`tenant_id`=0 AND m.`permission`='infra:codegen' AND m.`type`='menu' AND m.`deleted`=0
-  AND NOT EXISTS (SELECT 1 FROM `menus` b WHERE b.`permission`=t.`perm` AND b.`deleted`=0);
+  AND NOT EXISTS (SELECT 1 FROM `menus` b WHERE b.`tenant_id`=0 AND b.`permission`=t.`perm` AND b.`deleted`=0);
 
 -- 4) admin 角色挂菜单（模式抄 20261009000001 ③：JOIN roles 而非标量子查询——
 --    fresh 库尚无 admin 角色时产出 0 行，由 seed 尾部 SetRoleMenus 全量兜底）
