@@ -190,7 +190,7 @@ func TestPreview_Envelope(t *testing.T) {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body)
 	}
 	body := w.Body.String()
-	for _, want := range []string{`"data"`, "modules/infra/model/order_item.go", "package model"} {
+	for _, want := range []string{`"data"`, `"path":`, `"content":`, "modules/infra/model/order_item.go", "package model"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body 缺 %q: %s", want, body)
 		}

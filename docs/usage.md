@@ -155,6 +155,10 @@ curl -X PUT $BASE/tables/1/columns -H "$AUTH" -H "$CT" \
 # 5) 表结构变更后同步：新增列默认全关、消失列标 deprecated、快照刷新不碰配置
 curl -X POST $BASE/tables/1/sync -H "$AUTH"
 # → {"data":{"added":1,"updated":0,"deprecated":0,"unchanged":7}}
+
+# 6) 预览/下载生成结果：
+curl -X POST $BASE/preview -H "$AUTH" -H "$CT" -d '{"table_ids":[1]}'   # → {data:[{path,content}]}
+curl -X POST $BASE/download -H "$AUTH" -H "$CT" -d '{"table_ids":[1]}' -o codegen.zip   # → ZIP
 ```
 
 ### 2.5 配置字段与校验（PUT `/tables/:id`）

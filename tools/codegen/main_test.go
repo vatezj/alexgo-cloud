@@ -4,6 +4,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	inframodel "alexGo-cloud/modules/infra/model"
@@ -116,6 +117,8 @@ func TestFilterConfigTables(t *testing.T) {
 
 	if _, err := filterConfigTables(all, "nope", ""); err == nil {
 		t.Error("无匹配必须报错，不能静默空生成")
+	} else if !strings.Contains(err.Error(), "--import") {
+		t.Errorf("错误须含修复建议 --import: %v", err)
 	}
 	if _, err := filterConfigTables(nil, "", ""); err == nil {
 		t.Error("空配置表集合必须报错")
