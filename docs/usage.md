@@ -81,13 +81,14 @@ curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
 
 ## 2. 代码生成配置
 
-代码生成分阶段交付：**M2** 完成配置持久化与同步的后端闭环 + 管理页面（当前）；**M3** 接生成执行（模板渲染 + 下载）。
+代码生成分阶段交付：**M2** 配置持久化与同步 + 管理页面；**M3** 在线链路已接通——预览 / ZIP 下载 / CLI 读配置表（当前）；M4–M7 依次续交付（见 spec §8）。
 设计规格见 [codegen-redesign-design](superpowers/specs/2026-10-10-codegen-redesign-design.md)。
 
 ### 2.1 前置
 
 - **权限码**：`infra:codegen`（页面）、`infra:codegen:import` / `infra:codegen:sync` / `infra:codegen:delete`（按钮），
   路由前缀 `/api/admin/infra/codegen` 已在 `permission_routes.go` 注册（通配覆盖 `db-tables` 等子资源）。
+  预览/下载不引入新按钮码，复用页面权限 `infra:codegen`。
 - **菜单入口**：**系统管理 → 代码生成 → 代码生成配置**（`/codegen/config`，
   组件 `views/infra/codegen/index`，迁移 `20261011000002_codegen_menus` 种入）。
 - **元数据库**：导入/Sync/表下拉读取的是配置的元数据库（DSN 见 `configs/config.yaml` 的 `dsn`）。
@@ -101,7 +102,9 @@ curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
 | **编辑**（行） | `infra:codegen` | 改 module / business_name / class_name / 备注（白名单合并，见 2.5） |
 | **同步**（行） | `infra:codegen:sync` | 重读元数据算差异并落库，toast 显示 added/updated/deprecated/unchanged 计数 |
 | **删除**（行） | `infra:codegen:delete` | 二次确认后删配置（级联删列，**不动数据库物理表**） |
-| **生成代码**（工具栏） | — | **M3 占位，恒禁用**（后端 `generate` 亦恒 500） |
+| **生成代码**（工具栏） | `infra:codegen` | 预览**全部**已导入表：弹窗文件树（后端/前端分组）+ 代码 + 底部「下载 ZIP」 |
+| **预览**（行） | `infra:codegen` | 同上弹窗，但只渲染该表 |
+| **下载**（行） | `infra:codegen` | 该表直接下载 ZIP（文件名 `codegen_<表名>.zip`） |
 
 **快照字段 vs 配置字段**（spec §9.4，理解字段配置弹窗的关键）：
 
@@ -124,7 +127,8 @@ curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
 | GET | `/api/admin/infra/codegen/tables/:id/columns` | 列配置列表 |
 | PUT | `/api/admin/infra/codegen/tables/:id/columns` | 批量保存列配置（整体替换，非空数组；只落配置字段） |
 | POST | `/api/admin/infra/codegen/tables/:id/sync` | 从元数据同步差异（spec §9.4） |
-| GET | `/api/admin/infra/codegen/tables/:id/generate` | **M3 占位**，恒返回 500 `generate is an M3 feature` |
+| POST | `/api/admin/infra/codegen/preview` | 预览渲染（body `{"table_ids":[1,2]}` → `{data:[{path,content}]}`；纯内存，失败无副作用） |
+| POST | `/api/admin/infra/codegen/download` | 同 body → `application/zip` 流（`Content-Disposition: attachment; filename="codegen.zip"`） |
 
 ### 2.4 典型工作流（curl）
 
@@ -184,16 +188,30 @@ curl -X POST $BASE/tables/1/sync -H "$AUTH"
 
 ### 2.7 CLI（可选）
 
-`tools/codegen` 提供同引擎的命令行入口（draft 模式：元数据 → 构建 → 生成 → 写盘，**默认不覆盖已有文件**）。
-schema 名从 DSN 解析（`mysql.ParseDSN`，解析失败按空 schema 上报）。常用 flag：
+`tools/codegen` 提供同引擎的命令行入口，**默认读配置表**（与后台预览同一渲染路径 `service.Preview`）。
+写盘规则：已存在不覆盖，`-force` 才覆盖；全部渲染成功才写盘。常用 flag：
 
 ```bash
-go run ./tools/codegen \
-  -module order \                # 目标模块名（必填，如 order）
-  -tables order_items,order_log \ # 逗号分隔表名（留空 = schema 全部表）
-  -dsn '' \                       # MySQL DSN（默认取 config database.dsn / DB_DSN）
-  -schema '' \                    # schema 名（默认从 dsn 解析）
-  -out . \                        # 输出根目录（仓库根）
-  -dry-run                        # 只打印计划生成的文件，不写盘
-# 其他：-force 覆盖已有文件；-no-tests 跳过单测骨架
+# 日常主用法：从配置表生成（已导入的表；module/tables 均为过滤器，空=全部）
+go run ./tools/codegen -module=order -tables=order_item
+go run ./tools/codegen -module=order                # 模块下全部已导入表
+go run ./tools/codegen                              # 全部已导入表
+
+# 现场导入：读元数据写入配置表后再生成（已导入的表跳过，幂等）
+# 注意：-import 必须配 -module（导入行要写目标模块）
+go run ./tools/codegen -module=order -tables=order_item -import
+go run ./tools/codegen -module=order -import        # -tables 留空 = schema 全部表
+
+# 通用：-dsn（默认 config database.dsn / DB_DSN）、-schema（仅 -import，默从 dsn 解析）
+#       -out（默认 .）、-dry-run、-force、-no-tests（覆盖 config codegen.unit_test_enable）
 ```
+
+> 与旧 draft 模式（直读元数据、无需配置表）的差异：不带 `-import` 时**必须先在后台导入**，
+> 否则报「没有匹配的已导入表」。`make generate-db-crud` 已自动带 `-import`，旧用法不受影响。
+>
+> **已裁定偏离（spec §5，M3）**：
+> 1. 「后台三页面」→ 沿用 M2 modal 结构（导入/字段配置/编辑），M3 只新增预览 Modal；
+> 2. 「代码高亮」→ 纯 `<pre>` 等宽展示（仓库无高亮依赖，YAGNI，M4 可加）；
+> 3. CLI 示例 `--dsn=... --tables=t1 --import` 未带 `--module` → 实现**要求 `-import` 必须配 `-module`**，
+>    错误信息明确提示；
+> 4. 伪代码 body `tableIds[]` → 实际 `{"table_ids":[...]}`（仓库 snake_case JSON 惯例）。

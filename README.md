@@ -180,8 +180,8 @@ make pprof
 | `make test` | 单元测试（进程内，不依赖 MySQL/Redis/NATS） |
 | `make build` | 编译到 `bin/alexgo-server` |
 | `make proto` | 生成 protobuf 代码（需 protoc） |
-| `make generate-crud` | 模板 CRUD 生成（不覆盖已有文件） |
-| `DB_DSN=... make generate-db-crud MODULE=system TABLES=users,roles,menus` | 按数据表反向生成 CRUD |
+| `make generate-crud` | 从配置表生成已导入表（`MODULE` 过滤，默认 `system`；不覆盖已有文件） |
+| `DB_DSN=... make generate-db-crud MODULE=system TABLES=users,roles,menus` | 现场读元数据（未导入则先入配置表）生成 CRUD |
 | `make lint` | golangci-lint（CI 同款） |
 | `make load-test` | k6 压测 |
 | `make helm-upgrade` | Helm 安装/升级 |
