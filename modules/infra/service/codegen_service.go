@@ -1,6 +1,8 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +10,7 @@ import (
 
 	"alexGo-cloud/modules/infra/model"
 	"alexGo-cloud/modules/infra/repository"
+	"alexGo-cloud/pkg/codegen"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
@@ -26,16 +29,26 @@ type CodegenService interface {
 	Sync(ctx context.Context, tableID uint64) (*model.SyncResult, error)
 	// ListDBTables 列出库内可导入的表名（导入弹窗下拉数据源）。
 	ListDBTables(ctx context.Context) ([]string, error)
+	// Preview 渲染选中配置表为生成文件（纯内存，spec §4/§6）。
+	Preview(ctx context.Context, tableIDs []uint64) ([]cgmodel.GeneratedFile, error)
+	// Download 与 Preview 同一份渲染结果打成 ZIP（spec §4）。
+	Download(ctx context.Context, tableIDs []uint64) ([]byte, error)
 }
 
 type codegenService struct {
-	reader metadata.MetadataReader
-	repo   repository.CodegenRepository
-	opts   builder.Options
+	reader         metadata.MetadataReader
+	repo           repository.CodegenRepository
+	opts           builder.Options
+	unitTestEnable bool // config.Codegen.UnitTestEnable（CLI -no-tests 由调用方置 false）
 }
 
-func NewCodegenService(reader metadata.MetadataReader, repo repository.CodegenRepository, opts builder.Options) CodegenService {
-	return &codegenService{reader: reader, repo: repo, opts: opts}
+func NewCodegenService(
+	reader metadata.MetadataReader,
+	repo repository.CodegenRepository,
+	opts builder.Options,
+	unitTestEnable bool,
+) CodegenService {
+	return &codegenService{reader: reader, repo: repo, opts: opts, unitTestEnable: unitTestEnable}
 }
 
 func (s *codegenService) ListTables(ctx context.Context, page, size int) ([]*model.CodegenTable, int64, error) {
@@ -209,6 +222,65 @@ func (s *codegenService) ListColumns(ctx context.Context, tableID uint64) ([]*mo
 // ListDBTables 直读 information_schema（元数据读取器），供导入弹窗下拉。
 func (s *codegenService) ListDBTables(ctx context.Context) ([]string, error) {
 	return s.reader.ListTables(ctx)
+}
+
+// Preview 渲染选中配置表（spec §4：POST preview；纯内存，引擎失败无副作用）。
+func (s *codegenService) Preview(ctx context.Context, tableIDs []uint64) ([]cgmodel.GeneratedFile, error) {
+	return s.generate(ctx, tableIDs)
+}
+
+// Download 与 Preview 同一份渲染逻辑打包 ZIP（spec §4：POST download）。
+func (s *codegenService) Download(ctx context.Context, tableIDs []uint64) ([]byte, error) {
+	files, err := s.generate(ctx, tableIDs)
+	if err != nil {
+		return nil, err
+	}
+	return zipFiles(files)
+}
+
+// generate 配置行 → 映射 → 引擎。逐表聚合错误（spec §6：一轮改配置能解决的不逼跑多次）。
+func (s *codegenService) generate(ctx context.Context, tableIDs []uint64) ([]cgmodel.GeneratedFile, error) {
+	if len(tableIDs) == 0 {
+		return nil, fmt.Errorf("%w: empty table_ids", cgmodel.ErrTableInvalid)
+	}
+	var errs []error
+	tables := make([]*cgmodel.Table, 0, len(tableIDs))
+	for _, id := range tableIDs {
+		t, cols, err := s.GetTable(ctx, id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("table %d: %w", id, err))
+			continue
+		}
+		tbl, err := TableFromConfig(t, cols)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("table %s: %w", t.Name, err))
+			continue
+		}
+		tables = append(tables, tbl)
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return codegen.Generate(tables, codegen.Options{UnitTestEnable: s.unitTestEnable})
+}
+
+// zipFiles 纯内存打包；entry 名 = GeneratedFile.Path（引擎产出的仓库相对路径，恒正斜杠）。
+func zipFiles(files []cgmodel.GeneratedFile) ([]byte, error) {
+	buf := &bytes.Buffer{}
+	w := zip.NewWriter(buf)
+	for _, f := range files {
+		fw, err := w.Create(f.Path)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := fw.Write(f.Content); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // Sync 重读元数据并按 spec §9.4 分类：新列全关插入、消失列标 deprecated、

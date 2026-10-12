@@ -76,7 +76,7 @@ func newSvc(t *testing.T) (CodegenService, repository.CodegenRepository, *fakeRe
 	}
 	repo := repository.NewCodegenRepository(db)
 	r := newFixtureReader()
-	svc := NewCodegenService(r, repo, builder.Options{Module: "infra"})
+	svc := NewCodegenService(r, repo, builder.Options{Module: "infra"}, true)
 	return svc, repo, r
 }
 
@@ -282,5 +282,21 @@ func TestImportTable_DuplicateSentinel(t *testing.T) {
 	}
 	if _, err := svc.ImportTable(ctx, "order_items"); !errors.Is(err, cgmodelErr.ErrTableInvalid) {
 		t.Errorf("重复导入: err = %v, want ErrTableInvalid", err)
+	}
+}
+
+// 空入参 / 未知 id：不渲染、不静默当全表（Review Focus #3）。
+func TestPreview_Download_Errors(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	ctx := context.Background()
+
+	if _, err := svc.Preview(ctx, nil); !errors.Is(err, cgmodelErr.ErrTableInvalid) {
+		t.Errorf("empty ids: %v", err)
+	}
+	if _, err := svc.Preview(ctx, []uint64{9999}); err == nil {
+		t.Error("未知 id 应报错")
+	}
+	if _, err := svc.Download(ctx, []uint64{9999}); err == nil {
+		t.Error("未知 id 下载应报错")
 	}
 }

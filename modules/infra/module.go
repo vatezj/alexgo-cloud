@@ -49,9 +49,18 @@ func newBuilderOptions() builder.Options {
 	}
 }
 
-// newCodegenService 组装业务层，注入统一构建选项。
-func newCodegenService(reader metadata.MetadataReader, repo repository.CodegenRepository, opts builder.Options) service.CodegenService {
-	return service.NewCodegenService(reader, repo, opts)
+// newCodegenService 组装业务层，注入统一构建选项与单测骨架开关。
+func newCodegenService(
+	reader metadata.MetadataReader,
+	repo repository.CodegenRepository,
+	opts builder.Options,
+	cfg *config.Config,
+) service.CodegenService {
+	unitTest := true
+	if cfg != nil {
+		unitTest = cfg.Codegen.UnitTestEnable
+	}
+	return service.NewCodegenService(reader, repo, opts, unitTest)
 }
 
 // newMetadataReader 用配置 DSN 构造 MySQL 元数据读取器（information_schema 查询）。

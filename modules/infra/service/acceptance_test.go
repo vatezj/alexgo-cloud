@@ -1,7 +1,10 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"alexGo-cloud/modules/infra/model"
@@ -97,5 +100,69 @@ func TestM2_Acceptance_ImportEditSync(t *testing.T) {
 	}
 	if res2.Added != 0 || res2.Updated != 0 || res2.Deprecated != 0 {
 		t.Errorf("二次同步非幂等: %+v", res2)
+	}
+}
+
+// TestM3_Acceptance_PreviewDownload 是 spec §8 M3 验收链（服务层）：
+// 导入 → 预览（引擎纯内存渲染）→ ZIP（同一份渲染结果打包）。
+func TestM3_Acceptance_PreviewDownload(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	ctx := context.Background()
+
+	tbl, err := svc.ImportTable(ctx, "order_items")
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	files, err := svc.Preview(ctx, []uint64{tbl.ID})
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if len(files) < 4 {
+		t.Fatalf("files=%d, want >=4", len(files))
+	}
+	var paths []string
+	for _, f := range files {
+		if !strings.HasPrefix(f.Path, "modules/infra/") {
+			t.Errorf("path=%q, want modules/infra/ 前缀", f.Path)
+		}
+		if len(f.Content) == 0 {
+			t.Errorf("%s content 为空", f.Path)
+		}
+		paths = append(paths, f.Path)
+	}
+	// unitTestEnable=true（newSvc 传入）→ 单测骨架必须在（不硬编码文件总数，模板增减不误伤）
+	hasTest := false
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test.go") {
+			hasTest = true
+		}
+	}
+	if !hasTest {
+		t.Errorf("paths=%v, 缺 *_test.go 骨架", paths)
+	}
+
+	zipBytes, err := svc.Download(ctx, []uint64{tbl.ID})
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	if len(zipBytes) < 4 || string(zipBytes[:2]) != "PK" {
+		t.Fatalf("zip magic 错误（前 4 字节 %q）", zipBytes[:min(4, len(zipBytes))])
+	}
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		t.Fatalf("zip open: %v", err)
+	}
+	zipPaths := map[string]bool{}
+	for _, zf := range zr.File {
+		zipPaths[zf.Name] = true
+	}
+	if len(zr.File) != len(paths) {
+		t.Errorf("zip entries=%d, want %d", len(zr.File), len(paths))
+	}
+	for _, p := range paths {
+		if !zipPaths[p] {
+			t.Errorf("zip 缺 entry: %s", p)
+		}
 	}
 }
