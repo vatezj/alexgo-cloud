@@ -1,3 +1,5 @@
+import { downloadFileFromBlob } from '@vben/utils';
+
 import { requestClient } from './request';
 
 // ---- 代码生成（infra codegen，/admin/infra/codegen/*）----
@@ -129,12 +131,7 @@ export function downloadCodegen(tableIds: number[]): Promise<Blob> {
   });
 }
 
-// 触发浏览器保存（createObjectURL + a[download]），与 adapter 里已有用法一致。
+// 统一走仓库共享下载 helper（anchor 挂 document + 100ms 延迟 revoke，避免 Safari 取消下载）。
 export function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFileFromBlob({ fileName: filename, source: blob });
 }
