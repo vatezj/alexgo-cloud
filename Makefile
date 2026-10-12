@@ -18,11 +18,11 @@ build:
 proto:
 	bash scripts/gen_proto.sh
 
-generate-crud:
-	go run ./scripts/crud_generator.go
+generate-crud: ## 从配置表生成已导入表（MODULE 过滤，默认 system；不覆盖已有文件）
+	go run ./tools/codegen $(if $(MODULE),-module=$(MODULE))
 
-generate-db-crud:
-	go run ./tools/dbgen --module=$(MODULE) --tables=$(TABLES)
+generate-db-crud: ## 现场读元数据（未导入则先入配置表）再生成；TABLES 留空 = schema 全部表
+	go run ./tools/codegen -module=$(MODULE) -tables=$(TABLES) -import
 
 generate-all: proto generate-crud
 
