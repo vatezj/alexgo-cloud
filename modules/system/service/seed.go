@@ -290,6 +290,31 @@ func seed(ctx context.Context, p SeederParams) error {
 			break
 		}
 	}
+	// 租户管理页面回补（P0）：老库此前只有 system:tenant:manage 按钮（无页面入口），
+	// 11 个系统页面又锁在 hasSystemDir 门控里不会重跑——在此按 path 补建
+	// /system/tenants 页面，fresh 库与老库统一走本路径。
+	// 放在按钮补齐之前：页面权限 system:tenant:* 的 permPrefix 命中 system:tenant，
+	// fresh 库不再重复插"租户管理"按钮（页面即入口）；老库按钮已存在，两者共存无害。
+	// 幂等：path 已存在跳过；/system 目录缺失跳过（防孤儿挂 parent=0）。
+	if rootID != 0 && !hasMenuPath(allMenus, "/system/tenants") {
+		tenantPage := &model.Menu{
+			ParentID:   rootID,
+			Type:       "menu",
+			Name:       "租户管理",
+			Path:       "/system/tenants",
+			Component:  "views/system/SystemTenantsPage",
+			Icon:       "lucide:cluster",
+			Permission: "system:tenant:*",
+			Sort:       11,
+			Status:     1,
+			TenantID:   tid,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		if err := p.Menus.Create(ctx, tenantPage); err == nil {
+			allMenus = append(allMenus, tenantPage)
+		}
+	}
 	for _, b := range []struct {
 		perm string
 		name string
@@ -364,6 +389,17 @@ func seed(ctx context.Context, p SeederParams) error {
 func hasPermPrefix(menus []*model.Menu, prefix string) bool {
 	for _, m := range menus {
 		if m != nil && permPrefix(m.Permission) == prefix {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMenuPath 判断菜单集中是否已有指定 path 的未删菜单——页面回补（租户管理）的幂等判据。
+// 与 hasPermPrefix（按钮按权限前缀判）互补：页面无独立权限段可判，锚 path 更稳。
+func hasMenuPath(menus []*model.Menu, path string) bool {
+	for _, m := range menus {
+		if m != nil && m.Path == path && !m.Deleted {
 			return true
 		}
 	}

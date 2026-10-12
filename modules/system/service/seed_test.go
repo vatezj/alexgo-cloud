@@ -40,6 +40,36 @@ func TestSeedButtonPerms_MatchRouteKeys(t *testing.T) {
 	}
 }
 
+// hasMenuPath 是页面回补（租户管理 /system/tenants）的幂等判据：按 path 精确比对、
+// 跳过已删行，否则每次启动重复插页面（与 hasPermPrefix 的按钮判据互补）。
+func TestHasMenuPath(t *testing.T) {
+	menus := []*model.Menu{
+		{Path: "/system/users", Type: "menu"},
+		{Path: "/system/tenants", Type: "menu", Deleted: true},
+		nil, // 容忍 nil 节点
+	}
+	if hasMenuPath(nil, "/system/tenants") {
+		t.Error("empty menus must report missing")
+	}
+	if hasMenuPath(menus, "/system/tenants") {
+		t.Error("deleted row must not count as existing")
+	}
+	if !hasMenuPath(menus, "/system/users") {
+		t.Error("live row with exact path must count")
+	}
+	if hasMenuPath(menus, "/system/tenant") {
+		t.Error("prefix must not match (exact path only)")
+	}
+}
+
+// 页面回补的权限码必须落在 permissionRoutes 已注册组上（与按钮同一防线，防漂移）。
+func TestSeedTenantPagePerm_MatchRouteKey(t *testing.T) {
+	const perm = "system:tenant:*"
+	if _, ok := permissionRoutes[permPrefix(perm)]; !ok {
+		t.Errorf("tenant page %q → prefix %q has no permissionRoutes entry", perm, permPrefix(perm))
+	}
+}
+
 // 迁移（fx.Invoke）先于 seed（OnStart）执行：fresh 库在 seed 观察时已非空——
 // 旧门控 len==0 会误判"已播种"，11 个系统菜单永久缺失。以 /system 目录存在为准。
 func TestHasSystemDir(t *testing.T) {

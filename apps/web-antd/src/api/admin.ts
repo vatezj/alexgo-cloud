@@ -374,3 +374,46 @@ export function deleteClient(id: number) {
     `/admin/oauth2/clients/${id}`,
   );
 }
+
+// ---- 租户 ----
+export interface Tenant {
+  id: number;
+  name: string;
+  domain: string;
+  status: number; // 1 启用 0 停用
+  account_limit: number; // -1 不限（Create 时 0 也会归一为 -1）
+  package_id: number; // 展示字段，Update 载荷不含它
+  expire_time: string | null; // 展示字段，Update 载荷不含它
+  created_at: string;
+  updated_at: string;
+}
+
+// Create 忽略 status（恒 1 启用）；Update 四字段全量生效。
+export interface TenantPayload {
+  name: string;
+  domain: string;
+  status: number;
+  account_limit: number;
+}
+
+// controller 一次性返回全量（无分页参数）：页面 localPage 本地切页。
+export function listTenants() {
+  return requestClient.get<Tenant[]>('/admin/system/tenants');
+}
+
+export function createTenant(payload: TenantPayload) {
+  return requestClient.post<Tenant>('/admin/system/tenants', payload);
+}
+
+export function updateTenant(id: number, payload: TenantPayload) {
+  return requestClient.put<{ status: string }>(
+    `/admin/system/tenants/${id}`,
+    payload,
+  );
+}
+
+export function deleteTenant(id: number) {
+  return requestClient.delete<{ status: string }>(
+    `/admin/system/tenants/${id}`,
+  );
+}
