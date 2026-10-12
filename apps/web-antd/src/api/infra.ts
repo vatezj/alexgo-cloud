@@ -106,3 +106,35 @@ export function syncCodegenTable(id: number) {
     `/admin/infra/codegen/tables/${id}/sync`,
   );
 }
+
+// ---- M3：预览 / ZIP 下载 ----
+
+export interface CodegenFile {
+  content: string;
+  path: string;
+}
+
+// 预览选中表的生成结果（后端纯内存渲染，不落盘）。
+export function previewCodegen(tableIds: number[]) {
+  return requestClient.post<CodegenFile[]>('/admin/infra/codegen/preview', {
+    table_ids: tableIds,
+  });
+}
+
+// 下载选中表的生成结果 ZIP（application/zip 流）。
+export function downloadCodegen(tableIds: number[]): Promise<Blob> {
+  return requestClient.download<Blob>('/admin/infra/codegen/download', {
+    data: { table_ids: tableIds },
+    method: 'POST',
+  });
+}
+
+// 触发浏览器保存（createObjectURL + a[download]），与 adapter 里已有用法一致。
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

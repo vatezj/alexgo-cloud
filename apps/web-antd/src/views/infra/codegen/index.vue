@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { CodegenColumn, CodegenTable } from '#/api/infra';
+import type { CodegenColumn, CodegenFile, CodegenTable } from '#/api/infra';
 import type { VxeGridProps } from '#/adapter/vxe-table';
 
 import { Page, useVbenModal } from '@vben/common-ui';
@@ -14,19 +14,21 @@ import {
   Switch,
   Table,
   Tag,
-  Tooltip,
 } from 'ant-design-vue';
 
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   deleteCodegenTable,
+  downloadCodegen,
   importCodegenTable,
   listCodegenColumns,
   listCodegenTables,
   listDBTables,
+  previewCodegen,
+  saveBlob,
   saveCodegenColumns,
   syncCodegenTable,
   updateCodegenTable,
@@ -77,7 +79,7 @@ const gridOptions: VxeGridProps<CodegenTable> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 260,
+      width: 340,
     },
   ],
   height: 'auto',
@@ -301,6 +303,105 @@ function onDelete(row: CodegenTable) {
     },
   });
 }
+
+// ---- M3：代码预览（文件树 + 代码 + 下载 ZIP，spec §5.3）----
+const previewFiles = ref<CodegenFile[]>([]);
+const previewIds = ref<number[]>([]);
+const previewPath = ref('');
+
+// spec §5.3：左侧文件树按 后端(modules|pkg) / 前端(apps) 分组；空组不展示
+const previewGroups = computed(() => {
+  const groups: { files: CodegenFile[]; label: string }[] = [
+    { files: [], label: '后端' },
+    { files: [], label: '前端' },
+    { files: [], label: '其他' },
+  ];
+  for (const f of previewFiles.value) {
+    if (f.path.startsWith('modules/') || f.path.startsWith('pkg/')) {
+      groups[0]!.files.push(f);
+    } else if (f.path.startsWith('apps/')) {
+      groups[1]!.files.push(f);
+    } else {
+      groups[2]!.files.push(f);
+    }
+  }
+  return groups.filter((g) => g.files.length > 0);
+});
+
+const previewContent = computed(
+  () =>
+    previewFiles.value.find((f) => f.path === previewPath.value)?.content ?? '',
+);
+
+const [PreviewModal, previewModalApi] = useVbenModal({
+  title: '代码预览',
+  // 底部按钮在内容区自定义（关闭 + 下载 ZIP，spec §5.3）
+  // showDefaultActions 是 useVbenForm 的选项；useVbenModal 用 footer: false 隐藏默认底部
+  footer: false,
+  onOpenChange(isOpen) {
+    if (!isOpen) {
+      previewFiles.value = [];
+      previewIds.value = [];
+      previewPath.value = '';
+    }
+  },
+});
+
+async function openPreview(ids: number[], label: string) {
+  if (ids.length === 0) {
+    message.warning('暂无可生成的表配置');
+    return;
+  }
+  let files: CodegenFile[];
+  try {
+    files = await previewCodegen(ids);
+  } catch {
+    return; // 拦截器已 toast
+  }
+  previewIds.value = ids;
+  previewFiles.value = files;
+  previewPath.value = files[0]?.path ?? '';
+  previewModalApi.setState({ title: `代码预览 — ${label}` });
+  previewModalApi.open();
+}
+
+function onPreview(row: CodegenTable) {
+  void openPreview([row.id], row.table_name);
+}
+
+// 工具栏「生成代码」= 全部已导入表一起预览（spec §8 验收入口）
+async function onPreviewAll() {
+  let rows: CodegenTable[];
+  try {
+    rows = await listCodegenTables();
+  } catch {
+    return; // 拦截器已 toast
+  }
+  await openPreview(
+    rows.map((r) => r.id),
+    '全部表',
+  );
+}
+
+// 行内「下载」：单表直接 ZIP（spec §5.1 行操作）
+async function onDownload(row: CodegenTable) {
+  try {
+    const blob = await downloadCodegen([row.id]);
+    saveBlob(blob, `codegen_${row.table_name}.zip`);
+  } catch {
+    // 拦截器已 toast
+  }
+}
+
+// 预览弹窗底部「下载 ZIP」：与当前预览同一批 table_ids
+async function onDownloadZip() {
+  try {
+    const blob = await downloadCodegen(previewIds.value);
+    saveBlob(blob, 'codegen.zip');
+  } catch {
+    // 拦截器已 toast
+  }
+}
 </script>
 
 <template>
@@ -315,9 +416,13 @@ function onDelete(row: CodegenTable) {
         >
           导入表
         </Button>
-        <Tooltip title="生成代码是 M3 能力，后端尚未实现">
-          <Button disabled>生成代码</Button>
-        </Tooltip>
+        <Button
+          class="mr-2"
+          v-access:code="['infra:codegen']"
+          @click="onPreviewAll"
+        >
+          生成代码
+        </Button>
       </template>
       <template #actions="{ row }">
         <Button
@@ -335,6 +440,22 @@ function onDelete(row: CodegenTable) {
           @click="onEdit(row)"
         >
           编辑
+        </Button>
+        <Button
+          size="small"
+          type="link"
+          v-access:code="['infra:codegen']"
+          @click="onPreview(row)"
+        >
+          预览
+        </Button>
+        <Button
+          size="small"
+          type="link"
+          v-access:code="['infra:codegen']"
+          @click="onDownload(row)"
+        >
+          下载
         </Button>
         <Button
           size="small"
@@ -441,5 +562,46 @@ function onDelete(row: CodegenTable) {
     <EditModal>
       <EditForm />
     </EditModal>
+
+    <!-- 代码预览：左文件树 + 右代码 + 底部下载 ZIP（spec §5.3；
+         代码高亮属 M4 再接，此处等宽 pre 展示——见 usage.md 偏离说明） -->
+    <PreviewModal>
+      <div class="flex" style="height: 480px">
+        <div class="w-60 shrink-0 overflow-auto border-r pr-2">
+          <div v-for="g in previewGroups" :key="g.label">
+            <div class="mt-1 mb-1 text-xs font-bold text-gray-500">
+              {{ g.label }}
+            </div>
+            <div
+              v-for="f in g.files"
+              :key="f.path"
+              :class="
+                f.path === previewPath
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'hover:bg-gray-100'
+              "
+              :title="f.path"
+              class="cursor-pointer truncate px-1 py-0.5 font-mono text-xs"
+              @click="previewPath = f.path"
+            >
+              {{ f.path.split('/').pop() }}
+            </div>
+          </div>
+          <div
+            v-if="previewFiles.length === 0"
+            class="p-2 text-xs text-gray-400"
+          >
+            无生成文件
+          </div>
+        </div>
+        <div class="flex-1 overflow-auto pl-3">
+          <pre class="m-0 text-xs whitespace-pre">{{ previewContent }}</pre>
+        </div>
+      </div>
+      <div class="mt-3 flex justify-end gap-2">
+        <Button @click="previewModalApi.close()">关闭</Button>
+        <Button type="primary" @click="onDownloadZip">下载 ZIP</Button>
+      </div>
+    </PreviewModal>
   </Page>
 </template>
