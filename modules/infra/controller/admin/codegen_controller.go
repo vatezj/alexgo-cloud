@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -34,7 +35,8 @@ func (c *CodegenController) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/tables/:id/columns", c.listColumns)
 	g.PUT("/tables/:id/columns", c.saveColumns)
 	g.POST("/tables/:id/sync", c.sync)
-	g.GET("/tables/:id/generate", c.generate) // M3 占位
+	g.POST("/preview", c.preview)   // M3：纯内存渲染
+	g.POST("/download", c.download) // M3：ZIP 流
 }
 
 func idParam(c *gin.Context) (uint64, bool) {
@@ -175,25 +177,49 @@ func (c *CodegenController) sync(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"data": res})
 }
 
-// generate 是 M3 能力（模板渲染+下载），M2 显式占位防误调。
-func (c *CodegenController) generate(ctx *gin.Context) {
-	fail(ctx, http.StatusInternalServerError, errM3Feature)
-}
-
-type featureNotReadyError struct{ msg string }
-
-func (e *featureNotReadyError) Error() string {
-	if e.msg != "" {
-		return e.msg
+// preview 渲染选中配置表（spec §4）。body: {"table_ids":[...]} → {data:[{path,content}]}。
+// 纯内存：引擎失败只回 400，不落盘、不留半成品（spec §6）。
+func (c *CodegenController) preview(ctx *gin.Context) {
+	var req struct {
+		TableIDs []uint64 `json:"table_ids" binding:"required"`
 	}
-	return "generate is an M3 feature"
+	if err := ctx.ShouldBindJSON(&req); err != nil || len(req.TableIDs) == 0 {
+		fail(ctx, http.StatusBadRequest, errOr(err, "empty table_ids"))
+		return
+	}
+	files, err := c.svc.Preview(ctx.Request.Context(), req.TableIDs)
+	if err != nil {
+		fail(ctx, http.StatusBadRequest, err) // 配置/生成类 = 400（对齐 getTable/import）
+		return
+	}
+	items := make([]gin.H, 0, len(files))
+	for _, f := range files {
+		items = append(items, gin.H{"path": f.Path, "content": string(f.Content)})
+	}
+	ctx.JSON(http.StatusOK, gin.H{"data": items})
 }
 
-var errM3Feature = &featureNotReadyError{}
+// download 同一份渲染结果打成 ZIP 流（spec §4）。
+func (c *CodegenController) download(ctx *gin.Context) {
+	var req struct {
+		TableIDs []uint64 `json:"table_ids" binding:"required"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil || len(req.TableIDs) == 0 {
+		fail(ctx, http.StatusBadRequest, errOr(err, "empty table_ids"))
+		return
+	}
+	zipBytes, err := c.svc.Download(ctx.Request.Context(), req.TableIDs)
+	if err != nil {
+		fail(ctx, http.StatusBadRequest, err)
+		return
+	}
+	ctx.Header("Content-Disposition", `attachment; filename="codegen.zip"`)
+	ctx.Data(http.StatusOK, "application/zip", zipBytes)
+}
 
 func errOr(err error, fallback string) error {
 	if err != nil {
 		return err
 	}
-	return &featureNotReadyError{msg: fallback}
+	return errors.New(fallback)
 }

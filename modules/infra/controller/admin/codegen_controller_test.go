@@ -23,6 +23,11 @@ type stubService struct {
 	gotImport   string
 	saved       []*model.CodegenColumn
 	dbTablesErr error
+	// —— M3 新增 ——
+	previewFiles []cgmodel.GeneratedFile
+	previewErr   error
+	zipBytes     []byte
+	downloadErr  error
 }
 
 func (s *stubService) ListTables(context.Context, int, int) ([]*model.CodegenTable, int64, error) {
@@ -66,6 +71,20 @@ func (s *stubService) Sync(context.Context, uint64) (*model.SyncResult, error) {
 	}
 	// 真实 service 成功时从不返回 (nil, nil)
 	return &model.SyncResult{}, nil
+}
+
+func (s *stubService) Preview(context.Context, []uint64) ([]cgmodel.GeneratedFile, error) {
+	if s.previewErr != nil {
+		return nil, s.previewErr
+	}
+	return s.previewFiles, nil
+}
+
+func (s *stubService) Download(context.Context, []uint64) ([]byte, error) {
+	if s.downloadErr != nil {
+		return nil, s.downloadErr
+	}
+	return s.zipBytes, nil
 }
 
 func newTestRouter(stub *stubService) *gin.Engine {
@@ -159,12 +178,61 @@ func TestImport_ValidationBeforeService(t *testing.T) {
 	}
 }
 
-// generate 端点是 M3 占位：返回 500 + 明确文案，不 panic。
-func TestGenerate_ReservedForM3(t *testing.T) {
+// M3：preview 端点（取代 generate 占位）——信封 {data:[{path,content}]}。
+func TestPreview_Envelope(t *testing.T) {
+	stub := &stubService{previewFiles: []cgmodel.GeneratedFile{{
+		Path:    "modules/infra/model/order_item.go",
+		Content: []byte("package model\n"),
+	}}}
+	r := newTestRouter(stub)
+	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/preview", `{"table_ids":[1]}`)
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body)
+	}
+	body := w.Body.String()
+	for _, want := range []string{`"data"`, "modules/infra/model/order_item.go", "package model"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body 缺 %q: %s", want, body)
+		}
+	}
+}
+
+// 空/缺 table_ids → 400，绝不静默当全表（Review Focus #3）。
+func TestPreview_EmptyIDs_400(t *testing.T) {
 	r := newTestRouter(&stubService{})
-	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/tables/1/generate", "")
-	if w.Code != 500 || !strings.Contains(w.Body.String(), "M3") {
-		t.Errorf("code=%d body=%s", w.Code, w.Body)
+	for _, payload := range []string{"", "{}", `{"table_ids":[]}`} {
+		w := doJSON(t, r, "POST", "/api/admin/infra/codegen/preview", payload)
+		if w.Code != 400 {
+			t.Errorf("payload=%q code=%d body=%s", payload, w.Code, w.Body)
+		}
+	}
+	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/preview", `{"table_ids":[1]}`)
+	if w.Code != 200 { // stub 空 files → data:[]（合法信封，不算错）
+		t.Errorf("合法空渲染 code=%d body=%s", w.Code, w.Body)
+	}
+}
+
+// download：zip 流 + 两个头；业务错误 → 400（Review Focus #4）。
+func TestDownload_ZipStream(t *testing.T) {
+	r := newTestRouter(&stubService{zipBytes: []byte("PK\x03\x04fake-entry")})
+	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/download", `{"table_ids":[1]}`)
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("Content-Type=%q", ct)
+	}
+	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, `filename="codegen.zip"`) {
+		t.Errorf("Content-Disposition=%q", cd)
+	}
+	if !strings.HasPrefix(w.Body.String(), "PK") {
+		t.Errorf("body 前缀=%q", w.Body.String()[:min(4, w.Body.Len())])
+	}
+
+	errStub := newTestRouter(&stubService{downloadErr: errors.New("table 9: not found")})
+	w = doJSON(t, errStub, "POST", "/api/admin/infra/codegen/download", `{"table_ids":[9]}`)
+	if w.Code != 400 {
+		t.Errorf("download err code=%d body=%s", w.Code, w.Body)
 	}
 }
 
