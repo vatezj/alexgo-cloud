@@ -137,3 +137,20 @@ func TestOAuth2SeedClients_SQLFileExecutedTwiceStable(t *testing.T) {
 		t.Errorf("种子行数 before=%d after=%d, want 恒 2", before, after)
 	}
 }
+
+// 后台 SSO 登录的 redirect_uri 由 window.location.origin 派生（vben dev 端口 5666），
+// 种子/回填必须覆盖 http://localhost:5666/callback，否则登录卡在白名单 400。
+func TestOAuth2Migrations_AdminRedirectWhitelist_CoversDevOrigin(t *testing.T) {
+	db, runner := runOAuth2(t)
+	if err := runner.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var uris string
+	if err := db.Raw(`SELECT redirect_uris FROM oauth2_client WHERE client_id='alexgo-admin'`).
+		Scan(&uris).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(uris, "http://localhost:5666/callback") {
+		t.Errorf("redirect_uris = %q, want 含 http://localhost:5666/callback（vben dev origin）", uris)
+	}
+}

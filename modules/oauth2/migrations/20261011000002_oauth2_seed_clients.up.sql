@@ -4,7 +4,7 @@ INSERT INTO `oauth2_client`
   (`client_id`,`client_secret`,`client_name`,`website`,`grant_types`,`redirect_uris`,`account_types`,`scopes`,`activity`,`created_at`,`updated_at`)
 SELECT 'alexgo-admin', '', 'alexGo 管理后台', '',
        'authorization_code,password,refresh_token',
-       'http://localhost:5173/callback\nhttp://localhost:8080/callback',
+       'http://localhost:5173/callback\nhttp://localhost:8080/callback\nhttp://localhost:5666/callback',
        'system', 'all', 1, NOW(), NOW()
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `oauth2_client` WHERE `client_id`='alexgo-admin');
