@@ -102,6 +102,10 @@ alexGo-cloud/
 ## 📚 文档
 
 - [架构说明](docs/architecture.md)：模块装配、中间件链、单体→微服务切换、Outbox、配置体系、测试策略、部署拓扑
+- [使用文档](docs/usage.md)：菜单管理、代码生成配置（界面操作 + API + 同步语义 + CLI）
+- [OAuth2 统一登录](docs/oauth2.md)：SSO 授权码 + PKCE 链路、redirect_uri 白名单、四种 grant、客户端管理、错误排查
+- [兼容层下线评估](docs/oauth2-compat-retirement.md)：老登录端点保留条件与下线清单
+- [服务通信](docs/service-communication.md)：模块间调用与 gRPC 委托
 - 使用指南树（yudao-cloud 开发指南式：快速启动 / 技术选型 / 专题指南）**建设中**
 
 ## 🐳 部署与运维

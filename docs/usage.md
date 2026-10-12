@@ -1,12 +1,14 @@
 # alexGo-cloud 使用文档
 
 > 本文依据当前代码整理，是新功能的操作入口参考。与实现不一致时，以代码为准。
-> 架构与装配见 [architecture.md](architecture.md)。
+> 架构与装配见 [architecture.md](architecture.md)；OAuth2 统一登录见 [oauth2.md](oauth2.md)。
 
 ## 0. 通用约定
 
 - **Base URL**：所有接口挂在 `/api` 组下（`alexgo-server/server/http.go`）。
-- **认证**：请求头 `Authorization: Bearer <JWT>`；登录后取得 token。
+- **认证**：请求头 `Authorization: Bearer <token>`；登录经 OAuth2 统一登录签发**不透明令牌**
+  （SSO 授权码流或 `POST /api/oauth2/token`，见 [oauth2.md](oauth2.md)）。
+  注意 `/api/oauth2/*` 协议端点用 RFC 6749 信封 `{"error","error_description"}`，与本节 admin 信封不同。
 - **权限（Casbin）**：每个接口前缀注册为权限码，需角色持有对应权限才可访问，否则 403。
   权限码注册见 `modules/system/service/permission_routes.go`。
 - **信封**（infra 模块惯例，`codegen_controller.go` 头注释）：
@@ -77,34 +79,54 @@ curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
 
 ---
 
-## 2. 代码生成配置（M2，API-only）
+## 2. 代码生成配置
 
-代码生成分阶段交付：**M2（当前）**完成配置持久化与同步的后端闭环；**M3** 接管理界面与生成执行。
-本节描述 M2 已可用的 HTTP 接口。
+代码生成分阶段交付：**M2** 完成配置持久化与同步的后端闭环 + 管理页面（当前）；**M3** 接生成执行（模板渲染 + 下载）。
+设计规格见 [codegen-redesign-design](superpowers/specs/2026-10-10-codegen-redesign-design.md)。
 
 ### 2.1 前置
 
 - **权限码**：`infra:codegen`（页面）、`infra:codegen:import` / `infra:codegen:sync` / `infra:codegen:delete`（按钮），
-  路由前缀 `/api/admin/infra/codegen` 已在 `permission_routes.go` 注册。
-- **菜单入口**：迁移 `20261011000002_codegen_menus` 已种入 **系统管理 → 代码生成 → 代码生成配置**；
-  M3 完成前组件 `views/infra/codegen/index` 尚未接线，点菜单会 404，API 可先用。
-- **元数据库**：导入/Sync 读取的是配置的元数据库（DSN 见 `configs/config.yaml` 的 `dsn`）。
+  路由前缀 `/api/admin/infra/codegen` 已在 `permission_routes.go` 注册（通配覆盖 `db-tables` 等子资源）。
+- **菜单入口**：**系统管理 → 代码生成 → 代码生成配置**（`/codegen/config`，
+  组件 `views/infra/codegen/index`，迁移 `20261011000002_codegen_menus` 种入）。
+- **元数据库**：导入/Sync/表下拉读取的是配置的元数据库（DSN 见 `configs/config.yaml` 的 `dsn`）。
 
-### 2.2 接口一览
+### 2.2 界面操作（`/codegen/config`）
+
+| 操作 | 权限 | 行为 |
+| --- | --- | --- |
+| **导入表**（工具栏） | `infra:codegen:import` | 弹窗下拉搜库内表（`GET db-tables`）→ `POST import`；重复导入 400 |
+| **字段配置**（行） | `infra:codegen` | 全量编辑**用户配置列**（控件/列表/表单/查询开关/查询方式/字典/排序），保存为整体替换 `PUT columns` |
+| **编辑**（行） | `infra:codegen` | 改 module / business_name / class_name / 备注（白名单合并，见 2.5） |
+| **同步**（行） | `infra:codegen:sync` | 重读元数据算差异并落库，toast 显示 added/updated/deprecated/unchanged 计数 |
+| **删除**（行） | `infra:codegen:delete` | 二次确认后删配置（级联删列，**不动数据库物理表**） |
+| **生成代码**（工具栏） | — | **M3 占位，恒禁用**（后端 `generate` 亦恒 500） |
+
+**快照字段 vs 配置字段**（spec §9.4，理解字段配置弹窗的关键）：
+
+- **快照字段**（`type`/`comment`/`go_type`/`json_name`/主键空性等）：导入时从元数据落库，**同步时刷新**，
+  `SaveColumns` 不写它们 → 界面上「注释」列**只读**，改了保存也不会生效。
+- **配置字段**（`html_type`/`list_enable`/`form_enable`/`query_enable`/`query_operation`/
+  `list_required`/`form_required`/`dict_type`/`sort_order`）：用户可编辑，保存走
+  `Select(configFields)` 白名单，**同步永远不覆盖**。
+
+### 2.3 接口一览
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/infra/codegen/tables` | 分页列表（`?page=&size=`，size ≤ 200） |
-| POST | `/api/admin/infra/codegen/import` | 导入物理表为配置 |
+| GET | `/api/admin/infra/codegen/db-tables` | 库内可导入表名（导入弹窗下拉数据源，`{data:[...]}`；元数据不可达 → 500） |
+| POST | `/api/admin/infra/codegen/import` | 导入物理表为配置（`{"table_name":"..."}`） |
 | GET | `/api/admin/infra/codegen/tables/:id` | 详情（`{data, columns}`） |
-| PUT | `/api/admin/infra/codegen/tables/:id` | 改配置（白名单字段，见 2.4） |
+| PUT | `/api/admin/infra/codegen/tables/:id` | 改配置（白名单字段，见 2.5） |
 | DELETE | `/api/admin/infra/codegen/tables/:id` | 删除配置（级联删列） |
 | GET | `/api/admin/infra/codegen/tables/:id/columns` | 列配置列表 |
-| PUT | `/api/admin/infra/codegen/tables/:id/columns` | 批量保存列配置（整体替换，非空数组） |
+| PUT | `/api/admin/infra/codegen/tables/:id/columns` | 批量保存列配置（整体替换，非空数组；只落配置字段） |
 | POST | `/api/admin/infra/codegen/tables/:id/sync` | 从元数据同步差异（spec §9.4） |
 | GET | `/api/admin/infra/codegen/tables/:id/generate` | **M3 占位**，恒返回 500 `generate is an M3 feature` |
 
-### 2.3 典型工作流
+### 2.4 典型工作流（curl）
 
 ```bash
 BASE=http://localhost:8080/api/admin/infra/codegen
@@ -117,7 +139,7 @@ curl -X POST $BASE/import -H "$AUTH" -H "$CT" -d '{"table_name":"order_items"}'
 # 2) 查详情，拿 id 与列配置
 curl -H "$AUTH" $BASE/tables/1
 
-# 3) 改配置（只传要改的字段；见 2.4 校验规则）
+# 3) 改配置（只传要改的字段；见 2.5 校验规则）
 curl -X PUT $BASE/tables/1 -H "$AUTH" -H "$CT" \
   -d '{"module":"order","business_name":"order_item","class_name":"OrderItem"}'
 
@@ -131,7 +153,7 @@ curl -X POST $BASE/tables/1/sync -H "$AUTH"
 # → {"data":{"added":1,"updated":0,"deprecated":0,"unchanged":7}}
 ```
 
-### 2.4 配置字段与校验（PUT `/tables/:id`）
+### 2.5 配置字段与校验（PUT `/tables/:id`）
 
 可编辑字段（**白名单合并**：只覆盖传入的非零字段，`table_name`/`created_at` 等快照与系统字段不受 body 影响）：
 
@@ -147,7 +169,7 @@ curl -X POST $BASE/tables/1/sync -H "$AUTH"
 
 校验失败与重复导入均返回 **400** `{"error": "...table/class_name..."}`（错误文本包 `ErrTableInvalid` 哨兵）。
 
-### 2.5 同步语义（spec §9.4）
+### 2.6 同步语义（spec §9.4）
 
 `POST /tables/:id/sync` 重读元数据并分类：
 
@@ -160,7 +182,7 @@ curl -X POST $BASE/tables/1/sync -H "$AUTH"
 
 返回计数 `{added, updated, deprecated, unchanged}`。
 
-### 2.6 CLI（可选）
+### 2.7 CLI（可选）
 
 `tools/codegen` 提供同引擎的命令行入口（draft 模式：元数据 → 构建 → 生成 → 写盘，**默认不覆盖已有文件**）。
 schema 名从 DSN 解析（`mysql.ParseDSN`，解析失败按空 schema 上报）。常用 flag：
