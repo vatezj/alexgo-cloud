@@ -75,3 +75,6 @@ vite.config.ts.*
 skills-lock.json
 .atomcode
 datalog
+
+# Playwright MCP 会话快照
+.playwright-mcp/
