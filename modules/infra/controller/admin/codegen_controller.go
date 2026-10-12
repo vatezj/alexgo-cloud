@@ -26,6 +26,7 @@ func NewCodegenController(svc service.CodegenService, opts builder.Options) *Cod
 // RegisterRoutes 挂在 server /api 组下，前缀 /admin/infra/codegen。
 func (c *CodegenController) RegisterRoutes(g *gin.RouterGroup) {
 	g.GET("/tables", c.listTables)
+	g.GET("/db-tables", c.listDBTables)
 	g.POST("/import", c.importTable)
 	g.GET("/tables/:id", c.getTable)
 	g.PUT("/tables/:id", c.updateTable)
@@ -59,6 +60,16 @@ func (c *CodegenController) listTables(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"data": items, "total": total})
+}
+
+// listDBTables 库内可导入表名（导入弹窗下拉）。读库类失败 → 500。
+func (c *CodegenController) listDBTables(ctx *gin.Context) {
+	names, err := c.svc.ListDBTables(ctx.Request.Context())
+	if err != nil {
+		fail(ctx, http.StatusInternalServerError, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"data": names})
 }
 
 func (c *CodegenController) getTable(ctx *gin.Context) {

@@ -24,6 +24,8 @@ type CodegenService interface {
 	ListColumns(ctx context.Context, tableID uint64) ([]*model.CodegenColumn, error)
 	// Sync 从元数据源重读表并计算+落库差异（spec §9.4）。
 	Sync(ctx context.Context, tableID uint64) (*model.SyncResult, error)
+	// ListDBTables 列出库内可导入的表名（导入弹窗下拉数据源）。
+	ListDBTables(ctx context.Context) ([]string, error)
 }
 
 type codegenService struct {
@@ -202,6 +204,11 @@ func (s *codegenService) SaveColumns(ctx context.Context, tableID uint64, cols [
 
 func (s *codegenService) ListColumns(ctx context.Context, tableID uint64) ([]*model.CodegenColumn, error) {
 	return s.repo.ListColumns(ctx, tableID)
+}
+
+// ListDBTables 直读 information_schema（元数据读取器），供导入弹窗下拉。
+func (s *codegenService) ListDBTables(ctx context.Context) ([]string, error) {
+	return s.reader.ListTables(ctx)
 }
 
 // Sync 重读元数据并按 spec §9.4 分类：新列全关插入、消失列标 deprecated、

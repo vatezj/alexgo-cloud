@@ -17,11 +17,12 @@ import (
 
 // stubService 记录调用，按 case 返回。
 type stubService struct {
-	importErr error
-	syncRes   *model.SyncResult
-	syncErr   error
-	gotImport string
-	saved     []*model.CodegenColumn
+	importErr   error
+	syncRes     *model.SyncResult
+	syncErr     error
+	gotImport   string
+	saved       []*model.CodegenColumn
+	dbTablesErr error
 }
 
 func (s *stubService) ListTables(context.Context, int, int) ([]*model.CodegenTable, int64, error) {
@@ -49,6 +50,12 @@ func (s *stubService) SaveColumns(_ context.Context, _ uint64, cols []*model.Cod
 }
 func (s *stubService) ListColumns(_ context.Context, _ uint64) ([]*model.CodegenColumn, error) {
 	return []*model.CodegenColumn{{ID: 10, TableID: 1, Name: "id"}}, nil
+}
+func (s *stubService) ListDBTables(context.Context) ([]string, error) {
+	if s.dbTablesErr != nil {
+		return nil, s.dbTablesErr
+	}
+	return []string{"orders", "menus"}, nil
 }
 func (s *stubService) Sync(context.Context, uint64) (*model.SyncResult, error) {
 	if s.syncErr != nil {
@@ -157,6 +164,28 @@ func TestGenerate_ReservedForM3(t *testing.T) {
 	r := newTestRouter(&stubService{})
 	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/tables/1/generate", "")
 	if w.Code != 500 || !strings.Contains(w.Body.String(), "M3") {
+		t.Errorf("code=%d body=%s", w.Code, w.Body)
+	}
+}
+
+// db-tables：导入弹窗下拉数据源，信封 data 字符串数组；
+// 元数据不可达（读库类）→ 500 + error，绝不 404。
+func TestDBTables_Envelope(t *testing.T) {
+	r := newTestRouter(&stubService{})
+	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/db-tables", "")
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"data"`) || !strings.Contains(body, "orders") {
+		t.Errorf("body=%s", body)
+	}
+}
+
+func TestDBTables_MetadataDown_500(t *testing.T) {
+	r := newTestRouter(&stubService{dbTablesErr: errors.New("metadata unreachable")})
+	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/db-tables", "")
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), `"error"`) {
 		t.Errorf("code=%d body=%s", w.Code, w.Body)
 	}
 }
