@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	inframodel "alexGo-cloud/modules/infra/model"
 	"alexGo-cloud/pkg/codegen/model"
 )
 
@@ -79,5 +80,44 @@ func TestSchemaFromDSN(t *testing.T) {
 		if got := schemaFromDSN(tc.dsn); got != tc.want {
 			t.Errorf("schemaFromDSN(%q) = %q, want %q", tc.dsn, got, tc.want)
 		}
+	}
+}
+
+// 配置模式选表过滤：module/tables 皆可空（空=不过滤）；无匹配必须报错（Review Focus #5）。
+func TestFilterConfigTables(t *testing.T) {
+	mk := func(name, module string) *inframodel.CodegenTable {
+		return &inframodel.CodegenTable{Name: name, Module: module}
+	}
+	all := []*inframodel.CodegenTable{
+		mk("order_items", "order"),
+		mk("order_logs", "order"),
+		mk("users", "system"),
+	}
+
+	got, err := filterConfigTables(all, "", "")
+	if err != nil || len(got) != 3 {
+		t.Fatalf("全量: n=%d err=%v", len(got), err)
+	}
+
+	got, err = filterConfigTables(all, "order", "")
+	if err != nil || len(got) != 2 || got[0].Name != "order_items" {
+		t.Fatalf("module 过滤: %+v err=%v", got, err)
+	}
+
+	got, err = filterConfigTables(all, "", "users,order_logs")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("tables 过滤: n=%d err=%v", len(got), err)
+	}
+
+	// 双过滤器取交集；order ∩ users = ∅ → 必须报错
+	if _, err := filterConfigTables(all, "order", "users"); err == nil {
+		t.Error("交集为空应报错")
+	}
+
+	if _, err := filterConfigTables(all, "nope", ""); err == nil {
+		t.Error("无匹配必须报错，不能静默空生成")
+	}
+	if _, err := filterConfigTables(nil, "", ""); err == nil {
+		t.Error("空配置表集合必须报错")
 	}
 }

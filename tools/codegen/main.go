@@ -12,8 +12,12 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	gormmysql "gorm.io/driver/mysql"
+	"gorm.io/gorm"
 
-	"alexGo-cloud/pkg/codegen"
+	inframodel "alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/infra/repository"
+	"alexGo-cloud/modules/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	"alexGo-cloud/pkg/codegen/model"
@@ -29,13 +33,8 @@ func main() {
 	force := flag.Bool("force", false, "overwrite existing files")
 	dryRun := flag.Bool("dry-run", false, "print planned files, do not write")
 	noTests := flag.Bool("no-tests", false, "skip generating unit test skeletons")
+	importFlag := flag.Bool("import", false, "先现场读元数据导入配置表（需 -module/-tables 或 -tables 留空=全库表），再从配置表生成")
 	flag.Parse()
-
-	if *module == "" {
-		fmt.Fprintln(os.Stderr, "missing --module")
-		flag.Usage()
-		os.Exit(2)
-	}
 
 	cfg, _ := config.LoadGlobalConfig()
 	dsn := *dsnFlag
@@ -50,65 +49,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-	if err := db.PingContext(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", model.ErrMetadataUnreachable, err)
-		os.Exit(1)
-	}
-
-	schema := *schemaFlag
-	if schema == "" {
-		schema = schemaFromDSN(dsn)
-	}
-	if schema == "" {
-		fmt.Fprintln(os.Stderr, "cannot determine schema; pass --schema or include db name in dsn")
-		os.Exit(2)
-	}
-
-	reader := metadata.NewMySQLReader(db, schema)
-
-	tableList, err := parseTables(*tables)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
-	if len(tableList) == 0 {
-		tableList, err = reader.ListTables(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	// 读取 + 构建：聚合所有错误，任一失败即不生成。
-	var errs []error
-	var tablesToGen []*model.Table
-	for _, name := range tableList {
-		meta, merr := reader.ReadTable(ctx, name)
-		if merr != nil {
-			errs = append(errs, merr)
-			continue
-		}
-		tbl, berr := builder.Build(meta, builder.Options{Module: *module})
-		if berr != nil {
-			errs = append(errs, berr)
-			continue
-		}
-		tablesToGen = append(tablesToGen, tbl)
-	}
-	if len(errs) > 0 {
-		for _, e := range errs {
-			fmt.Fprintf(os.Stderr, "%v\n", e)
-		}
-		fmt.Fprintf(os.Stderr, "共 %d 个错误，未生成任何文件\n", len(errs))
-		os.Exit(1)
-	}
-
+	// 原样保留（从旧位置上移）：单测骨架开关
 	unitTest := true
 	if cfg != nil {
 		unitTest = cfg.Codegen.UnitTestEnable
@@ -117,9 +58,104 @@ func main() {
 		unitTest = false
 	}
 
-	files, err := codegen.Generate(tablesToGen, codegen.Options{UnitTestEnable: unitTest})
+	// 配置表所在库（与元数据同 DSN）；gorm 只用于 config 读写
+	gdb, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open config db: %v\n", err)
+		os.Exit(1)
+	}
+	repo := repository.NewCodegenRepository(gdb)
+
+	// -import：现场读元数据写入配置表（已导入跳过，幂等），随后统一走配置模式
+	if *importFlag {
+		if *module == "" {
+			fmt.Fprintln(os.Stderr, "-import 需要 --module（导入行要写目标模块），如 --module=order --tables=t1 --import")
+			os.Exit(2)
+		}
+		tableList, err := parseTables(*tables)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		sdb, err := sql.Open("mysql", dsn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		defer sdb.Close()
+		if err := sdb.PingContext(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", model.ErrMetadataUnreachable, err)
+			os.Exit(1)
+		}
+		schema := *schemaFlag
+		if schema == "" {
+			schema = schemaFromDSN(dsn)
+		}
+		if schema == "" {
+			fmt.Fprintln(os.Stderr, "cannot determine schema; pass --schema or include db name in dsn")
+			os.Exit(2)
+		}
+		reader := metadata.NewMySQLReader(sdb, schema)
+		if len(tableList) == 0 {
+			// 与旧 dbgen 语义对齐：-tables 留空 = schema 全部表
+			tableList, err = reader.ListTables(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+		}
+		svc := service.NewCodegenService(reader, repo, builder.Options{Module: *module}, unitTest)
+		done, err := repo.ImportedTableNames(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		imported := make(map[string]bool, len(done))
+		for _, n := range done {
+			imported[n] = true
+		}
+		var importErrs []error
+		skipped := 0
+		for _, name := range tableList {
+			if imported[name] {
+				skipped++
+				continue
+			}
+			if _, err := svc.ImportTable(ctx, name); err != nil {
+				importErrs = append(importErrs, fmt.Errorf("import %s: %w", name, err))
+			}
+		}
+		if len(importErrs) > 0 {
+			for _, e := range importErrs {
+				fmt.Fprintf(os.Stderr, "%v\n", e)
+			}
+			fmt.Fprintf(os.Stderr, "导入失败 %d 个，未生成任何文件\n", len(importErrs))
+			os.Exit(1)
+		}
+		fmt.Printf("导入 %d / 跳过 %d（已导入）\n", len(tableList)-skipped, skipped)
+	}
+
+	// 配置模式：过滤已导入表 → Preview（与后台同一渲染路径）
+	all, err := repo.ListAllTables(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	selected, err := filterConfigTables(all, *module, *tables)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(2)
+	}
+	ids := make([]uint64, 0, len(selected))
+	for _, t := range selected {
+		ids = append(ids, t.ID)
+	}
+	// 配置模式不读元数据（reader=nil）；生成路径与后台 preview 完全同源
+	svc := service.NewCodegenService(nil, repo, builder.Options{}, unitTest)
+	files, err := svc.Preview(ctx, ids)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err) // errors.Join 多行 = 逐条打印（spec §6）
+		fmt.Fprintln(os.Stderr, "未生成任何文件")
 		os.Exit(1)
 	}
 
@@ -130,7 +166,6 @@ func main() {
 		fmt.Printf("dry-run：%d 个文件\n", len(files))
 		return
 	}
-
 	created, skipped, err := writeFiles(*out, files, *force)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "写盘失败: %v（已写 %d，跳过 %d）\n", err, created, skipped)
@@ -169,6 +204,39 @@ func parseTables(s string) ([]string, error) {
 		if t != "" {
 			out = append(out, t)
 		}
+	}
+	return out, nil
+}
+
+// filterConfigTables 配置模式选表：module/tables 都是过滤器（空=不过滤）。
+// 无匹配返回 error（带修复建议），绝不静默生成 0 个文件当成功。
+func filterConfigTables(tables []*inframodel.CodegenTable, module, names string) ([]*inframodel.CodegenTable, error) {
+	want, err := parseTables(names)
+	if err != nil {
+		return nil, err
+	}
+	wantSet := make(map[string]bool, len(want))
+	for _, w := range want {
+		wantSet[w] = true
+	}
+	var out []*inframodel.CodegenTable
+	for _, t := range tables {
+		if t == nil {
+			continue
+		}
+		if module != "" && t.Module != module {
+			continue
+		}
+		if len(wantSet) > 0 && !wantSet[t.Name] {
+			continue
+		}
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf(
+			"没有匹配的已导入表（--module=%q --tables=%q）：先在后台页面导入，或加 --import 现场导入",
+			module, names,
+		)
 	}
 	return out, nil
 }
