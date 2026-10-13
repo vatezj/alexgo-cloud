@@ -308,6 +308,8 @@ function onDelete(row: CodegenTable) {
 const previewFiles = ref<CodegenFile[]>([]);
 const previewIds = ref<number[]>([]);
 const previewPath = ref('');
+// 大批量预览渲染期间给按钮 loading 反馈（M3 终审跟进票②）
+const previewLoading = ref(false);
 
 // spec §5.3：左侧文件树按 后端(modules|pkg) / 前端(apps) 分组；空组不展示
 const previewGroups = computed(() => {
@@ -352,35 +354,40 @@ async function openPreview(ids: number[], label: string) {
     message.warning('暂无可生成的表配置');
     return;
   }
-  let files: CodegenFile[];
+  previewLoading.value = true;
   try {
-    files = await previewCodegen(ids);
+    const files = await previewCodegen(ids);
+    previewIds.value = ids;
+    previewFiles.value = files;
+    previewPath.value = files[0]?.path ?? '';
+    previewModalApi.setState({ title: `代码预览 — ${label}` });
+    previewModalApi.open();
   } catch {
-    return; // 拦截器已 toast
+    // 拦截器已 toast
+  } finally {
+    previewLoading.value = false;
   }
-  previewIds.value = ids;
-  previewFiles.value = files;
-  previewPath.value = files[0]?.path ?? '';
-  previewModalApi.setState({ title: `代码预览 — ${label}` });
-  previewModalApi.open();
 }
 
 function onPreview(row: CodegenTable) {
   void openPreview([row.id], row.table_name);
 }
 
-// 工具栏「生成代码」= 全部已导入表一起预览（spec §8 验收入口）
+// 工具栏「生成代码」= 全部已导入表一起预览（spec §8 验收入口；
+// listCodegenTables 已分页拉全，「全部表」为真全量）
 async function onPreviewAll() {
-  let rows: CodegenTable[];
+  previewLoading.value = true;
   try {
-    rows = await listCodegenTables();
+    const rows = await listCodegenTables();
+    await openPreview(
+      rows.map((r) => r.id),
+      '全部表',
+    );
   } catch {
-    return; // 拦截器已 toast
+    // 拦截器已 toast
+  } finally {
+    previewLoading.value = false;
   }
-  await openPreview(
-    rows.map((r) => r.id),
-    '全部表',
-  );
 }
 
 // 行内「下载」：单表直接 ZIP（spec §5.1 行操作）
@@ -419,6 +426,7 @@ async function onDownloadZip() {
         <Button
           class="mr-2"
           v-access:code="['infra:codegen']"
+          :loading="previewLoading"
           @click="onPreviewAll"
         >
           生成代码
@@ -445,6 +453,7 @@ async function onDownloadZip() {
           size="small"
           type="link"
           v-access:code="['infra:codegen']"
+          :loading="previewLoading"
           @click="onPreview(row)"
         >
           预览

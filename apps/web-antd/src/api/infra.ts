@@ -53,10 +53,28 @@ export interface SyncResult {
   unchanged: number;
 }
 
-export function listCodegenTables() {
-  return requestClient.get<CodegenTable[]>(
-    '/admin/infra/codegen/tables?page=1&size=200',
-  );
+// 服务端单页上限 200（codegen_service.go clamp）——循环分页拉全，
+// 杜绝 >200 张已导入表时「全部表」预览静默截断。判停：末批 < 200；
+// 安全上限 50 页（1 万张），防后端异常时死循环。
+export async function listCodegenTables(): Promise<CodegenTable[]> {
+  const pageSize = 200;
+  const maxPages = 50;
+  const all: CodegenTable[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = await requestClient.get<CodegenTable[]>(
+      `/admin/infra/codegen/tables?page=${page}&size=${pageSize}`,
+    );
+    all.push(...batch);
+    if (batch.length < pageSize) {
+      break;
+    }
+    if (page === maxPages) {
+      console.warn(
+        `[codegen] 表数量超过 ${pageSize * maxPages} 张，仅加载前 ${pageSize * maxPages} 张`,
+      );
+    }
+  }
+  return all;
 }
 
 // 导入弹窗下拉：库内全部可导入表名（information_schema 直读）。
@@ -117,17 +135,21 @@ export interface CodegenFile {
 }
 
 // 预览选中表的生成结果（后端纯内存渲染，不落盘）。
+// 大批量渲染可能超过默认 10s 超时，显式放宽到 60s。
 export function previewCodegen(tableIds: number[]) {
-  return requestClient.post<CodegenFile[]>('/admin/infra/codegen/preview', {
-    table_ids: tableIds,
-  });
+  return requestClient.post<CodegenFile[]>(
+    '/admin/infra/codegen/preview',
+    { table_ids: tableIds },
+    { timeout: 60_000 },
+  );
 }
 
-// 下载选中表的生成结果 ZIP（application/zip 流）。
+// 下载选中表的生成结果 ZIP（application/zip 流）；大批量同样放宽超时到 60s。
 export function downloadCodegen(tableIds: number[]): Promise<Blob> {
   return requestClient.download<Blob>('/admin/infra/codegen/download', {
     data: { table_ids: tableIds },
     method: 'POST',
+    timeout: 60_000,
   });
 }
 

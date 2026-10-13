@@ -109,6 +109,24 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
       // 当前mock接口返回的错误字段是 error 或者 message
       const responseData = error?.response?.data ?? {};
+      // download 的 responseType='blob'，400 错误体也是 Blob——先转文本
+      // 再取 error 字段，否则只显状态码通用文案（M3 终审跟进票③）。
+      // 拦截器回调不被 await（preset-interceptors 同步调用），这里 fire-and-forget。
+      if (responseData instanceof Blob) {
+        void responseData
+          .text()
+          .then((text: string) => {
+            let detail = '';
+            try {
+              detail = JSON.parse(text)?.error ?? '';
+            } catch {
+              // 非 JSON 错误体，回退通用文案
+            }
+            message.error(detail || msg);
+          })
+          .catch(() => message.error(msg));
+        return;
+      }
       const errorMessage = responseData?.error ?? responseData?.message ?? '';
       // 如果没有错误信息，则会根据状态码进行提示
       message.error(errorMessage || msg);

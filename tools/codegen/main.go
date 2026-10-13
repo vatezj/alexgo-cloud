@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -150,8 +151,8 @@ func main() {
 	for _, t := range selected {
 		ids = append(ids, t.ID)
 	}
-	// 配置模式不读元数据（reader=nil）；生成路径与后台 preview 完全同源
-	svc := service.NewCodegenService(nil, repo, builder.Options{}, unitTest)
+	// 配置模式不读元数据（显式 nopReader，防 nil 悬置）；生成路径与后台 preview 完全同源
+	svc := service.NewCodegenService(nopReader{}, repo, builder.Options{}, unitTest)
 	files, err := svc.Preview(ctx, ids)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // errors.Join 多行 = 逐条打印（spec §6）
@@ -172,6 +173,18 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("生成 %d / 跳过 %d（已存在）/ 失败 0\n", created, skipped)
+}
+
+// nopReader：配置模式不读元数据的显式占位（M3 终审跟进票④）。
+// 若生成路径意外触达 reader，立即报错而不是 nil 解引用 panic。
+type nopReader struct{}
+
+func (nopReader) ListTables(context.Context) ([]string, error) {
+	return nil, errors.New("codegen CLI: 配置模式不读元数据（nopReader.ListTables 被意外调用）")
+}
+
+func (nopReader) ReadTable(context.Context, string) (*metadata.TableMeta, error) {
+	return nil, errors.New("codegen CLI: 配置模式不读元数据（nopReader.ReadTable 被意外调用）")
 }
 
 func writeFiles(root string, files []model.GeneratedFile, force bool) (created, skipped int, err error) {

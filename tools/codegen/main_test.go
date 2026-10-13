@@ -2,12 +2,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	inframodel "alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/pkg/codegen/metadata"
 	"alexGo-cloud/pkg/codegen/model"
 )
 
@@ -122,5 +124,15 @@ func TestFilterConfigTables(t *testing.T) {
 	}
 	if _, err := filterConfigTables(nil, "", ""); err == nil {
 		t.Error("空配置表集合必须报错")
+	}
+}
+
+func TestNopReader_FailsLoudly(t *testing.T) {
+	var r metadata.MetadataReader = nopReader{}
+	if _, err := r.ListTables(context.Background()); err == nil {
+		t.Error("nopReader.ListTables 必须报错（配置模式不读元数据），不能静默成功")
+	}
+	if _, err := r.ReadTable(context.Background(), "users"); err == nil {
+		t.Error("nopReader.ReadTable 必须报错（配置模式不读元数据），不能静默成功")
 	}
 }
