@@ -101,6 +101,7 @@ alexGo-cloud/
 
 ## 📚 文档
 
+- [模块功能与权限手册](docs/modules.md)：5 个业务模块的功能、权限码、后端端点、前端页面，以及认证/RBAC/租户横切体系
 - [架构说明](docs/architecture.md)：模块装配、中间件链、单体→微服务切换、Outbox、配置体系、测试策略、部署拓扑
 - [使用文档](docs/usage.md)：菜单管理、代码生成配置（界面操作 + API + 同步语义 + CLI）
 - [OAuth2 统一登录](docs/oauth2.md)：SSO 授权码 + PKCE 链路、redirect_uri 白名单、四种 grant、客户端管理、错误排查

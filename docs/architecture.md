@@ -92,9 +92,12 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
    双模式**鉴权（`pkg/middleware/auth.go`）：
    - **模式**：`auth.mode=token`（默认）用不透明令牌经 `token.Validator` 查库校验；Validator 未装配
      属装配错误，直接 401（fail-closed，绝不放行）。`auth.mode=jwt` 走旧静态 JWT 解析，作为回滚开关。
-   - **作用范围**：`/api/admin/**` 全量 + app 端仅 `/api/app/member/auth/logout|refresh`
-     （登录、注册等入口公开）；`/health`、`/health/ready`、`/metrics`、`/debug/pprof/` 直接放行。
-   - **Casbin sub 前缀**：用户主体为 `{tenant}:{user}`（用户名为空退化为 `{tenant}:{userId}`）；
+   - **作用范围**：`/api/admin/**` 全量 + vben 自读三端点（`/api/auth/codes`、`/api/user/info`、
+     `/api/menu/all`，需 token 但跳过 data_scope 与 casbin）；`/api/app/**` 与 `/api/oauth2/**`
+     **全部不走本清单**（app 端 refresh/logout 为 possession-based，凭 body/头内 token 自证，
+     见 `pkg/middleware/auth.go` 注释）；`/health`、`/health/ready`、`/metrics`、`/debug/pprof/` 直接放行。
+   - **Casbin sub 前缀**：用户主体为 `{tenant}:{userType}:{name}`（用户名为空退化为
+     `{tenant}:{userType}:{userId}`）；
      角色策略主体另占独立命名空间 `{tenant}:role:{code}`（`modules/system/service/permission_routes.go`
      的 `roleSub`），防止跨租户同名串策略、也防止成员自注册昵称撞角色 sub 提权。
    - **data_scope 注入**：仅管理端用户经 `tenant.ScopeLoader` 计算数据权限档写入 ctx（加载失败按
