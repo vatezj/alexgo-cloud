@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"alexGo-cloud/modules/system/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type DeptRepository interface {
@@ -44,6 +46,11 @@ type NoticeRepository interface {
 	Create(ctx context.Context, n *model.SystemNotice) error
 	Update(ctx context.Context, n *model.SystemNotice) error
 	Delete(ctx context.Context, tenantID uint64, id uint64) error
+	// 以下为已读回执（P0-1 通知已读）
+	FindByID(ctx context.Context, tenantID, id uint64) (*model.SystemNotice, error) // 不存在返回 (nil, nil)
+	ListReadIDs(ctx context.Context, tenantID, userID uint64) (map[uint64]bool, error)
+	InsertRead(ctx context.Context, r *model.SystemNoticeRead) error                // 幂等：uk 冲突 DoNothing
+	ListNoticeIDs(ctx context.Context, tenantID uint64) ([]uint64, error)
 }
 
 type deptRepo struct{ db *gorm.DB }
@@ -121,4 +128,45 @@ func (r *noticeRepo) Create(ctx context.Context, n *model.SystemNotice) error { 
 func (r *noticeRepo) Update(ctx context.Context, n *model.SystemNotice) error { return r.db.WithContext(ctx).Save(n).Error }
 func (r *noticeRepo) Delete(ctx context.Context, tenantID uint64, id uint64) error {
 	return r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&model.SystemNotice{}).Error
+}
+
+func (r *noticeRepo) FindByID(ctx context.Context, tenantID, id uint64) (*model.SystemNotice, error) {
+	var n model.SystemNotice
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, id).First(&n).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
+func (r *noticeRepo) ListReadIDs(ctx context.Context, tenantID, userID uint64) (map[uint64]bool, error) {
+	var ids []uint64
+	err := r.db.WithContext(ctx).Model(&model.SystemNoticeRead{}).
+		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
+		Pluck("notice_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[uint64]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set, nil
+}
+
+func (r *noticeRepo) InsertRead(ctx context.Context, rd *model.SystemNoticeRead) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "notice_id"}},
+		DoNothing: true,
+	}).Create(rd).Error
+}
+
+func (r *noticeRepo) ListNoticeIDs(ctx context.Context, tenantID uint64) ([]uint64, error) {
+	var ids []uint64
+	err := r.db.WithContext(ctx).Model(&model.SystemNotice{}).
+		Where("tenant_id = ?", tenantID).Pluck("id", &ids).Error
+	return ids, err
 }

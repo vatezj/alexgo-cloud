@@ -81,3 +81,18 @@ type SystemNotice struct {
 
 func (SystemNotice) TableName() string { return "system_notices" }
 
+// SystemNoticeRead 公告已读回执：每租户每用户对每公告一行。
+// 三列组合 uniqueIndex 同时服务两处：生产建表由上面迁移的 uk 落地、
+// 测试 AutoMigrate 由本标签落地——缺任一处，clause.OnConflict 无冲突目标可依，
+// 幂等写会退化成重复插行（NoticeRead_Idempotent 测试钉住）。
+type SystemNoticeRead struct {
+	ID        uint64    `gorm:"primaryKey" json:"id"`
+	TenantID  uint64    `gorm:"uniqueIndex:uk_notice_reads_tenant_user_notice" json:"tenant_id"`
+	UserID    uint64    `gorm:"uniqueIndex:uk_notice_reads_tenant_user_notice" json:"user_id"`
+	NoticeID  uint64    `gorm:"uniqueIndex:uk_notice_reads_tenant_user_notice" json:"notice_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (SystemNoticeRead) TableName() string { return "system_notice_reads" }
+

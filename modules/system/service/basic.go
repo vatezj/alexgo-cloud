@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"alexGo-cloud/modules/system/model"
@@ -46,7 +47,20 @@ type NoticeService interface {
 	Create(ctx context.Context, n *model.SystemNotice) (*model.SystemNotice, error)
 	Update(ctx context.Context, n *model.SystemNotice) error
 	Delete(ctx context.Context, id uint64) error
+	// 以下为已读回执（P0-1 通知已读）
+	ListMine(ctx context.Context, userID uint64) ([]*NoticeItem, error)
+	MarkRead(ctx context.Context, userID, noticeID uint64) error
+	MarkAllRead(ctx context.Context, userID uint64) error
 }
+
+// NoticeItem 我的通知响应项：公告字段经内嵌指针平铺 + 当前用户已读状态。
+type NoticeItem struct {
+	*model.SystemNotice
+	ReadStatus int `json:"read_status"` // 0 未读 1 已读
+}
+
+// ErrNoticeNotFound 标记已读的目标公告不存在（不存在或跨租户），controller 转 400。
+var ErrNoticeNotFound = errors.New("notice not found")
 
 type deptService struct{ repo repository.DeptRepository }
 type postService struct{ repo repository.PostRepository }
@@ -216,4 +230,59 @@ func (s *noticeService) Update(ctx context.Context, n *model.SystemNotice) error
 }
 func (s *noticeService) Delete(ctx context.Context, id uint64) error {
 	return s.repo.Delete(ctx, tenant.TenantIDFromContext(ctx), id)
+}
+
+func (s *noticeService) ListMine(ctx context.Context, userID uint64) ([]*NoticeItem, error) {
+	tid := tenant.TenantIDFromContext(ctx)
+	notices, err := s.repo.List(ctx, tid)
+	if err != nil {
+		return nil, err
+	}
+	readIDs, err := s.repo.ListReadIDs(ctx, tid, userID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*NoticeItem, 0, len(notices))
+	for _, n := range notices {
+		item := &NoticeItem{SystemNotice: n}
+		if readIDs[n.ID] {
+			item.ReadStatus = 1
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (s *noticeService) MarkRead(ctx context.Context, userID, noticeID uint64) error {
+	tid := tenant.TenantIDFromContext(ctx)
+	n, err := s.repo.FindByID(ctx, tid, noticeID)
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return ErrNoticeNotFound
+	}
+	now := time.Now()
+	return s.repo.InsertRead(ctx, &model.SystemNoticeRead{
+		TenantID: tid, UserID: userID, NoticeID: noticeID,
+		CreatedAt: now, UpdatedAt: now,
+	})
+}
+
+func (s *noticeService) MarkAllRead(ctx context.Context, userID uint64) error {
+	tid := tenant.TenantIDFromContext(ctx)
+	ids, err := s.repo.ListNoticeIDs(ctx, tid)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, id := range ids {
+		if err := s.repo.InsertRead(ctx, &model.SystemNoticeRead{
+			TenantID: tid, UserID: userID, NoticeID: id,
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
