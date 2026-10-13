@@ -37,9 +37,9 @@ import (
 
 // main 是 alexGo-cloud 的 system-server 入口，支持双运行模式：
 //
-//   - mono 模式（默认，deployment.mode != "micro"）：单进程装配 system+order+member
+//   - mono 模式（默认，deployment.mode != "micro"）：单进程装配 oauth2+infra+system+order+member
 //     全部模块（make run 一键全起），token 签发/校验都用本地 token.Service；
-//   - micro 模式（DEPLOYMENT_MODE=micro，make run-system）：本进程只装 system+order，
+//   - micro 模式（DEPLOYMENT_MODE=micro，make run-system）：本进程只装 oauth2+infra+system+order，
 //     member 路由由 modules/member/cmd 独立进程提供（make run-member），
 //     会员登录经 gRPC TokenService 委托本进程签发。
 //

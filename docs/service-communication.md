@@ -17,7 +17,7 @@
 
 | 命令 | 形态 | 进程内容 |
 | --- | --- | --- |
-| `make run` | mono | 单进程 system+order+member，:8080 |
+| `make run` | mono | 单进程 oauth2+infra+system+order+member，:8080 |
 | `make run-system` | micro（system 侧） | `DEPLOYMENT_MODE=micro go run ./alexgo-server/cmd/main.go`，:8080 + gRPC :50051 |
 | `make run-member` | micro（member 侧） | `HTTP_ADDR=:8081 SYSTEM_GRPC_ADDR=127.0.0.1:50051 go run ./modules/member/cmd/main.go`，:8081 |
 

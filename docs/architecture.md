@@ -18,7 +18,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | 目录 | 职责 |
 | --- | --- |
 | `alexgo-server/` | 单体进程入口与 HTTP 层：`cmd/main.go` 统一启动装配，`configs/` 全局配置，`server/` Gin 路由、中间件链与 `server.Module` 抽象 |
-| `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）、`order`（示例业务）与 `member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
+| `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）、`infra`（代码生成在线链路）、`oauth2`（SSO 授权码+PKCE、客户端管理）、`order`（示例业务）与 `member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
 | `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
 | `apps/web-antd/` | 管理后台前端（vendored vue-vben-admin v5.7.0，Ant Design Vue），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
@@ -43,7 +43,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
    `outbox.enabled` 控制是否真正启动）→ `trace.InitTracer`（OTel TracerProvider）→
    `migrate.Runner.Run`（`migrate.auto=false` 时整体跳过）。
 3. **`fx.Decorate`（替换最终实现）**：见第 4 节。
-4. **模块聚合**：`system.FxModule`、`order.FxModule` 通过
+4. **模块聚合**：`oauth2.FxModule`、`infra.FxModule`、`system.FxModule`、`order.FxModule` 通过
    `fx.Annotate(..., fx.As(new(server.Module)), fx.ResultTags('group:"modules"'))` 把自己注册进
    `group:"modules"`；`server.StartHTTPServer` 的 `HTTPServerParams` 收到该 group 后，在
    `/api` 组上按序调用每个模块的 `RegisterRoutes`。
@@ -69,7 +69,8 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 （`system.FxModule` + `grpcserver.StartGRPCServer`）。拆分只换装配，不改调用方代码。
 
 **双运行模式（`deployment.mode`）**：`mono`（默认）时 `cmd/main.go` 额外装配 `member.FxModule`，
-system+order+member 单进程跑在 :8080；`micro` 时本进程不装 member 路由，会员侧由
+oauth2+infra+system+order+member 单进程跑在 :8080；`micro` 时本进程仍装 oauth2+infra+system+order、
+只是不装 member 路由，会员侧由
 `modules/member/cmd/main.go` 独立启动（:8081），其 Token 签发经 gRPC `TokenService`
 （system 侧 :50051，`StartGRPCServer` 内部按 `deployment.mode` 门控，mono 直接 return）委托完成。
 gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled` 任一开启
@@ -184,12 +185,11 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
 
 ## 8. 测试策略
 
-全部是进程内单元测试，**CI 不依赖任何外部服务**，共 20 个测试包（`go test ./... | grep -c "^ok"`）：
-`alexgo-server/cmd`、`alexgo-server/server`、`modules/member/cmd`、`modules/member/service`、
-`modules/system`、`modules/system/cmd`、`modules/system/grpcserver`、`modules/system/model`、
-`modules/system/repository`、`modules/system/service`、`pkg/auth`、`pkg/circuitbreaker`、
-`pkg/client`、`pkg/config`、`pkg/limiter`、`pkg/middleware`、`pkg/outbox`、`pkg/tenant`、
-`pkg/tenant/gormplugin`、`pkg/token`。
+全部是进程内单元测试，**CI 不依赖任何外部服务**，共 38 个测试包（`go test ./... | grep -c "^ok"`）：
+`alexgo-server/{cmd,server}` 2 包；`modules/` 四模块的 controller/service/repository 层
+（infra 3、member 4、oauth2 3、system 9，含 system 的 `controller/{admin,app,vben}` 与 `grpcserver`）；
+`pkg/` 基础设施 16 包（auth、circuitbreaker、client、codegen 全家 6 包、config、limiter、
+middleware、outbox、tenant、tenant/gormplugin、token）；`tools/codegen` 1 包。
 依赖替身：
 
 - **miniredis**：模拟 Redis，实际跑限流 Lua 脚本（`pkg/limiter`）；
@@ -214,10 +214,10 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
 
 ## 9. 部署拓扑
 
-- **运行形态与双服务**：本地 `make run` 是 **mono**（单进程 system+order+member，:8080）；
+- **运行形态与双服务**：本地 `make run` 是 **mono**（单进程 oauth2+infra+system+order+member，:8080）；
   compose / kustomize / Helm 交付的默认形态是 **micro 双服务**：
   - `alexgo`（system-server）：业务 :8080 + **gRPC TokenService :50051**（`DEPLOYMENT_MODE=micro`，
-    `StartGRPCServer` 按该开关门控），只装 system+order 路由；
+    `StartGRPCServer` 按该开关门控），只装 oauth2+infra+system+order 路由；
   - `member`（member-server，容器入口 `/app/member-server`）：:8081，`SYSTEM_GRPC_ADDR` 指向前者
     的 50051，会员签发/刷新经 gRPC 委托；**两服务共用同一数据库**（同库约束）；
   - **前缀分流**：`/api/app/member`、`/api/admin/member` 两个前缀走 member 服务——
