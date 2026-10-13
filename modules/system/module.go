@@ -212,6 +212,12 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup.POST("/notices", m.basicCtrl.CreateNotice)
 	adminGroup.PUT("/notices", m.basicCtrl.UpdateNotice)
 	adminGroup.DELETE("/notices/:id", m.basicCtrl.DeleteNotice)
+	// P0-1 我的通知：静态段（mine/read-all）与参数段（:id/read）同层混挂，
+	// gin v1.12 实测不 panic（静态优先匹配，探针已验）——注册顺序即下三行与上四行的同形顺序，
+	// 测试侧 notice_read_test.go 的 newNoticeRouter 保持同形作常驻回归。
+	adminGroup.GET("/notices/mine", m.basicCtrl.ListMyNotices)
+	adminGroup.POST("/notices/read-all", m.basicCtrl.ReadAllNotices)
+	adminGroup.POST("/notices/:id/read", m.basicCtrl.MarkNoticeRead)
 	adminGroup.GET("/logs/login", m.auditCtrl.ListLogin)
 	adminGroup.GET("/logs/operate", m.auditCtrl.ListOperate)
 	adminGroup.GET("/tenants", m.tenantCtrl.List)
