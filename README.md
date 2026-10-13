@@ -91,13 +91,13 @@ micro 本地联调前端分流：`MEMBER_PROXY=http://localhost:8081 pnpm --filt
 ```
 alexGo-cloud/
 ├── alexgo-server/     # 启动入口 + HTTP Server 装配（cmd/main.go、server/）
-├── modules/           # 业务模块（system、order、member），各含 controller/service/repository/model
+├── modules/           # 业务模块（system、infra、oauth2、order、member），各含 controller/service/repository/model
 ├── pkg/               # 20+ 基础能力包（auth、limiter、outbox、middleware、migrate…）
 ├── apps/              # 管理后台前端（vendored vue-vben-admin v5.7.0，主用 web-antd）
 ├── packages/          # vendored vben 共享包（@vben/*）
 ├── deployments/       # docker-compose / kubernetes / helm / argocd
-├── scripts/           # proto 生成、CRUD 生成器、k6 压测脚本
-├── tools/dbgen/       # 按数据表反向生成 CRUD
+├── scripts/           # proto 生成、k6 压测脚本等工程脚本
+├── tools/codegen/     # codegen CLI（配置表驱动，make generate-crud / generate-db-crud）
 └── docs/              # 文档
 ```
 

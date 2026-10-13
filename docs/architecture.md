@@ -22,8 +22,8 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
 | `apps/web-antd/` | 管理后台前端（vendored vue-vben-admin v5.7.0，Ant Design Vue），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
-| `scripts/` | 工程脚本：proto 生成（`gen_proto.sh`）、CRUD 生成器、k6 压测（`load_test.js`）、代码模板 |
-| `tools/dbgen` | 按数据表生成 CRUD 代码（`make generate-db-crud`） |
+| `scripts/` | 工程脚本：proto 生成（`gen_proto.sh`）、k6 压测（`load_test.js`）等 |
+| `tools/codegen` | codegen CLI（配置表驱动，与后台预览同源；`make generate-crud` / `generate-db-crud`） |
 
 模块内部补充：`modules/system` 额外持有 `migrations/`（golang-migrate SQL 迁移）、`grpcserver/`
 与 `cmd/grpc_main.go`（独立 gRPC 进程入口）、`configs/config.yaml`（模块级配置，如 `jwt_secret`）；
