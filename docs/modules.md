@@ -29,7 +29,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 
 | 模块 | 目录 | 定位 | 端点前缀 | 端点数 | 租户隔离 |
 | --- | --- | --- | --- | --- | --- |
-| **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 54 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
+| **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 57 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
 | **infra** | `modules/infra` | 代码生成：库表导入、字段配置、同步、预览、ZIP 下载 | `/api/admin/infra/codegen` | 11 | 无（系统级） |
 | **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 6 | `member_user.tenant_id` |
 | **oauth2** | `modules/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
@@ -120,7 +120,7 @@ Recovery → Tenant → Logger → Prometheus → RateLimitAndBreaker → Auth �
   - 全局豁免：`tenants`、`casbin_rule`
   - 系统级（列上无 tenant_id）：`oauth2_client`、`codegen_table`/`codegen_column`
   - 特例：`oauth2_authorize_code` 字段名 `OwnerTenantID` + `column:tenant_id`（规避插件注入，手动管理）
-  - 租户级（插件隔离）：`system_users`、`roles`、`menus`、`user_roles`、`role_menus`、`depts`、`posts`、`dict_*`、`system_configs`、`system_notices`、`login_logs`、`operate_logs`、`outbox_events`、`member_user`、`system_oauth2_access_token`
+  - 租户级（插件隔离）：`system_users`、`roles`、`menus`、`user_roles`、`role_menus`、`depts`、`posts`、`dict_*`、`system_configs`、`system_notices`、`system_notice_reads`、`login_logs`、`operate_logs`、`outbox_events`、`member_user`、`system_oauth2_access_token`
   - **未隔离（gap）**：`orders` 无 `TenantID` 字段——service 注释宣称多租户但插件不过滤该表
 - **租户能力**：租户 CRUD（§3）、账号额度闸门（`account_limit<0` 不限）、停用租户在签发与校验两道闸查 `tenants.status`。
 
@@ -169,11 +169,12 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 | menu | `system:log:login` | 登录日志 `/system/logins` |
 | menu | `system:log:operate` | 操作日志 `/system/operates` |
 | menu（迁移回补） | `system:tenant:*` | 租户管理 `/system/tenants` |
+| menu（seed 回补） | `system:notice:mine` | 我的通知 `/system/notices/mine` |
 | button | `system:auth:profile` | 登录鉴权按钮 |
 | button | `system:tenant:manage` | 租户管理按钮（前端未用） |
 | button | `member:user:manage` | 会员管理按钮（顺带为 member 补，前端无页面） |
 
-### 3.3 后端端点（54 条）
+### 3.3 后端端点（57 条）
 
 #### 用户 / 鉴权 — `/api/admin/system`
 
@@ -210,6 +211,14 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 - **字典类型** `/dict/types`、**字典数据** `/dict/datas`（GET 需 query `type_id`；删类型级联处理数据）
 - **系统参数** `/configs`
 - **通知公告** `/notices`
+
+**我的通知**（P0-1 已读回执，同一 BasicController）：
+
+| 方法 | 路径 | handler | 说明 |
+| --- | --- | --- | --- |
+| GET | `/notices/mine` | ListMyNotices | 本租户公告 + 当前用户 `read_status`（0 未读/1 已读） |
+| POST | `/notices/:id/read` | MarkNoticeRead | 标记单条已读（幂等；不存在/跨租户 400） |
+| POST | `/notices/read-all` | ReadAllNotices | 全部标记已读（幂等） |
 
 #### 日志 / 租户 — `/api/admin/system`
 
@@ -279,6 +288,7 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 | `/system/dict` | `SystemDictPage.vue` | 左类型右数据双表联动，各自新建/删除 | `system:dict:*`（5 处） |
 | `/system/configs` | `SystemConfigsPage.vue` | 参数新建/删除（无编辑） | `system:config:*` |
 | `/system/notices` | `SystemNoticesPage.vue` | 公告新建/删除（无编辑） | `system:notice:*` |
+| /system/notices/mine | SystemMyNoticesPage.vue | 我的公告列表、详情查看（未读打开自动标记）、单条/全部已读 | 无 v-access（可见性由菜单 `system:notice:mine` 控制） |
 | `/system/logins` | `SystemLoginLogsPage.vue` | 登录日志只读（limit=100） | 无（靠菜单可见性） |
 | `/system/operates` | `SystemOperateLogsPage.vue` | 操作日志只读 | 无 |
 | `/system/tenants` | `SystemTenantsPage.vue` | 租户新建/编辑/删除 | `system:tenant:*` |
@@ -548,6 +558,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 │  ├─ 登录日志       /system/logins        SystemLoginLogsPage              perm="system:log:login"
 │  ├─ 操作日志       /system/operates      SystemOperateLogsPage            perm="system:log:operate"
 │  ├─ 租户管理       /system/tenants       SystemTenantsPage                perm="system:tenant:*"
+│  ├─ 我的通知       /system/notices/mine  SystemMyNoticesPage              perm="system:notice:mine"
 │  ├─ [按钮] 登录鉴权   perm="system:auth:profile"
 │  ├─ [按钮] 租户管理    perm="system:tenant:manage"
 │  └─ [按钮] 会员管理    perm="member:user:manage"

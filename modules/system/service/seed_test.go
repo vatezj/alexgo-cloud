@@ -70,6 +70,16 @@ func TestSeedTenantPagePerm_MatchRouteKey(t *testing.T) {
 	}
 }
 
+// 我的通知（P0-1）回补页面的权限码同样必须落在 permissionRoutes 已注册组上——
+// system:notice:mine 前两段 system:notice 已映射 /api/admin/system/notices/*，
+// 否则页面可见、接口 403（死权限）。
+func TestSeedMyNoticesPagePerm_MatchRouteKey(t *testing.T) {
+	const perm = "system:notice:mine"
+	if _, ok := permissionRoutes[permPrefix(perm)]; !ok {
+		t.Errorf("my notices page %q → prefix %q has no permissionRoutes entry", perm, permPrefix(perm))
+	}
+}
+
 // 迁移（fx.Invoke）先于 seed（OnStart）执行：fresh 库在 seed 观察时已非空——
 // 旧门控 len==0 会误判"已播种"，11 个系统菜单永久缺失。以 /system 目录存在为准。
 func TestHasSystemDir(t *testing.T) {

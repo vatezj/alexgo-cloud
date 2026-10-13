@@ -82,6 +82,10 @@ export interface Notice {
   created_at: string;
 }
 
+export interface NoticeItem extends Notice {
+  read_status: number;
+}
+
 export interface LoginLog {
   id: number;
   tenant_id: number;
@@ -291,6 +295,23 @@ export function createNotice(payload: {
 export function deleteNotice(id: number) {
   return requestClient.delete<{ status: string }>(
     `/admin/system/notices/${id}`,
+  );
+}
+
+// ---- 我的通知（已读回执） ----
+export function listMyNotices() {
+  return requestClient.get<NoticeItem[]>('/admin/system/notices/mine');
+}
+
+export function markNoticeRead(id: number) {
+  return requestClient.post<{ status: string }>(
+    `/admin/system/notices/${id}/read`,
+  );
+}
+
+export function markAllNoticesRead() {
+  return requestClient.post<{ status: string }>(
+    '/admin/system/notices/read-all',
   );
 }
 

@@ -315,6 +315,29 @@ func seed(ctx context.Context, p SeederParams) error {
 			allMenus = append(allMenus, tenantPage)
 		}
 	}
+	// 我的通知页面回补（P0-1 通知已读）：与租户管理同模式——按 path 幂等回补，
+	// fresh 库与老库统一走本路径；权限码 system:notice:mine 前两段命中 system:notice
+	// 既有路由组（seed_test 有守卫）。append 进 allMenus → 尾部 SetRoleMenus 绑 admin。
+	// sort=12 排在租户管理（11）之后，不做存量重排。
+	if rootID != 0 && !hasMenuPath(allMenus, "/system/notices/mine") {
+		myNotices := &model.Menu{
+			ParentID:   rootID,
+			Type:       "menu",
+			Name:       "我的通知",
+			Path:       "/system/notices/mine",
+			Component:  "views/system/SystemMyNoticesPage",
+			Icon:       "lucide:mail-open",
+			Permission: "system:notice:mine",
+			Sort:       12,
+			Status:     1,
+			TenantID:   tid,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		if err := p.Menus.Create(ctx, myNotices); err == nil {
+			allMenus = append(allMenus, myNotices)
+		}
+	}
 	for _, b := range []struct {
 		perm string
 		name string
