@@ -10,9 +10,9 @@
 
 | 层 | 主题 | 完成度 |
 | --- | --- | --- |
-| P0 | 基座开箱短板（收尾欠账） | 2/4 ✅（codegen M3、通知已读） |
+| P0 | 基座开箱短板（收尾欠账） | 4/4 ✅ 全清（codegen M3/M7、通知已读、M4 跟进票） |
 | P1 | 常用管理能力 | 0/4 |
-| P2 | 深水区（可缓） | 0/4 |
+| P2 | 深水区（可缓） | 0/5 |
 | 工程收尾 | 零散隐患 | 2/3 ✅ |
 
 ---
@@ -22,8 +22,8 @@
 | # | 项 | 内容 | 状态 |
 | --- | --- | --- | --- |
 | P0-1 | **通知已读 / 我的通知** | 现只有公告 CRUD（`system:notice`），无 read 状态、无"我的通知"页。补：已读回执表 + 我的未读/已读接口 + 我的通知页面（菜单种子） | ✅ 1956a4b |
-| P0-2 | **codegen M7 收尾** | 依赖 M3（已完成）。`make codegen-smoke`、删 3 套旧工具（`scripts/crud_generator.go`、`scripts/db_crud_generator.go`、`tools/dbgen`）+ `scripts/templates/`、文档收口 | ⬜ 当前任务 |
-| P0-3 | **M4 跟进票**（M3 终审挂出） | ① codegen 列表固定 size=200 静默截断 +「全部表」标签失真；② 预览无 loading；③ blob 下载错误 toast 退化（400 错误体是 Blob）；④ CLI nil MetadataReader。详见 [memory/codegen-m4-followups](../.superpowers/) 或提交 `0d0327b` 评审记录 | ⬜ |
+| P0-2 | **codegen M7 收尾** | `make codegen-smoke` 绿；删 3 套旧工具 + `scripts/templates/`；README/architecture 指向 `tools/codegen` | ✅ `138b92c` |
+| P0-3 | **M4 跟进票**（M3 终审挂出） | ① size=200 截断 → 分页拉全；② 预览 loading；③ blob 下载错误 toast 退化 → Blob 特判；④ CLI nil reader → nopReader | ✅ `bdb24a4` |
 | P0-4 | ~~codegen M3 在线链路~~ | 预览/ZIP API + 后台页面 + CLI 改读配置表 | ✅ `4ed021a..0d0327b`（9 笔，终审通过） |
 | — | ~~租户管理页面~~ | 种子菜单 + 前端 API + 页面 | ✅ 已在 baseline |
 
@@ -40,7 +40,7 @@
 
 | # | 项 | 内容 |
 | --- | --- | --- |
-| P2-1 | codegen M4→M5→M6 | 前端列表模板 → 树表 → 主子表（spec：`docs/superpowers/specs/2026-10-10-codegen-redesign-design.md`） |
+| P2-1 | codegen M4→M5→M6 | 前端列表模板 → 树表 → 主子表（spec：`docs/superpowers/specs/2026-10-10-codegen-redesign-design.md`） | ⬜ 当前任务 |
 | P2-2 | member 深化 | 实名认证、会员等级、积分、签到 |
 | P2-3 | 社交登录 | 微信/QQ OAuth 联邦到统一登录（account_type 扩展） |
 | P2-4 | 定时任务可视化 | 任务表 + 触发器 + 执行日志页（对照 yudao Job） |
