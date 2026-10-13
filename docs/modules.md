@@ -663,6 +663,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 2. 后端只取**前两段前缀**（method 级放二期）；新前缀必须登记 `permissionRoutes` 否则 403。
 3. `system:user:list` 被写操作按钮复用——读写粒度不足，待拆。
 4. 有 `policy_sync_test.go` / `permission_routes_test.go` 保证：种子权限码前缀必须已注册路由、角色按权限码必须拿到对应路由。
+5. `system:notice:mine`（我的通知）按一期前缀模型等价于公告模块全权（`/notices/*` act `.*`）——勿单独授给非管理角色；粒度拆分挂二期按 method 精确路由（含 mine/read/read-all 三端点）。
 
 ---
 
