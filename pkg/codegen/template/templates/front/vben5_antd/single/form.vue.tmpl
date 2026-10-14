@@ -1,0 +1,95 @@
+<script lang="ts" setup>
+import type { [[.Entity]] } from '#/api/[[.Module]]/[[.Business]]/types';
+
+[[- $hasDateForm := false ]][[- range .Columns ]][[ if and .FormEnable (ne .JSONName "-") (eq .HTMLType "DatePicker") ]][[ $hasDateForm = true ]][[ end ]][[ end ]][[ if $hasDateForm ]]
+import dayjs from 'dayjs';
+[[- end ]]
+import { message } from 'ant-design-vue';
+import { ref } from 'vue';
+
+import { useVbenModal } from '@vben/common-ui';
+
+import {
+  create[[.Entity]],
+  update[[.Entity]],
+} from '#/api/[[.Module]]/[[.Business]]/api';
+import { useVbenForm } from '#/adapter/form';
+
+const emit = defineEmits<{ saved: [] }>();
+
+/** null = 新建；非空 = 正在编辑的记录 id */
+const editingId = ref<number | null>(null);
+
+const [Modal, modalApi] = useVbenModal({
+  onConfirm: async () => {
+    try {
+      await formApi.validateAndSubmitForm();
+    } catch {
+      // 校验失败或接口报错：拦截器已 toast，弹窗保持打开
+    }
+  },
+  onOpenChange(isOpen: boolean) {
+    if (!isOpen) {
+      editingId.value = null;
+      return;
+    }
+    // open() 之后先重置再回填（与 SystemTenantsPage 同款时序）
+    void (async () => {
+      await formApi.resetForm();
+      const row = modalApi.getData();
+      if (row.id != null) {
+        editingId.value = Number(row.id);
+        await formApi.setValues({
+[[- range .Columns ]][[ if and .FormEnable (ne .JSONName "-") ]]
+[[- if eq .HTMLType "DatePicker" ]]
+          [[ .JSONName ]]: row.[[ .JSONName ]] ? dayjs(row.[[ .JSONName ]]) : undefined,
+[[- else if eq .HTMLType "Switch" ]]
+          [[ .JSONName ]]: Boolean(row.[[ .JSONName ]]),
+[[- else ]]
+          [[ .JSONName ]]: row.[[ .JSONName ]],
+[[- end ]][[ end ]][[ end ]]
+        });
+      }
+    })();
+  },
+});
+
+const [Form, formApi] = useVbenForm({
+  handleSubmit: async (values) => {
+    const payload: Record<string, any> = { ...values };
+[[- range .Columns ]][[ if and .FormEnable (ne .JSONName "-") (eq .HTMLType "Switch") ]]
+    payload.[[ .JSONName ]] = Number(payload.[[ .JSONName ]] ?? 0);
+[[- end ]][[ end ]]
+    if (editingId.value != null) {
+      await update[[.Entity]](editingId.value, payload);
+      message.success('保存成功');
+    } else {
+      await create[[.Entity]](payload);
+      message.success('创建成功');
+    }
+    modalApi.close();
+    emit('saved');
+  },
+  schema: [
+[[- range .Columns ]][[ if and .FormEnable (ne .JSONName "-") ]]
+    {
+      component: '[[ .VbenComponent ]]',
+[[- if eq .VbenComponent "DatePicker" ]]
+      componentProps: { showTime: true },
+[[- end ]][[ if .FormRequired ]]
+      rules: 'required',
+[[- end ]]
+      fieldName: '[[ .JSONName ]]',
+      label: '[[ if .Comment ]][[ .Comment ]][[ else ]][[ .Name ]][[ end ]]',
+    },
+[[- end ]][[ end ]]
+  ],
+  showDefaultActions: false,
+});
+</script>
+
+<template>
+  <Modal>
+    <Form />
+  </Modal>
+</template>

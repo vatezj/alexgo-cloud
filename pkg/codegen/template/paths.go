@@ -45,6 +45,7 @@ var frontSingleTemplates = map[string]string{
 	"front/vben5_antd/single/api.ts.tmpl":   "apps/web-antd/src/api/{module}/{business}/api.ts",
 	"front/vben5_antd/single/index.ts.tmpl": "apps/web-antd/src/api/{module}/{business}/index.ts",
 	"front/vben5_antd/single/list.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/list.vue",
+	"front/vben5_antd/single/form.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/form.vue",
 }
 
 // FrontSingleTemplateNames 返回排序后的前端模板名列表（确定性）。
