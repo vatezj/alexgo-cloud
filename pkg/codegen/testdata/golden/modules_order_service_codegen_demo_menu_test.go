@@ -92,7 +92,8 @@ func TestCodegenDemoMenuService_CRUD(t *testing.T) {
 }
 
 // TestCodegenDemoMenuService_Tree 钉树语义（spec §10.2，Review Focus ⑤）：
-// 父不存在拒绝、自引用拒绝、有子禁删、无子可删。
+// 父不存在拒绝、自引用拒绝、挂后代成环拒绝、合法改挂（无关子树/根）、
+// 有子禁删、无子可删。
 func TestCodegenDemoMenuService_Tree(t *testing.T) {
 	svc := NewCodegenDemoMenuService(&fakeCodegenDemoMenuRepo{data: map[uint64]*model.CodegenDemoMenu{}})
 	ctx := context.Background()
@@ -117,13 +118,56 @@ func TestCodegenDemoMenuService_Tree(t *testing.T) {
 	if err := svc.Update(ctx, child); err != nil {
 		t.Fatalf("恢复父级: %v", err)
 	}
+	// 合法改挂：无关子树多级上溯不得误伤（祖先链不含自身即放行）。
+	other := &model.CodegenDemoMenu{}
+	if err := svc.Create(ctx, other); err != nil {
+		t.Fatalf("Create other: %v", err)
+	}
+	otherChild := &model.CodegenDemoMenu{ParentID: other.ID}
+	if err := svc.Create(ctx, otherChild); err != nil {
+		t.Fatalf("Create otherChild: %v", err)
+	}
+	child.ParentID = otherChild.ID
+	if err := svc.Update(ctx, child); err != nil {
+		t.Fatalf("改挂无关子树: %v", err)
+	}
+	child.ParentID = 0
+	if err := svc.Update(ctx, child); err != nil {
+		t.Fatalf("改挂根: %v", err)
+	}
+	// 成环拒（Final Review Fix 1）：child 改挂自己的后代 grandchild → A→B→A。
+	// 环成员会从 root/孤儿构树法里消失，前端不可编辑/不可删。
+	grandchild := &model.CodegenDemoMenu{ParentID: child.ID}
+	if err := svc.Create(ctx, grandchild); err != nil {
+		t.Fatalf("Create grandchild: %v", err)
+	}
+	child.ParentID = grandchild.ID
+	if err := svc.Update(ctx, child); err == nil {
+		t.Fatal("父级改挂自身后代（成环）应拒绝")
+	}
+	child.ParentID = root.ID
+	if err := svc.Update(ctx, child); err != nil {
+		t.Fatalf("改回 root: %v", err)
+	}
 	if err := svc.Delete(ctx, root.ID); err == nil {
 		t.Fatal("有子禁删")
+	}
+	if err := svc.Delete(ctx, child.ID); err == nil {
+		t.Fatal("有子禁删（孙尚存）")
+	}
+	if err := svc.Delete(ctx, grandchild.ID); err != nil {
+		t.Fatalf("Delete grandchild: %v", err)
 	}
 	if err := svc.Delete(ctx, child.ID); err != nil {
 		t.Fatalf("Delete child: %v", err)
 	}
 	if err := svc.Delete(ctx, root.ID); err != nil {
 		t.Fatalf("Delete root: %v", err)
+	}
+	if err := svc.Delete(ctx, otherChild.ID); err != nil {
+		t.Fatalf("Delete otherChild: %v", err)
+	}
+	if err := svc.Delete(ctx, other.ID); err != nil {
+		t.Fatalf("Delete other: %v", err)
 	}
 }

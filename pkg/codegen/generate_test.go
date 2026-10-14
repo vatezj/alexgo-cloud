@@ -270,6 +270,55 @@ func TestGenerate_TreeGolden(t *testing.T) {
 	if len(off) != 12 {
 		t.Fatalf("files = %d, want 12 (no unit test)", len(off))
 	}
+	// 后缀镜像 TestGenerate_NoUnitTest：光数量对不够，得钉去掉的是哪两个。
+	for _, f := range off {
+		if strings.HasSuffix(f.Path, "_test.go") {
+			t.Errorf("unexpected test file %s", f.Path)
+		}
+		if strings.HasSuffix(f.Path, ".test.ts") {
+			t.Errorf("unexpected front test file %s", f.Path)
+		}
+	}
+}
+
+// TestGenerate_TreeFormConventionAlwaysOn 钉 Final Review Fix 2：§9.4 同步默认
+// 全开关关闭（FormEnable=false）时，约定列 parent_id/name 的表单项与编辑回填
+// 仍必须渲染——否则 save 时 TreeSelect 缺失 + Number(undefined ?? 0)=0 把节点
+// 归零提根（§9.2 全量覆盖 Update），name 同理被置空。非约定列（remark）仍受
+// FormEnable 门控，不得连带放行。
+func TestGenerate_TreeFormConventionAlwaysOn(t *testing.T) {
+	tbl := buildTreeFixture(t)
+	for i := range tbl.Columns {
+		tbl.Columns[i].FormEnable = false
+	}
+	files, err := codegen.Generate([]*model.Table{tbl}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var form []byte
+	for _, f := range files {
+		if strings.HasSuffix(f.Path, "/form.vue") {
+			form = f.Content
+		}
+	}
+	if form == nil {
+		t.Fatal("form.vue missing")
+	}
+	for _, want := range []string{
+		"component: 'TreeSelect'",
+		"fieldName: 'parent_id'",
+		"parent_id: row.parent_id", // setValues 编辑回填
+		"fieldName: 'name'",
+		"name: row.name",
+		"payload.parent_id = Number(payload.parent_id ?? 0)",
+	} {
+		if !bytes.Contains(form, []byte(want)) {
+			t.Errorf("form.vue missing %q", want)
+		}
+	}
+	if bytes.Contains(form, []byte("fieldName: 'remark'")) {
+		t.Error("remark 应仍受 FormEnable 门控，关闭时不得渲染")
+	}
 }
 
 func TestGenerate_Collide(t *testing.T) {
