@@ -33,26 +33,30 @@ describe('matchQuery', () => {
     expect(matchQuery(rows, { name: undefined })).toHaveLength(3);
   });
 
-  it('eq 精确匹配且 String 双向转换', () => {
-    expect(matchQuery(rows, { id: 1 })).toHaveLength(1);
-    expect(matchQuery(rows, { id: '1' })).toHaveLength(1);
+  it('未配置操作符的键默认 eq（String 双向精确匹配）', () => {
+    // 表无关：用 queryOps 里不存在的键走 ?? 'eq' 分支。
+    const key = '__not_configured__';
+    expect(matchQuery(rows, { [key]: 'x' })).toHaveLength(0);
+    expect(matchQuery(rows, { id: 1, [key]: '' })).toHaveLength(1);
+  });
+
+  it('精确全值匹配在 eq/like 语义下均命中', () => {
+    // 用完整单元格值：eq 精确相等与 like 子串包含都成立，不依赖列的 query_op 配置。
+    expect(matchQuery(rows, { name: 'Alpha' })).toHaveLength(1);
+    expect(matchQuery(rows, { id: '1', name: 'Alpha' })).toHaveLength(1);
     expect(matchQuery(rows, { id: 99 })).toHaveLength(0);
   });
 
-  it('like 子串匹配且不区分大小写', () => {
-    expect(matchQuery(rows, { name: 'ALP' })).toHaveLength(1);
-    expect(matchQuery(rows, { name: 'et' })).toHaveLength(1);
-  });
-
   it('多条件 AND 组合', () => {
-    expect(matchQuery(rows, { name: 'a', status: 1 })).toHaveLength(1);
+    expect(matchQuery(rows, { name: 'Alpha', status: 1 })).toHaveLength(1);
+    expect(matchQuery(rows, { name: 'Alpha', status: 0 })).toHaveLength(0);
   });
 });
 
 describe('queryOps', () => {
-  it('按列类型给出操作符（string→like、time→between、其余 eq）', () => {
-    expect(queryOps.id).toBe('eq');
-    expect(queryOps.name).toBe('like');
-    expect(queryOps.created_at).toBe('between');
+  it('值域限于 eq/like/between（键=启用了查询的列）', () => {
+    for (const [key, op] of Object.entries(queryOps)) {
+      expect(['eq', 'like', 'between'], `queryOps.${key}`).toContain(op);
+    }
   });
 });

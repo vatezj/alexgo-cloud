@@ -219,3 +219,30 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 > 3. CLI 示例 `--dsn=... --tables=t1 --import` 未带 `--module` → 实现**要求 `-import` 必须配 `-module`**，
 >    错误信息明确提示；
 > 4. 伪代码 body `tableIds[]` → 实际 `{"table_ids":[...]}`（仓库 snake_case JSON 惯例）。
+
+### 2.8 前端产物（vben5_antd 单表模板族）
+
+同一渲染管线会同时输出**后端 14 + 前端 7** 份产物；前端模板位于
+`pkg/codegen/template/templates/front/vben5_antd/single/`，模板定界符为 `[[ ]]`
+（Vue 占用 `{{ }}`），函数 `pascal/snake/plural/lower` 可用。每个已导入表生成：
+
+| 模板 | 产物（`{module}` / `{business}` 为模块名与表的业务名） |
+| --- | --- |
+| `types.ts` | `apps/web-antd/src/api/{module}/{business}/types.ts` — 实体类型 |
+| `api.ts` | `.../api.ts` — CRUD 封装 + `matchQuery` 客户端过滤 + `queryOps` |
+| `index.ts` | `.../index.ts` — 桶导出 |
+| `list.vue` | `apps/web-antd/src/views/{module}/{business}/list.vue` — vxe-grid 列表页 |
+| `form.vue` | `.../form.vue` — 新建/编辑弹窗 |
+| `drawer.vue` | `.../drawer.vue` — 详情抽屉 |
+| `api.test.ts` | `.../__tests__/{business}.test.ts` — vitest 表无关断言 |
+
+要点：
+
+- **列 formatter** 由字段 `html_type` 驱动：`DatePicker` → `formatDateTime(cellValue)`，
+  `Switch` → `启用/停用`；导入后在字段配置里改 `html_type` 再 `-force` 重新生成即可生效。
+- **权限**：列表页按钮挂 `v-access:code="['{module}:{business}:*']"`。需要在菜单管理建菜单
+  （权限串 `{module}:{business}:*`）并绑定角色；`permissionRoutes` 需有对应前缀 → 路由条目，
+  否则接口 403。前端 `accessCodes` 是登录时缓存的，改权限后要**重新登录**按钮才会出现。
+- **运行测试**：`pnpm --filter @vben/web-antd test`（vitest，node 环境，跑 `src/**/*.test.ts`）。
+- **本地验收链路**：生成 → 接线 module.go 路由与 `permissionRoutes` → 建菜单绑角色 → 重登 →
+  页面 CRUD 全链路（E2E 用例即按此执行）。
