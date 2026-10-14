@@ -222,7 +222,8 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 
 ### 2.8 前端产物（vben5_antd 单表模板族）
 
-同一渲染管线会同时输出**后端 14 + 前端 7** 份产物；前端模板位于
+同一渲染管线会同时输出**后端 7 + 前端 7 = 单表 14** 份产物（`make codegen-smoke`
+断言两套共 28）；前端模板位于
 `pkg/codegen/template/templates/front/vben5_antd/single/`，模板定界符为 `[[ ]]`
 （Vue 占用 `{{ }}`），函数 `pascal/snake/plural/lower` 可用。每个已导入表生成：
 
@@ -246,3 +247,28 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 - **运行测试**：`pnpm --filter @vben/web-antd test`（vitest，node 环境，跑 `src/**/*.test.ts`）。
 - **本地验收链路**：生成 → 接线 module.go 路由与 `permissionRoutes` → 建菜单绑角色 → 重登 →
   页面 CRUD 全链路（E2E 用例即按此执行）。
+
+#### 查询语义（`api.ts` 的 `matchQuery` 客户端过滤）
+
+controller 一次性返回全量行，查询表单提交值经 `matchQuery` 客户端过滤（`queryOps`
+记录每列的 `query_operation` 配置）：
+
+- **空值跳过**：`undefined / null / ''` 的条件不参与过滤，返回全部行；
+- **`eq` 精确匹配**：两侧都 `String(...)` 后全等（数字、字符串统一转字符串比较）；
+- **`like` / `between` 子串匹配**：`toLowerCase().includes()`，**不区分大小写**。
+  ⚠️ 生成页的 `between` 是**子串近似**而非区间过滤——与服务端 `between`（日期/数值
+  区间）语义**不同**；配置 `query_operation='between'` 前先确认你要的是客户端模糊搜
+  还是服务端区间（后者需走 API 参数，当前模板不生成）。
+
+#### 列类型映射（Go ↔ TS ↔ 组件）
+
+| Go 类型（`bind.tsType`） | TS 类型 | 表单组件 / 转换 |
+| --- | --- | --- |
+| `string` / `string*` | `string` | `Input`；`decimal string`（GoType 为 string 的 `decimal`）→ `InputNumber` |
+| `bool` | `boolean` | `Switch`：提交 `Number(v ?? 0)`（→0/1），回显 `Boolean(row.v)`，列表 `启用/停用` |
+| `int` / `uint*` / `float*` | `number` | `InputNumber`；主键 id 亦为 `number`（>2^53 的雪花 ID 会精度丢失，见局限票） |
+| `time.Time` / `*time.Time` | `string` | `DatePicker`：回显 `dayjs(row.v)`，提交 `payload.v.toJSON()`（RFC3339）→ Go `time.Time`；列表 `formatDateTime` |
+| `json.RawMessage` | `any` | 不生成表单列（`JSONName="-"` 同） |
+
+- **非 0/1 的 tinyint(1)** 经 `Switch` 提交会收成 0/1（`Number(Boolean(v))` 链路），
+  存量脏值以编辑保存为准归一。
