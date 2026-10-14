@@ -213,6 +213,62 @@ func TestGenerate_AggregatesErrors(t *testing.T) {
 	}
 }
 
+// TestGenerate_TreeGolden 树表族 golden（spec §10.5 验收）：
+// overlay 产物恒 14（5 覆盖 + 9 复用，Review Focus ②），
+// 内容钉住后端树语义（HasChildren/validateParent/树测试）与模型 ParentID。
+func TestGenerate_TreeGolden(t *testing.T) {
+	files, err := codegen.Generate([]*model.Table{buildTreeFixture(t)}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(files) != 14 {
+		t.Fatalf("files = %d, want 14: %+v", len(files), pathsOf(files))
+	}
+	for _, f := range files {
+		golden := filepath.Join("testdata", "golden", strings.ReplaceAll(f.Path, "/", "_"))
+		if *update {
+			if err := os.MkdirAll("testdata/golden", 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(golden, f.Content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		want, err := os.ReadFile(golden)
+		if err != nil {
+			t.Fatalf("read golden %s: %v (run: go test ./pkg/codegen -run TreeGolden -update)", golden, err)
+		}
+		if !bytes.Equal(f.Content, want) {
+			t.Errorf("mismatch %s\n--- got ---\n%s\n--- want ---\n%s", f.Path, f.Content, want)
+		}
+	}
+	byPath := map[string][]byte{}
+	for _, f := range files {
+		byPath[f.Path] = f.Content
+	}
+	// 内容钉（Review Focus ⑤）：三个后端 overlay 必须带树语义，模型必须有 ParentID。
+	checks := []struct{ p, want string }{
+		{"modules/order/repository/codegen_demo_menu.go", "HasChildren("},
+		{"modules/order/service/codegen_demo_menu.go", "validateParent("},
+		{"modules/order/service/codegen_demo_menu_test.go", "TestCodegenDemoMenuService_Tree"},
+		{"modules/order/model/codegen_demo_menu.go", "ParentID"},
+	}
+	for _, c := range checks {
+		if !bytes.Contains(byPath[c.p], []byte(c.want)) {
+			t.Errorf("%s missing %q", c.p, c.want)
+		}
+	}
+	// 单测开关对树族同样生效：14 → 12（去 service_test + api.test）。
+	off, err := codegen.Generate([]*model.Table{buildTreeFixture(t)}, codegen.Options{UnitTestEnable: false})
+	if err != nil {
+		t.Fatalf("Generate(no test): %v", err)
+	}
+	if len(off) != 12 {
+		t.Fatalf("files = %d, want 12 (no unit test)", len(off))
+	}
+}
+
 func TestGenerate_Collide(t *testing.T) {
 	a := buildFixture(t)
 	b := buildFixture(t) // 同表两次 → 同路径

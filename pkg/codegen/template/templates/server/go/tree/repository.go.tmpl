@@ -1,0 +1,94 @@
+package repository
+
+import (
+	"context"
+
+	"alexGo-cloud/modules/{{.Module}}/model"
+{{- if .HasTenant }}
+	"alexGo-cloud/pkg/tenant"
+{{- end }}
+	"gorm.io/gorm"
+)
+
+type {{.Entity}}Repository interface {
+	Create(ctx context.Context, entity *model.{{.Entity}}) error
+	List(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}) ([]*model.{{.Entity}}, error)
+	GetByID(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) (*model.{{.Entity}}, error)
+	Update(ctx context.Context, entity *model.{{.Entity}}) error
+	Delete(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) error
+	// HasChildren 树表专用（spec §10.2）：id 是否有子节点（根 parent_id=0 的子也计入）。
+	HasChildren(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) (bool, error)
+}
+
+type {{ lower .Entity }}Repo struct {
+	db *gorm.DB
+}
+
+func New{{.Entity}}Repository(db *gorm.DB) {{.Entity}}Repository {
+	return &{{ lower .Entity }}Repo{db: db}
+}
+
+func (r *{{ lower .Entity }}Repo) Create(ctx context.Context, entity *model.{{.Entity}}) error {
+	{{- if .HasTenant }}
+	// 打戳（spec §9.2）：json:"-" 使客户端灌不进来，零值才回填、显式值保留。
+	if entity.TenantID == 0 {
+		entity.TenantID = tenant.TenantIDFromContext(ctx)
+	}
+	{{- end }}
+	return r.db.WithContext(ctx).Create(entity).Error
+}
+
+func (r *{{ lower .Entity }}Repo) List(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}) ([]*model.{{.Entity}}, error) {
+	var list []*model.{{.Entity}}
+	q := r.db.WithContext(ctx).Model(&model.{{.Entity}}{})
+	{{- if .HasTenant }}
+	q = q.Where("tenant_id = ?", tenantID)
+	{{- end }}
+	err := q.Find(&list).Error
+	return list, err
+}
+
+func (r *{{ lower .Entity }}Repo) GetByID(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) (*model.{{.Entity}}, error) {
+	var entity model.{{.Entity}}
+	q := r.db.WithContext(ctx).Model(&model.{{.Entity}}{})
+	{{- if .HasTenant }}
+	q = q.Where("tenant_id = ?", tenantID)
+	{{- end }}
+	err := q.Where("id = ?", id).First(&entity).Error
+	if err != nil {
+		return nil, err
+	}
+	return &entity, nil
+}
+
+func (r *{{ lower .Entity }}Repo) Update(ctx context.Context, entity *model.{{.Entity}}) error {
+	{{- if .HasTenant }}
+	// 禁用 Save（spec §9.2）：Save 丢弃链式 WHERE，跨租户照改不误。
+	// Select("*") 保证零值也写入（全量覆盖语义），双条件把行锁在本租户内。
+	return r.db.WithContext(ctx).Model(&model.{{.Entity}}{}).
+		Where("id = ? AND tenant_id = ?", entity.ID, tenant.TenantIDFromContext(ctx)).
+		Select("*").Updates(entity).Error
+	{{- else }}
+	return r.db.WithContext(ctx).Save(entity).Error
+	{{- end }}
+}
+
+func (r *{{ lower .Entity }}Repo) Delete(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) error {
+	q := r.db.WithContext(ctx).Model(&model.{{.Entity}}{})
+	{{- if .HasTenant }}
+	q = q.Where("tenant_id = ?", tenantID)
+	{{- end }}
+	return q.Where("id = ?", id).Delete(&model.{{.Entity}}{}).Error
+}
+
+func (r *{{ lower .Entity }}Repo) HasChildren(ctx context.Context{{ if .HasTenant }}, tenantID uint64{{ end }}, id uint64) (bool, error) {
+	var count int64
+	q := r.db.WithContext(ctx).Model(&model.{{.Entity}}{}).Where("parent_id = ?", id)
+	{{- if .HasTenant }}
+	q = q.Where("tenant_id = ?", tenantID)
+	{{- end }}
+	if err := q.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

@@ -42,6 +42,36 @@ func TestServerSinglePaths(t *testing.T) {
 	}
 }
 
+// TestServerTreePaths 钉树表后端 overlay 3 模板（spec §10.3）：
+// 与 single 同输出模式（覆盖语义，族产物恒 14），路径一一对应。
+func TestServerTreePaths(t *testing.T) {
+	b := template.NewBind(fixtureTable())
+	want := map[string]string{
+		"repository.go.tmpl":   "modules/order/repository/order_item.go",
+		"service.go.tmpl":      "modules/order/service/order_item.go",
+		"service_test.go.tmpl": "modules/order/service/order_item_test.go",
+	}
+	singleByBase := map[string]string{}
+	for _, n := range template.ServerSingleTemplateNames() {
+		singleByBase[path.Base(n)] = template.ServerSingleTemplatePattern(n)
+	}
+	names := template.ServerTreeTemplateNames()
+	if len(names) != len(want) {
+		t.Fatalf("template count = %d, want %d: %v", len(names), len(want), names)
+	}
+	for _, name := range names {
+		short := path.Base(name)
+		pattern := template.ServerTreeTemplatePattern(name)
+		if got := template.RenderPath(pattern, b); got != want[short] {
+			t.Errorf("%s path = %q, want %q", name, got, want[short])
+		}
+		// 覆盖语义（Review Focus ②）：模式必须与 single 完全相同，否则不是覆盖是分叉。
+		if singleByBase[short] == "" || singleByBase[short] != pattern {
+			t.Errorf("%s pattern = %q, want same as single %q", name, pattern, singleByBase[short])
+		}
+	}
+}
+
 // TestFrontSinglePaths 钉住 vben5_antd 前端模板族输出路径（随任务推进 3→7）。
 func TestFrontSinglePaths(t *testing.T) {
 	b := template.NewBind(fixtureTable())

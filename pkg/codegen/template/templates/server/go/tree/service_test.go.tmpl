@@ -1,0 +1,137 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"alexGo-cloud/modules/{{.Module}}/model"
+{{- if .HasTenant }}
+	"alexGo-cloud/pkg/tenant"
+{{- end }}
+)
+
+type fake{{.Entity}}Repo struct {
+	data map[uint64]*model.{{.Entity}}
+	seq  uint64
+}
+
+var err{{.Entity}}RecordNotFound = errors.New("record not found")
+
+func (f *fake{{.Entity}}Repo) Create(_ context.Context, e *model.{{.Entity}}) error {
+	f.seq++
+	e.ID = f.seq
+	f.data[e.ID] = e
+	return nil
+}
+
+func (f *fake{{.Entity}}Repo) List(_ context.Context{{ if .HasTenant }}, _ uint64{{ end }}) ([]*model.{{.Entity}}, error) {
+	out := make([]*model.{{.Entity}}, 0, len(f.data))
+	for _, e := range f.data {
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+func (f *fake{{.Entity}}Repo) GetByID(_ context.Context{{ if .HasTenant }}, _ uint64{{ end }}, id uint64) (*model.{{.Entity}}, error) {
+	if e, ok := f.data[id]; ok {
+		return e, nil
+	}
+	return nil, err{{.Entity}}RecordNotFound
+}
+
+func (f *fake{{.Entity}}Repo) Update(_ context.Context, e *model.{{.Entity}}) error {
+	f.data[e.ID] = e
+	return nil
+}
+
+func (f *fake{{.Entity}}Repo) Delete(_ context.Context{{ if .HasTenant }}, _ uint64{{ end }}, id uint64) error {
+	delete(f.data, id)
+	return nil
+}
+
+// HasChildren 语义镜像：data 里存在 ParentID==id 的行即为有子。
+func (f *fake{{.Entity}}Repo) HasChildren(_ context.Context{{ if .HasTenant }}, _ uint64{{ end }}, id uint64) (bool, error) {
+	for _, e := range f.data {
+		if e.ParentID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func Test{{.Entity}}Service_CRUD(t *testing.T) {
+	svc := New{{.Entity}}Service(&fake{{.Entity}}Repo{data: map[uint64]*model.{{.Entity}}{}})
+	ctx := context.Background()
+	{{- if .HasTenant }}
+	ctx = tenant.WithTenantID(ctx, 42)
+	{{- end }}
+
+	e := &model.{{.Entity}}{}
+	if err := svc.Create(ctx, e); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	{{- if .HasTenant }}
+	if e.TenantID != 42 {
+		t.Fatalf("Create 应从 ctx 打戳租户 42, got %d", e.TenantID)
+	}
+	{{- end }}
+	if e.ID == 0 {
+		t.Fatal("Create should assign ID")
+	}
+	if _, err := svc.GetByID(ctx, e.ID); err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if err := svc.Update(ctx, e); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	list, err := svc.List(ctx)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List: err=%v len=%d", err, len(list))
+	}
+	if err := svc.Delete(ctx, e.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if list, _ = svc.List(ctx); len(list) != 0 {
+		t.Fatalf("after Delete len=%d", len(list))
+	}
+}
+
+// Test{{.Entity}}Service_Tree 钉树语义（spec §10.2，Review Focus ⑤）：
+// 父不存在拒绝、自引用拒绝、有子禁删、无子可删。
+func Test{{.Entity}}Service_Tree(t *testing.T) {
+	svc := New{{.Entity}}Service(&fake{{.Entity}}Repo{data: map[uint64]*model.{{.Entity}}{}})
+	ctx := context.Background()
+	{{- if .HasTenant }}
+	ctx = tenant.WithTenantID(ctx, 42)
+	{{- end }}
+
+	if err := svc.Create(ctx, &model.{{.Entity}}{ParentID: 999}); err == nil {
+		t.Fatal("父不存在应拒绝")
+	}
+	root := &model.{{.Entity}}{}
+	if err := svc.Create(ctx, root); err != nil {
+		t.Fatalf("Create root: %v", err)
+	}
+	child := &model.{{.Entity}}{ParentID: root.ID}
+	if err := svc.Create(ctx, child); err != nil {
+		t.Fatalf("Create child: %v", err)
+	}
+	child.ParentID = child.ID
+	if err := svc.Update(ctx, child); err == nil {
+		t.Fatal("自引用应拒绝")
+	}
+	child.ParentID = root.ID
+	if err := svc.Update(ctx, child); err != nil {
+		t.Fatalf("恢复父级: %v", err)
+	}
+	if err := svc.Delete(ctx, root.ID); err == nil {
+		t.Fatal("有子禁删")
+	}
+	if err := svc.Delete(ctx, child.ID); err != nil {
+		t.Fatalf("Delete child: %v", err)
+	}
+	if err := svc.Delete(ctx, root.ID); err != nil {
+		t.Fatalf("Delete root: %v", err)
+	}
+}
