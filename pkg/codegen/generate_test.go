@@ -247,12 +247,15 @@ func TestGenerate_TreeGolden(t *testing.T) {
 	for _, f := range files {
 		byPath[f.Path] = f.Content
 	}
-	// 内容钉（Review Focus ⑤）：三个后端 overlay 必须带树语义，模型必须有 ParentID。
+	// 内容钉（Review Focus ⑤）：三个后端 overlay 必须带树语义，模型必须有 ParentID；
+	// front overlay 钉 treeConfig（list）与 componentProps 函数形式（form，Focus ④）。
 	checks := []struct{ p, want string }{
 		{"modules/order/repository/codegen_demo_menu.go", "HasChildren("},
 		{"modules/order/service/codegen_demo_menu.go", "validateParent("},
 		{"modules/order/service/codegen_demo_menu_test.go", "TestCodegenDemoMenuService_Tree"},
 		{"modules/order/model/codegen_demo_menu.go", "ParentID"},
+		{"apps/web-antd/src/views/order/codegen_demo_menu/list.vue", "treeConfig"},
+		{"apps/web-antd/src/views/order/codegen_demo_menu/form.vue", "componentProps: () =>"},
 	}
 	for _, c := range checks {
 		if !bytes.Contains(byPath[c.p], []byte(c.want)) {
@@ -337,86 +340,108 @@ func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
 	}
 }
 
-// 回归钉（M4 Review Focus ④）：JSONName="-" 的列不得出现在任何 front 产物中。
+// 回归钉（M4 Review Focus ④ / M5 扩树）：JSONName="-" 的列不得出现在任何 front 产物中。
 func TestGenerate_FrontOmitsHiddenColumns(t *testing.T) {
-	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	found := 0
-	for _, f := range files {
-		if !strings.Contains(f.Path, "apps/web-antd/") {
-			continue
-		}
-		found++
-		for _, hidden := range []string{"password", "tenant_id"} {
-			if strings.Contains(string(f.Content), hidden) {
-				t.Errorf("%s leaks %q", f.Path, hidden)
+	for _, tc := range []struct {
+		name  string
+		table *model.Table
+	}{
+		{"single", buildFixture(t)},
+		{"tree", buildTreeFixture(t)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := codegen.Generate([]*model.Table{tc.table}, codegen.Options{UnitTestEnable: true})
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
 			}
-		}
-	}
-	if found < 3 {
-		t.Fatalf("front files = %d, want >= 3", found)
+			found := 0
+			for _, f := range files {
+				if !strings.Contains(f.Path, "apps/web-antd/") {
+					continue
+				}
+				found++
+				for _, hidden := range []string{"password", "tenant_id"} {
+					if strings.Contains(string(f.Content), hidden) {
+						t.Errorf("%s leaks %q", f.Path, hidden)
+					}
+				}
+			}
+			if found < 3 {
+				t.Fatalf("front files = %d, want >= 3", found)
+			}
+		})
 	}
 }
 
-// 回归钉（M4 Review Focus ③）：front 产物不得残留未翻译的 Go 动作。
+// 回归钉（M4 Review Focus ③ / M5 扩树）：front 产物不得残留未翻译的 Go 动作。
 // [[ = front delims 残留；{{ 后接 . - 或 Go 关键字 = 用错 delims 的 Go 动作。
 // Vue 插值 {{ f.value }}（空格+标识符）与 TS 对象字面量 { ... } 不在命中集。
 func TestGenerate_FrontNoDelimResidue(t *testing.T) {
-	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
 	re := regexp.MustCompile(`\[\[|\{\{\s*([.\-]|(range|if|else|end|with|define|template)\b)`)
-	for _, f := range files {
-		if !strings.Contains(f.Path, "apps/web-antd/") {
-			continue
-		}
-		if loc := re.FindIndex(f.Content); loc != nil {
-			off := loc[0]
-			lo, hi := off-40, off+60
-			if lo < 0 {
-				lo = 0
+	for _, tc := range []struct {
+		name  string
+		table *model.Table
+	}{
+		{"single", buildFixture(t)},
+		{"tree", buildTreeFixture(t)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := codegen.Generate([]*model.Table{tc.table}, codegen.Options{UnitTestEnable: true})
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
 			}
-			if hi > len(f.Content) {
-				hi = len(f.Content)
+			for _, f := range files {
+				if !strings.Contains(f.Path, "apps/web-antd/") {
+					continue
+				}
+				if loc := re.FindIndex(f.Content); loc != nil {
+					off := loc[0]
+					lo, hi := off-40, off+60
+					if lo < 0 {
+						lo = 0
+					}
+					if hi > len(f.Content) {
+						hi = len(f.Content)
+					}
+					t.Errorf("%s residue at %d: …%s…", f.Path, off, f.Content[lo:hi])
+				}
 			}
-			t.Errorf("%s residue at %d: …%s…", f.Path, off, f.Content[lo:hi])
-		}
+		})
 	}
 }
 
-// TestGenerate_FrontFixturesToDisk 把 fixture 的 front 产物写进 web-antd 真实路径，
-// 供 vue-tsc/vitest 做类型门禁（T5/T6 防波堤）。默认 skip：
+// TestGenerate_FrontFixturesToDisk 把单表+树表两个 fixture 的 front 产物写进
+// web-antd 真实路径，供 vue-tsc/vitest 做类型门禁（T5/T6/T3 防波堤）。默认 skip：
 //
 //	CODEGEN_FRONT_FIXTURE=1 go test ./pkg/codegen -run FrontFixtures
 //
-// 写盘方负责随后删除两个目录（见计划 T5 Step 5/T6 Step 5）。
+// 写盘方负责随后删除四个目录（见计划 T5 Step 5/T6 Step 5/M5 T3 Step 6）。
 func TestGenerate_FrontFixturesToDisk(t *testing.T) {
 	if os.Getenv("CODEGEN_FRONT_FIXTURE") != "1" {
 		t.Skip("set CODEGEN_FRONT_FIXTURE=1 to write web-antd fixtures")
 	}
-	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
 	written := 0
-	for _, f := range files {
-		if !strings.HasPrefix(f.Path, "apps/web-antd/") {
-			continue
+	for _, tbl := range []*model.Table{buildFixture(t), buildTreeFixture(t)} {
+		files, err := codegen.Generate([]*model.Table{tbl}, codegen.Options{UnitTestEnable: true})
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
 		}
-		dst := filepath.Join("..", "..", filepath.FromSlash(f.Path))
-		if mkErr := os.MkdirAll(filepath.Dir(dst), 0o755); mkErr != nil {
-			t.Fatalf("mkdir %s: %v", dst, mkErr)
+		for _, f := range files {
+			if !strings.HasPrefix(f.Path, "apps/web-antd/") {
+				continue
+			}
+			dst := filepath.Join("..", "..", filepath.FromSlash(f.Path))
+			if mkErr := os.MkdirAll(filepath.Dir(dst), 0o755); mkErr != nil {
+				t.Fatalf("mkdir %s: %v", dst, mkErr)
+			}
+			if wErr := os.WriteFile(dst, f.Content, 0o644); wErr != nil {
+				t.Fatalf("write %s: %v", dst, wErr)
+			}
+			written++
 		}
-		if wErr := os.WriteFile(dst, f.Content, 0o644); wErr != nil {
-			t.Fatalf("write %s: %v", dst, wErr)
-		}
-		written++
 	}
-	if written < 6 {
-		t.Fatalf("written front files = %d, want >= 6", written)
+	if written < 12 {
+		t.Fatalf("written front files = %d, want >= 12 (single 7 + tree 7)", written)
 	}
 	t.Logf("wrote %d fixture files under apps/web-antd/src (clean up after typecheck)", written)
 }

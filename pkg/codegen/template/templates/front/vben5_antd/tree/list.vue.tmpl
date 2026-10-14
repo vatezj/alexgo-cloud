@@ -1,0 +1,159 @@
+<script lang="ts" setup>
+import type { VxeGridProps } from '#/adapter/vxe-table';
+import type { [[.Entity]] } from '#/api/[[.Module]]/[[.Business]]/types';
+
+import { Button, message, Modal as AntdModal } from 'ant-design-vue';
+import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
+
+[[- $hasDate := false ]][[- range .Columns ]][[ if and .ListEnable (ne .JSONName "-") (eq .HTMLType "DatePicker") ]][[ $hasDate = true ]][[ end ]][[ end ]][[ if $hasDate ]]
+import { formatDateTime } from '#/utils/format';
+[[- end ]]
+import {
+  delete[[.Entity]],
+  list[[.Entity]],
+} from '#/api/[[.Module]]/[[.Business]]/api';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
+
+import DetailDrawerView from './drawer.vue';
+import FormModalView from './form.vue';
+
+defineOptions({ name: '[[pascal .Module]][[.Entity]]Page' });
+
+// 树表显示名固定 name 列（spec §10.1 约定列，删除确认文案用）。
+[[- $label := "name" ]]
+const gridOptions: VxeGridProps<[[.Entity]]> = {
+  columns: [
+[[- range .Columns ]][[ if and .ListEnable (ne .JSONName "-") ]]
+    {
+      field: '[[ .JSONName ]]',
+      title: '[[ if .Comment ]][[ .Comment ]][[ else ]][[ .Name ]][[ end ]]',
+[[- if .IsPK ]]
+      width: 80,
+[[- else ]]
+      minWidth: 120,
+[[- end ]][[ if eq .HTMLType "DatePicker" ]]
+      formatter: ({ cellValue }) => formatDateTime(cellValue),
+[[- end ]][[ if eq .HTMLType "Switch" ]]
+      formatter: ({ cellValue }) =>
+        Number(cellValue) === 1 ? '启用' : '停用',
+[[- end ]]
+    },
+[[- end ]][[ end ]]
+    {
+      fixed: 'right',
+      slots: { default: 'actions' },
+      title: '操作',
+      width: 180,
+    },
+  ],
+  height: 'auto',
+  keepSource: true,
+  // 树形交互（spec §10.4，房规 SystemMenusPage 原样）：平铺 parent_id 由 vxe 转树、
+  // 默认全展开；关分页与搜索——过滤/分页都会破坏树形完整性。
+  treeConfig: { expandAll: true, parentField: 'parent_id', rowField: 'id', transform: true },
+  pagerConfig: { enabled: false },
+  proxyConfig: {
+    ajax: {
+      query: async () => {
+        const rows = await list[[.Entity]]();
+        return { items: rows, total: rows.length };
+      },
+    },
+  },
+  toolbarConfig: { custom: true, refresh: true, zoom: true },
+};
+
+// 无 formOptions：树表不提供搜索表单（spec §10.4）。
+const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
+
+const [FormModal, formModalApi] = useVbenModal({
+  connectedComponent: FormModalView,
+});
+
+const [DetailDrawer, detailDrawerApi] = useVbenDrawer({
+  connectedComponent: DetailDrawerView,
+});
+
+function onCreate() {
+  formModalApi.setState({ title: '新建[[.Entity]]' });
+  formModalApi.setData({}); // 清残留：防子组件把上次的旧数据当编辑
+  formModalApi.open();
+}
+
+function onEdit(row: [[.Entity]]) {
+  formModalApi.setState({ title: '编辑[[.Entity]]' });
+  formModalApi.setData(row);
+  formModalApi.open();
+}
+
+function onDetail(row: [[.Entity]]) {
+  detailDrawerApi.setData(row);
+  detailDrawerApi.open();
+}
+
+function onDelete(row: [[.Entity]]) {
+  AntdModal.confirm({
+    title: `确认删除「${String(row.[[$label]] ?? '')}」？`,
+    content: '删除后不可恢复。',
+    onOk: async () => {
+      try {
+        await delete[[.Entity]](row.id);
+      } catch {
+        return; // 拦截器已 toast，保持确认框
+      }
+      message.success('删除成功');
+      gridApi.reload();
+    },
+  });
+}
+
+function onSaved() {
+  gridApi.reload();
+}
+</script>
+
+<template>
+  <Page auto-content-height>
+    <Grid>
+      <template #toolbar-tools>
+        <Button
+          class="mr-2"
+          type="primary"
+          v-access:code="['[[.Module]]:[[.Business]]:*']"
+          @click="onCreate"
+        >
+          新建
+        </Button>
+      </template>
+      <template #actions="{ row }">
+        <Button
+          size="small"
+          type="link"
+          v-access:code="['[[.Module]]:[[.Business]]:*']"
+          @click="onDetail(row)"
+        >
+          详情
+        </Button>
+        <Button
+          size="small"
+          type="link"
+          v-access:code="['[[.Module]]:[[.Business]]:*']"
+          @click="onEdit(row)"
+        >
+          编辑
+        </Button>
+        <Button
+          danger
+          size="small"
+          type="link"
+          v-access:code="['[[.Module]]:[[.Business]]:*']"
+          @click="onDelete(row)"
+        >
+          删除
+        </Button>
+      </template>
+    </Grid>
+    <FormModal @saved="onSaved" />
+    <DetailDrawer />
+  </Page>
+</template>

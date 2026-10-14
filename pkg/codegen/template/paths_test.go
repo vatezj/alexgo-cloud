@@ -72,6 +72,34 @@ func TestServerTreePaths(t *testing.T) {
 	}
 }
 
+// TestFrontTreePaths 钉树表前端 overlay 2 模板（spec §10.3/10.4）：
+// 与 single 同输出模式（覆盖语义），路径一一对应。
+func TestFrontTreePaths(t *testing.T) {
+	b := template.NewBind(fixtureTable())
+	want := map[string]string{
+		"list.vue.tmpl": "apps/web-antd/src/views/order/order_item/list.vue",
+		"form.vue.tmpl": "apps/web-antd/src/views/order/order_item/form.vue",
+	}
+	singleByBase := map[string]string{}
+	for _, n := range template.FrontSingleTemplateNames() {
+		singleByBase[path.Base(n)] = template.FrontSingleTemplatePattern(n)
+	}
+	names := template.FrontTreeTemplateNames()
+	if len(names) != len(want) {
+		t.Fatalf("front tree count = %d, want %d: %v", len(names), len(want), names)
+	}
+	for _, name := range names {
+		short := path.Base(name)
+		pattern := template.FrontTreeTemplatePattern(name)
+		if got := template.RenderPath(pattern, b); got != want[short] {
+			t.Errorf("%s path = %q, want %q", name, got, want[short])
+		}
+		if singleByBase[short] == "" || singleByBase[short] != pattern {
+			t.Errorf("%s pattern = %q, want same as single %q", name, pattern, singleByBase[short])
+		}
+	}
+}
+
 // TestFrontSinglePaths 钉住 vben5_antd 前端模板族输出路径（随任务推进 3→7）。
 func TestFrontSinglePaths(t *testing.T) {
 	b := template.NewBind(fixtureTable())

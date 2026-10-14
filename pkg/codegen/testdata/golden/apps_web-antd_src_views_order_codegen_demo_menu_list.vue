@@ -8,15 +8,15 @@ import { formatDateTime } from '#/utils/format';
 import {
   deleteCodegenDemoMenu,
   listCodegenDemoMenu,
-  matchQuery,
 } from '#/api/order/codegen_demo_menu/api';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { localPage } from '#/utils/local-page';
 
 import DetailDrawerView from './drawer.vue';
 import FormModalView from './form.vue';
 
 defineOptions({ name: 'OrderCodegenDemoMenuPage' });
+
+// 树表显示名固定 name 列（spec §10.1 约定列，删除确认文案用）。
 const gridOptions: VxeGridProps<CodegenDemoMenu> = {
   columns: [
     {
@@ -54,55 +54,23 @@ const gridOptions: VxeGridProps<CodegenDemoMenu> = {
   ],
   height: 'auto',
   keepSource: true,
-  pagerConfig: {},
+  // 树形交互（spec §10.4，房规 SystemMenusPage 原样）：平铺 parent_id 由 vxe 转树、
+  // 默认全展开；关分页与搜索——过滤/分页都会破坏树形完整性。
+  treeConfig: { expandAll: true, parentField: 'parent_id', rowField: 'id', transform: true },
+  pagerConfig: { enabled: false },
   proxyConfig: {
     ajax: {
-      // 第二参 = 查询表单值（vxe extends.ts 把最后一次提交的表单值并进参数）。
-      query: async ({ page }, formValues: Record<string, any>) => {
+      query: async () => {
         const rows = await listCodegenDemoMenu();
-        const filtered = matchQuery(rows, formValues ?? {});
-        return {
-          items: localPage(filtered, page.currentPage, page.pageSize),
-          total: filtered.length,
-        };
+        return { items: rows, total: rows.length };
       },
     },
   },
   toolbarConfig: { custom: true, refresh: true, zoom: true },
 };
 
-const [Grid, gridApi] = useVbenVxeGrid({
-  formOptions: {
-    schema: [
-      {
-        component: 'Input',
-        fieldName: 'id',
-        label: '主键',
-      },
-      {
-        component: 'Input',
-        fieldName: 'parent_id',
-        label: '父级ID',
-      },
-      {
-        component: 'Input',
-        fieldName: 'name',
-        label: '名称',
-      },
-      {
-        component: 'Input',
-        fieldName: 'remark',
-        label: '备注',
-      },
-      {
-        component: 'Input',
-        fieldName: 'created_at',
-        label: '创建时间',
-      },
-    ],
-  },
-  gridOptions,
-});
+// 无 formOptions：树表不提供搜索表单（spec §10.4）。
+const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
 
 const [FormModal, formModalApi] = useVbenModal({
   connectedComponent: FormModalView,
@@ -131,7 +99,7 @@ function onDetail(row: CodegenDemoMenu) {
 
 function onDelete(row: CodegenDemoMenu) {
   AntdModal.confirm({
-    title: `确认删除「${String(row.parent_id ?? '')}」？`,
+    title: `确认删除「${String(row.name ?? '')}」？`,
     content: '删除后不可恢复。',
     onOk: async () => {
       try {

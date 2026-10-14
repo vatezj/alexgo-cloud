@@ -64,10 +64,13 @@ func ServerTreeTemplatePattern(name string) string {
 	return p
 }
 
-// frontTreeTemplates：树表前端 overlay（spec §10.3）。
-// 按任务渐进登记（与 single 同规则）：本任务先空占位，M5 T3 补 list.vue/form.vue——
+// frontTreeTemplates：树表前端 overlay（spec §10.3）。value=输出模式与 single
+// 完全相同——按输出模式**覆盖**（非追加），族产物恒 14。
 // ParseFS 缺文件即整族报错，登记与文件必须同笔落地。
-var frontTreeTemplates = map[string]string{}
+var frontTreeTemplates = map[string]string{
+	"front/vben5_antd/tree/list.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/list.vue",
+	"front/vben5_antd/tree/form.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/form.vue",
+}
 
 // FrontTreeTemplateNames 返回排序后的树表前端模板名列表（确定性）。
 func FrontTreeTemplateNames() []string {
