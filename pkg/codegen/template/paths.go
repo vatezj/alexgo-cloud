@@ -41,12 +41,13 @@ func ServerSingleTemplatePattern(name string) string {
 // frontSingleTemplates：vben5_antd 单表前端模板族（spec §3）。
 // 按任务渐进登记：只列已存在的模板文件（ParseFS 缺文件即整族报错）。
 var frontSingleTemplates = map[string]string{
-	"front/vben5_antd/single/types.ts.tmpl": "apps/web-antd/src/api/{module}/{business}/types.ts",
-	"front/vben5_antd/single/api.ts.tmpl":   "apps/web-antd/src/api/{module}/{business}/api.ts",
-	"front/vben5_antd/single/index.ts.tmpl": "apps/web-antd/src/api/{module}/{business}/index.ts",
-	"front/vben5_antd/single/list.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/list.vue",
-	"front/vben5_antd/single/form.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/form.vue",
-	"front/vben5_antd/single/drawer.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/drawer.vue",
+	"front/vben5_antd/single/types.ts.tmpl":    "apps/web-antd/src/api/{module}/{business}/types.ts",
+	"front/vben5_antd/single/api.ts.tmpl":      "apps/web-antd/src/api/{module}/{business}/api.ts",
+	"front/vben5_antd/single/index.ts.tmpl":    "apps/web-antd/src/api/{module}/{business}/index.ts",
+	"front/vben5_antd/single/list.vue.tmpl":    "apps/web-antd/src/views/{module}/{business}/list.vue",
+	"front/vben5_antd/single/form.vue.tmpl":    "apps/web-antd/src/views/{module}/{business}/form.vue",
+	"front/vben5_antd/single/drawer.vue.tmpl":  "apps/web-antd/src/views/{module}/{business}/drawer.vue",
+	"front/vben5_antd/single/api.test.ts.tmpl": "apps/web-antd/src/api/{module}/{business}/__tests__/{business}.test.ts",
 }
 
 // FrontSingleTemplateNames 返回排序后的前端模板名列表（确定性）。

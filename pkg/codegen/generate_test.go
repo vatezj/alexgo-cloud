@@ -67,8 +67,8 @@ func TestGenerate_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 13 {
-		t.Fatalf("files = %d, want 13: %+v", len(files), pathsOf(files))
+	if len(files) != 14 {
+		t.Fatalf("files = %d, want 14: %+v", len(files), pathsOf(files))
 	}
 	for _, f := range files {
 		golden := filepath.Join("testdata", "golden", strings.ReplaceAll(f.Path, "/", "_"))
@@ -165,8 +165,8 @@ func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 26 {
-		t.Fatalf("files = %d, want 26: %+v", len(files), pathsOf(files))
+	if len(files) != 28 {
+		t.Fatalf("files = %d, want 28: %+v", len(files), pathsOf(files))
 	}
 	var testFiles []model.GeneratedFile
 	for _, f := range files {

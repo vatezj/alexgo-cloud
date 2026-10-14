@@ -52,6 +52,7 @@ func TestFrontSinglePaths(t *testing.T) {
 		"list.vue.tmpl": "apps/web-antd/src/views/order/order_item/list.vue",
 		"form.vue.tmpl": "apps/web-antd/src/views/order/order_item/form.vue",
 		"drawer.vue.tmpl": "apps/web-antd/src/views/order/order_item/drawer.vue",
+		"api.test.ts.tmpl": "apps/web-antd/src/api/order/order_item/__tests__/order_item.test.ts",
 	}
 	names := template.FrontSingleTemplateNames()
 	if len(names) != len(want) {

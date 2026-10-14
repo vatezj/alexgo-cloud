@@ -101,8 +101,8 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 14 {
-		t.Fatalf("files = %d, want 14", len(files))
+	if len(files) != 28 {
+		t.Fatalf("files = %d, want 28", len(files))
 	}
 
 	// 3. 只记录本次新建的路径，cleanup 只删自己的文件

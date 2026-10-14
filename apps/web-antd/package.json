@@ -20,7 +20,8 @@
     "build:analyze": "pnpm vite build --mode analyze",
     "dev": "pnpm vite --mode development",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit --skipLibCheck"
+    "typecheck": "vue-tsc --noEmit --skipLibCheck",
+    "test": "vitest run --passWithNoTests"
   },
   "imports": {
     "#/*": "./src/*"
@@ -46,5 +47,8 @@
     "pinia": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   }
 }
