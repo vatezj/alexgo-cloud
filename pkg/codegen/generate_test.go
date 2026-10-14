@@ -62,6 +62,83 @@ func buildSecondFixture(t *testing.T) *model.Table {
 	return tbl
 }
 
+// treeFixtureMeta：树表 fixture（spec §10.1 固定约定 parent_id + name）。
+// 表名 codegen_demo_menus → 实体 CodegenDemoMenu、snake codegen_demo_menu，
+// 与单表 fixture（codegen_demo_item）不同名，可同包共存。
+func treeFixtureMeta() *metadata.TableMeta {
+	return &metadata.TableMeta{
+		Schema:  "alexgo",
+		Name:    "codegen_demo_menus",
+		Comment: "codegen demo tree",
+		Columns: []metadata.ColumnMeta{
+			{Name: "id", DataType: "bigint", ColumnType: "bigint unsigned", Key: "PRI", Extra: "auto_increment", Comment: "主键", Ordinal: 1},
+			{Name: "parent_id", DataType: "bigint", ColumnType: "bigint unsigned", Comment: "父级ID", Ordinal: 2},
+			{Name: "name", DataType: "varchar", ColumnType: "varchar(64)", Comment: "名称", Ordinal: 3},
+			{Name: "remark", DataType: "varchar", ColumnType: "varchar(255)", Nullable: true, Comment: "备注", Ordinal: 4},
+			{Name: "created_at", DataType: "datetime", ColumnType: "datetime", Comment: "创建时间", Ordinal: 5},
+			{Name: "tenant_id", DataType: "bigint", ColumnType: "bigint unsigned", Comment: "租户", Ordinal: 6},
+		},
+	}
+}
+
+// buildTreeFixture 树表 fixture（TemplateType=2）。
+func buildTreeFixture(t *testing.T) *model.Table {
+	t.Helper()
+	tbl, err := builder.Build(treeFixtureMeta(), builder.Options{Module: "order", TemplateType: model.TemplateTypeTree})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	return tbl
+}
+
+// dropColumns 返回去掉指定列的 meta 拷贝（不改原 meta）。
+func dropColumns(meta *metadata.TableMeta, names ...string) *metadata.TableMeta {
+	drop := map[string]bool{}
+	for _, n := range names {
+		drop[n] = true
+	}
+	out := *meta
+	out.Columns = out.Columns[:0:0]
+	for _, c := range meta.Columns {
+		if !drop[c.Name] {
+			out.Columns = append(out.Columns, c)
+		}
+	}
+	return &out
+}
+
+// TestGenerate_TreeConvention 钉 spec §10.1：树表缺 parent_id/name 必须报
+// ErrColumnInvalid，且校验先于 Render——否则树族未实现的 ErrTemplateMissing
+// 会掩盖「缺列」这个真因（Review Focus ①）。
+func TestGenerate_TreeConvention(t *testing.T) {
+	cases := []struct {
+		name    string
+		meta    *metadata.TableMeta
+		wantMsg string
+	}{
+		{"缺 parent_id", dropColumns(treeFixtureMeta(), "parent_id"), "parent_id"},
+		{"缺 name", dropColumns(treeFixtureMeta(), "name"), "name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tbl, err := builder.Build(tc.meta, builder.Options{Module: "order", TemplateType: model.TemplateTypeTree})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			_, err = codegen.Generate([]*model.Table{tbl}, codegen.Options{UnitTestEnable: true})
+			if !errors.Is(err, model.ErrColumnInvalid) {
+				t.Fatalf("err = %v, want ErrColumnInvalid", err)
+			}
+			if errors.Is(err, model.ErrTemplateMissing) {
+				t.Fatalf("校验必须先于 Render，ErrTemplateMissing 掩盖了缺列: %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("err = %q, 应点名缺列 %q", err, tc.wantMsg)
+			}
+		})
+	}
+}
+
 func TestGenerate_Golden(t *testing.T) {
 	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
 	if err != nil {
@@ -123,7 +200,7 @@ func TestGenerate_AggregatesErrors(t *testing.T) {
 	badNoCols := &model.Table{TableName: "t1", Module: "m", ClassName: "T1",
 		TemplateType: model.TemplateTypeSingle, FrontType: model.FrontTypeVben5Antd}
 	badType := buildFixture(t)
-	badType.TemplateType = model.TemplateTypeTree // M1 未实现 → ErrTemplateMissing
+	badType.TemplateType = model.TemplateTypeMainSub // M6 未实现 → ErrTemplateMissing（M5 起 tree 已交付，不能再当缺模板载体）
 	_, err := codegen.Generate([]*model.Table{badNoCols, badType}, codegen.Options{UnitTestEnable: true})
 	if err == nil {
 		t.Fatal("Generate should fail")
