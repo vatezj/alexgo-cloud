@@ -223,7 +223,7 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 ### 2.8 前端产物（vben5_antd 单表模板族）
 
 同一渲染管线会同时输出**后端 7 + 前端 7 = 单表 14** 份产物（`make codegen-smoke`
-断言两套共 28）；前端模板位于
+断言三表共 42）；前端模板位于
 `pkg/codegen/template/templates/front/vben5_antd/single/`，模板定界符为 `[[ ]]`
 （Vue 占用 `{{ }}`），函数 `pascal/snake/plural/lower` 可用。每个已导入表生成：
 
