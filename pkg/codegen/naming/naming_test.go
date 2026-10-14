@@ -87,3 +87,19 @@ func TestJSONName_Sensitive(t *testing.T) {
 		t.Error("IsSensitive wrong")
 	}
 }
+
+func TestPascal(t *testing.T) {
+	cases := map[string]string{
+		"":                  "",
+		"order":             "Order",
+		"codegen_demo_item": "CodegenDemoItem",
+		"order_items":       "OrderItems",
+		"my-page":           "MyPage",
+		"Order":             "Order",
+	}
+	for in, want := range cases {
+		if got := naming.Pascal(in); got != want {
+			t.Errorf("Pascal(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

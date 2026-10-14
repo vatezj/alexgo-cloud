@@ -13,5 +13,6 @@ func FuncMap() texttpl.FuncMap {
 		"lower":  strings.ToLower,
 		"snake":  naming.Snake,
 		"plural": naming.Plural,
+		"pascal": naming.Pascal,
 	}
 }

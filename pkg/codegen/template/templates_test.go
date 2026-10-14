@@ -28,3 +28,18 @@ func TestTemplatesParse(t *testing.T) {
 		t.Fatalf("walk: %v", err)
 	}
 }
+
+func TestFuncMapPascal(t *testing.T) {
+	fm := template.FuncMap()
+	fn, ok := fm["pascal"]
+	if !ok {
+		t.Fatal("FuncMap missing pascal")
+	}
+	f, ok := fn.(func(string) string)
+	if !ok {
+		t.Fatalf("pascal type = %T", fn)
+	}
+	if got := f("codegen_demo_item"); got != "CodegenDemoItem" {
+		t.Errorf("pascal = %q", got)
+	}
+}

@@ -112,6 +112,20 @@ func JSONName(col string) string {
 	return col
 }
 
+// Pascal 任意标识 → PascalCase：全小写切词后逐词首字母大写，不查缩写表。
+// 模块名/表名 → 页面组件名前缀（order → Order）。
+func Pascal(s string) string {
+	parts := nonWord.Split(strings.ToLower(s), -1)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		out = append(out, capitalize(p))
+	}
+	return strings.Join(out, "")
+}
+
 func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
