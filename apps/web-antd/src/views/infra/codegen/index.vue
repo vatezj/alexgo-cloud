@@ -253,6 +253,19 @@ const [EditForm, editFormApi] = useVbenForm({
       rules: 'required',
     },
     {
+      component: 'Select',
+      componentProps: {
+        options: [
+          { label: '单表', value: 1 },
+          { label: '树表', value: 2 },
+          { label: '主子表（M6 开放）', value: 3, disabled: true },
+        ],
+      },
+      fieldName: 'template_type',
+      label: '模板类型',
+      rules: 'required',
+    },
+    {
       component: 'Textarea',
       fieldName: 'remark',
       label: '备注',
@@ -272,6 +285,7 @@ function onEdit(row: CodegenTable) {
     class_name: row.class_name,
     module: row.module,
     remark: row.remark,
+    template_type: row.template_type,
   });
 }
 
