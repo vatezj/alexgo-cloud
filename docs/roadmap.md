@@ -40,7 +40,7 @@
 
 | # | 项 | 内容 | 状态 |
 | --- | --- | --- | --- |
-| P2-1 | codegen M4→M5→M6 | 前端列表模板 → 树表 → 主子表（spec：`docs/superpowers/specs/2026-10-10-codegen-redesign-design.md`） | M4 ✅ `a932b56..20330df`（7 模板 + E2E + 终审），当前 M5 |
+| P2-1 | codegen M4→M5→M6 | 前端列表模板 → 树表 → 主子表（spec：`docs/superpowers/specs/2026-10-10-codegen-redesign-design.md`） | M4 ✅ `a932b56..20330df`（7 模板 + E2E + 终审），M5 ✅ `c016a1f..3465434`（树表族 overlay 5 模板 + 约定校验 + 冒烟 42），当前 M6 |
 | P2-1-F | **codegen M4 跟进票**（M4 终审挂出，7 minor） | ① form.vue `editingId` 在 async resetForm 后赋值，极快点确定可能走 create（竞态）；② list/form/drawer 模板 `.Comment` 未转义撇号（注释含 `'` 则 JS 语法错）；③ generate_test 残留正则漏 `{{fn}}`/`{{ $x }}` 形态；④ smoke cleanup 不删空目录（遗留 `codegen_smoke_*` 空目录）；⑤ create/update 返回类型声明 `Promise<Entity>` 实返 `{status:ok}`（类型说谎）；⑥ `int/uint64→number` >2^53 雪花 ID 精度丢失（与有符号主键局限同票，`docs/usage.md` §2.8「局限票」指此）；⑦ preview 验收不断言 front 产物存在（golden 别处兜底） | ⬜ 不阻塞 |
 | P2-2 | member 深化 | 实名认证、会员等级、积分、签到 |
 | P2-3 | 社交登录 | 微信/QQ OAuth 联邦到统一登录（account_type 扩展） |

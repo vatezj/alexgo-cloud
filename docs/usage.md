@@ -272,3 +272,19 @@ controller 一次性返回全量行，查询表单提交值经 `matchQuery` 客�
 
 - **非 0/1 的 tinyint(1)** 经 `Switch` 提交会收成 0/1（`Number(Boolean(v))` 链路），
   存量脏值以编辑保存为准归一。
+
+### 2.9 树表模板族（template_type=2，M5）
+
+- **固定约定**（spec §10.1）：表必须有 `parent_id`（整型自引用，根=0）与 `name`（varchar 显示名），
+  缺列在生成入口报 `ErrColumnInvalid`（CLI 与在线预览同一路径）；导入不加配置列、无迁移。
+- **后端语义**（spec §10.2）：repository 增 `HasChildren`；service `Create/Update` 前
+  `validateParent`（parent_id≠0 时父存在且非自身），`Delete` 前有子拒绝；
+  List 平铺返回、不加 Children 字段与 GetTree，构树在前端。
+- **模板组织**（spec §10.3）：树表族 = 单表全集 14 产物，其中 5 个被 tree overlay 按输出模式覆盖——
+  server `repository/service/service_test`、front `list.vue/form.vue`；其余 9 个复用单表模板。
+- **前端**（spec §10.4）：`list.vue` 用 vxe `treeConfig`（transform + parentField/rowField + 全展开）、
+  关分页、无搜索表单；`form.vue` 的 `parent_id` 按列名硬认 `TreeSelect`
+  （打开时拉平铺 list 本地构树，虚拟顶级 value=0 可选）。
+- **界面**：编辑弹窗「模板类型」下拉可切单表/树表（主子表 M6 置灰）。
+- **验收**（spec §10.5）：`CGO_ENABLED=0 go test ./pkg/codegen -run TreeGolden`（14 产物）
+  + `make codegen-smoke`（3 表 × 14 = 42 产物）。
