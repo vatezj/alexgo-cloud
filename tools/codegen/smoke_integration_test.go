@@ -57,10 +57,11 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 		t.Skipf("mysql unreachable: %v (先 docker compose up mysql)", err)
 	}
 
-	// 1. 建两张冒烟表（同模块，随机后缀防残留污染）
-	// 第二张表回归双表同包重声明（B1）
+	// 1. 建三张冒烟表（同模块，随机后缀防残留污染）
+	// 第二张表回归双表同包重声明（B1）；第三张树表回归 M5 树表族（spec §10.5：冒烟 28→42）。
 	smokeTable := "codegen_smoke_item_" + randSuffix()
 	smokeTable2 := "codegen_smoke_note_" + randSuffix()
+	smokeTree := "codegen_smoke_tree_" + randSuffix()
 	for _, name := range []string{smokeTable, smokeTable2} {
 		mustExec(t, db, "DROP TABLE IF EXISTS `"+name+"`")
 		mustExec(t, db, "CREATE TABLE `"+name+"`"+` (
@@ -75,25 +76,44 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='codegen smoke'`)
 	}
+	// 树表：parent_id+name 固定约定（spec §10.1）。刻意不含 tenant_id——
+	// 单表冒烟覆盖 HasTenant 分支，树表覆盖 else 分支，两条模板分支都有真实编译验证。
+	mustExec(t, db, "DROP TABLE IF EXISTS `"+smokeTree+"`")
+	mustExec(t, db, "CREATE TABLE `"+smokeTree+"`"+` (
+  id bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  parent_id bigint unsigned NOT NULL DEFAULT 0 COMMENT '父级',
+  name varchar(64) NOT NULL COMMENT '名称',
+  remark varchar(255) DEFAULT NULL COMMENT '备注',
+  created_at datetime NOT NULL COMMENT '创建时间',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='codegen smoke tree'`)
 	t.Cleanup(func() {
 		mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTable)
 		mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTable2)
+		mustExec(t, db, "DROP TABLE IF EXISTS "+smokeTree)
 	})
 
-	// 2. 读元数据 + 构建 + 生成（两张表 → 同一模块）
+	// 2. 读元数据 + 构建 + 生成（三张表 → 同一模块，前两张 single、树表 tree）
 	schema := schemaFromDSN(cfg.Database.DSN)
 	if schema == "" {
 		t.Fatal("cannot parse schema from dsn")
 	}
 	var tables []*model.Table
-	for _, name := range []string{smokeTable, smokeTable2} {
-		meta, err := metadata.NewMySQLReader(db, schema).ReadTable(ctx, name)
+	for _, spec := range []struct {
+		name string
+		opts builder.Options
+	}{
+		{smokeTable, builder.Options{Module: "order"}},
+		{smokeTable2, builder.Options{Module: "order"}},
+		{smokeTree, builder.Options{Module: "order", TemplateType: model.TemplateTypeTree}},
+	} {
+		meta, err := metadata.NewMySQLReader(db, schema).ReadTable(ctx, spec.name)
 		if err != nil {
-			t.Fatalf("ReadTable %s: %v", name, err)
+			t.Fatalf("ReadTable %s: %v", spec.name, err)
 		}
-		tbl, err := builder.Build(meta, builder.Options{Module: "order"})
+		tbl, err := builder.Build(meta, spec.opts)
 		if err != nil {
-			t.Fatalf("Build %s: %v", name, err)
+			t.Fatalf("Build %s: %v", spec.name, err)
 		}
 		tables = append(tables, tbl)
 	}
@@ -101,8 +121,8 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 28 {
-		t.Fatalf("files = %d, want 28", len(files))
+	if len(files) != 42 {
+		t.Fatalf("files = %d, want 42 (3 tables x 14)", len(files))
 	}
 
 	// 3. 只记录本次新建的路径，cleanup 只删自己的文件
@@ -131,8 +151,12 @@ func TestSmoke_RealTableGoBuild(t *testing.T) {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
-	// 5. 跑两个实体生成的单测 + vet（vet 覆盖 _test.go 同包编译，防重声明回归）
-	pattern := "Test(" + tables[0].ClassName + "|" + tables[1].ClassName + ")Service_CRUD"
+	// 5. 跑三个实体生成的全部单测（CRUD + 树语义）+ vet（防重声明回归）
+	classNames := make([]string, 0, len(tables))
+	for _, tbl := range tables {
+		classNames = append(classNames, tbl.ClassName)
+	}
+	pattern := "Test(" + strings.Join(classNames, "|") + ")Service_"
 	out, err = exec.Command("go", "test", "./modules/order/service/",
 		"-run", pattern, "-count=1").CombinedOutput()
 	if err != nil {
