@@ -17,6 +17,67 @@ import DetailDrawerView from './drawer.vue';
 import FormModalView from './form.vue';
 
 defineOptions({ name: 'OrderCodegenDemoItemPage' });
+const gridOptions: VxeGridProps<CodegenDemoItem> = {
+  columns: [
+    {
+      field: 'id',
+      title: '主键',
+      width: 80,
+    },
+    {
+      field: 'name',
+      title: '名称',
+      minWidth: 120,
+    },
+    {
+      field: 'price',
+      title: '价格',
+      minWidth: 120,
+    },
+    {
+      field: 'status',
+      title: '状态',
+      minWidth: 120,
+      formatter: ({ cellValue }) =>
+        Number(cellValue) === 1 ? '启用' : '停用',
+    },
+    {
+      field: 'remark',
+      title: '备注',
+      minWidth: 120,
+    },
+    {
+      field: 'created_at',
+      title: '创建时间',
+      minWidth: 120,
+      formatter: ({ cellValue }) => formatDateTime(cellValue),
+    },
+    {
+      fixed: 'right',
+      slots: { default: 'actions' },
+      title: '操作',
+      width: 180,
+    },
+  ],
+  height: 'auto',
+  keepSource: true,
+  pagerConfig: {},
+  proxyConfig: {
+    ajax: {
+      // 第二参 = 查询表单值（vxe extends.ts 把最后一次提交的表单值并进参数）。
+      query: async ({ page }, formValues: Record<string, any>) => {
+        const rows = await listCodegenDemoItem();
+        const filtered = matchQuery(rows, formValues ?? {});
+        return {
+          items: localPage(filtered, page.currentPage, page.pageSize),
+          total: filtered.length,
+        };
+      },
+    },
+  },
+  toolbarConfig: { custom: true, refresh: true, zoom: true },
+};
+
 const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
     schema: [
@@ -52,66 +113,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
       },
     ],
   },
-  gridOptions: {
-    columns: [
-      {
-        field: 'id',
-        title: '主键',
-        width: 80,
-      },
-      {
-        field: 'name',
-        title: '名称',
-        minWidth: 120,
-      },
-      {
-        field: 'price',
-        title: '价格',
-        minWidth: 120,
-      },
-      {
-        field: 'status',
-        title: '状态',
-        minWidth: 120,
-        formatter: ({ cellValue }) =>
-          Number(cellValue) === 1 ? '启用' : '停用',
-      },
-      {
-        field: 'remark',
-        title: '备注',
-        minWidth: 120,
-      },
-      {
-        field: 'created_at',
-        title: '创建时间',
-        minWidth: 120,
-        formatter: ({ cellValue }) => formatDateTime(cellValue),
-      },
-      {
-        fixed: 'right',
-        slots: { default: 'actions' },
-        title: '操作',
-        width: 180,
-      },
-    ],
-    height: 'auto',
-    keepSource: true,
-    pagerConfig: {},
-    proxyConfig: {
-      ajax: {
-        // 第二参 = 查询表单值（vxe extends.ts 把最后一次提交的表单值并进参数）。
-        query: async ({ page }, formValues: Record<string, any>) => {
-          const rows = await listCodegenDemoItem();
-          const filtered = matchQuery(rows, formValues ?? {});
-          return {
-            items: localPage(filtered, page.currentPage, page.pageSize),
-            total: filtered.length,
-          };
-        },
-      },
-    },
-    toolbarConfig: { custom: true, refresh: true, search: true, zoom: true },
-  },
+  gridOptions,
 });
 
 const [FormModal, formModalApi] = useVbenModal({

@@ -1,5 +1,4 @@
 <script lang="ts" setup>
-import type { CodegenDemoItem } from '#/api/order/codegen_demo_item/types';
 import dayjs from 'dayjs';
 import { message } from 'ant-design-vue';
 import { ref } from 'vue';

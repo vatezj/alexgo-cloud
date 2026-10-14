@@ -67,8 +67,8 @@ func TestGenerate_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 12 {
-		t.Fatalf("files = %d, want 12: %+v", len(files), pathsOf(files))
+	if len(files) != 13 {
+		t.Fatalf("files = %d, want 13: %+v", len(files), pathsOf(files))
 	}
 	for _, f := range files {
 		golden := filepath.Join("testdata", "golden", strings.ReplaceAll(f.Path, "/", "_"))
@@ -106,8 +106,8 @@ func TestGenerate_NoUnitTest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 11 {
-		t.Fatalf("files = %d, want 11 (no service_test)", len(files))
+	if len(files) != 12 {
+		t.Fatalf("files = %d, want 12 (no service_test)", len(files))
 	}
 	for _, f := range files {
 		if strings.HasSuffix(f.Path, "_test.go") {
@@ -165,8 +165,8 @@ func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 24 {
-		t.Fatalf("files = %d, want 24: %+v", len(files), pathsOf(files))
+	if len(files) != 26 {
+		t.Fatalf("files = %d, want 26: %+v", len(files), pathsOf(files))
 	}
 	var testFiles []model.GeneratedFile
 	for _, f := range files {
@@ -252,6 +252,40 @@ func TestGenerate_FrontNoDelimResidue(t *testing.T) {
 			t.Errorf("%s residue at %d: …%s…", f.Path, off, f.Content[lo:hi])
 		}
 	}
+}
+
+// TestGenerate_FrontFixturesToDisk 把 fixture 的 front 产物写进 web-antd 真实路径，
+// 供 vue-tsc/vitest 做类型门禁（T5/T6 防波堤）。默认 skip：
+//
+//	CODEGEN_FRONT_FIXTURE=1 go test ./pkg/codegen -run FrontFixtures
+//
+// 写盘方负责随后删除两个目录（见计划 T5 Step 5/T6 Step 5）。
+func TestGenerate_FrontFixturesToDisk(t *testing.T) {
+	if os.Getenv("CODEGEN_FRONT_FIXTURE") != "1" {
+		t.Skip("set CODEGEN_FRONT_FIXTURE=1 to write web-antd fixtures")
+	}
+	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	written := 0
+	for _, f := range files {
+		if !strings.HasPrefix(f.Path, "apps/web-antd/") {
+			continue
+		}
+		dst := filepath.Join("..", "..", filepath.FromSlash(f.Path))
+		if mkErr := os.MkdirAll(filepath.Dir(dst), 0o755); mkErr != nil {
+			t.Fatalf("mkdir %s: %v", dst, mkErr)
+		}
+		if wErr := os.WriteFile(dst, f.Content, 0o644); wErr != nil {
+			t.Fatalf("write %s: %v", dst, wErr)
+		}
+		written++
+	}
+	if written < 6 {
+		t.Fatalf("written front files = %d, want >= 6", written)
+	}
+	t.Logf("wrote %d fixture files under apps/web-antd/src (clean up after typecheck)", written)
 }
 
 func pathsOf(files []model.GeneratedFile) []string {

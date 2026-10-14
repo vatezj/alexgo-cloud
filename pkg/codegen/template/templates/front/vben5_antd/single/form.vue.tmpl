@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import type { [[.Entity]] } from '#/api/[[.Module]]/[[.Business]]/types';
-
 [[- $hasDateForm := false ]][[- range .Columns ]][[ if and .FormEnable (ne .JSONName "-") (eq .HTMLType "DatePicker") ]][[ $hasDateForm = true ]][[ end ]][[ end ]][[ if $hasDateForm ]]
 import dayjs from 'dayjs';
 [[- end ]]
