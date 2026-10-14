@@ -300,3 +300,42 @@ go run ./tools/codegen --dsn=... --tables=t1 --import       # 现场读元数据
 
 - 表级同步同时刷新 `table_comment` 快照；`module/class_name/template_type/front_type/remark`
   等表级配置不覆盖。
+
+## 10. 增补（2026-10-14，M5 实施前回填）
+
+M5 树表的设计裁决（brainstorm 确认，优先级等同正文）。
+
+### 10.1 树表固定约定：`parent_id` + `name`
+
+- 树表（`template_type=2`）必须有 `parent_id`（整型自引用，根节点=0）与
+  `name`（varchar 显示名）两列；不做可配置列名（YAGNI，与房规
+  `SystemMenusPage` 同款约定）。
+- 校验在引擎入口（`generate.go`，builder 之后）：缺列即生成错误，CLI 与
+  在线预览同一路径生效。导入不加新配置列、无迁移。
+
+### 10.2 后端语义：validateParent + 平铺 List
+
+- 不加 `Children` 字段、不加 `GetTree`；List 原样返回平铺，构树在前端。
+- repository 加 `HasChildren`；service `Create/Update` 前 `validateParent`
+  （parent_id≠0 时父必须存在且非自身），`Delete` 前有子拒绝。
+
+### 10.3 模板组织：overlay，不整目录复制
+
+- §3 的「渲染该目录全部模板」对 tree 族修订为**叠加**：树表族 =
+  single 全集 + tree overlay 覆盖 5 个模板——
+  server：`repository` / `service` / `service_test`；front：`list.vue` / `form.vue`。
+- 其余 9 个文件（model、两 controller、module_register、types/api/index/
+  drawer/api.test）复用 single 模板，single 的修改树表自动跟随。
+
+### 10.4 前端树交互
+
+- `list.vue`：vxe `treeConfig`（transform + parentField/rowField + 全展开）、
+  关分页、无搜索表单（过滤破坏树形）。
+- `form.vue`：`parent_id` 按**列名硬认**渲染 `TreeSelect`（打开时拉平铺
+  list 本地构树，根=0 可选）；html_type 不参与该列控件选择。
+
+### 10.5 验收与计数
+
+- 验收 = 树表族 golden + 冒烟（spec §8 原文），不含浏览器 E2E。
+- 冒烟计数 28 → 42（加 1 张树表 × 14 产物）。
+- codegen 编辑弹窗加「模板类型」Select（主子置灰，M6 再开）。
