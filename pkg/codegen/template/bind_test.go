@@ -48,3 +48,38 @@ func TestNewBind_NoTimeNoJSON(t *testing.T) {
 		t.Errorf("Imports = %+v, want both false", b.Imports)
 	}
 }
+
+// TestNewBind_FrontTypes 钉 Go→TS 类型映射与 vben 组件选型（含 decimal 降级）。
+func TestNewBind_FrontTypes(t *testing.T) {
+	tbl := fixtureTable()
+	tbl.Columns = []model.Column{
+		{Name: "id", GoName: "ID", GoType: "uint64", JSONName: "id", IsPK: true},
+		{Name: "price", GoName: "Price", GoType: "string", JSONName: "price", HTMLType: model.HTMLInputNumber},
+		{Name: "status", GoName: "Status", GoType: "int", JSONName: "status", HTMLType: model.HTMLSwitch},
+		{Name: "created_at", GoName: "CreatedAt", GoType: "*time.Time", JSONName: "created_at", HTMLType: model.HTMLDatePicker},
+		{Name: "payload", GoName: "Payload", GoType: "json.RawMessage", JSONName: "payload", HTMLType: model.HTMLTextarea},
+		{Name: "secret", GoName: "Secret", GoType: "string", JSONName: "-"},
+	}
+	b := template.NewBind(tbl)
+	cases := []struct {
+		idx  int
+		name string
+		ts   string
+		comp string
+	}{
+		{0, "id", "number", "Input"},           // HTMLType 空 → Input
+		{1, "price", "string", "Input"},        // decimal：InputNumber→Input 防 ShouldBindJSON 拒 number
+		{2, "status", "number", "Switch"},
+		{3, "created_at", "string", "DatePicker"}, // *time.Time 剥指针 → string
+		{4, "payload", "any", "Textarea"},
+	}
+	for _, c := range cases {
+		col := b.Columns[c.idx]
+		if col.TSType != c.ts {
+			t.Errorf("%s TSType = %q, want %q", c.name, col.TSType, c.ts)
+		}
+		if col.VbenComponent != c.comp {
+			t.Errorf("%s VbenComponent = %q, want %q", c.name, col.VbenComponent, c.comp)
+		}
+	}
+}

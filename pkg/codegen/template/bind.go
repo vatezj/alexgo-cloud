@@ -40,6 +40,8 @@ type BindColumn struct {
 	QueryEnable  bool
 	ListRequired bool
 	FormRequired bool
+	TSType        string
+	VbenComponent string
 }
 
 func NewBind(t *model.Table) Bind {
@@ -66,7 +68,42 @@ func NewBind(t *model.Table) Bind {
 			IsPK: c.IsPK, Nullable: c.Nullable,
 			ListEnable: c.ListEnable, FormEnable: c.FormEnable, QueryEnable: c.QueryEnable,
 			ListRequired: c.ListRequired, FormRequired: c.FormRequired,
+			TSType:        tsType(c.GoType),
+			VbenComponent: vbenComponent(string(c.HTMLType), c.GoType),
 		})
 	}
 	return b
+}
+
+// tsType Go 类型 → TS 类型（front 模板专用；先剥指针再匹配）。
+func tsType(goType string) string {
+	gt := strings.TrimPrefix(goType, "*")
+	switch {
+	case gt == "time.Time":
+		return "string"
+	case gt == "json.RawMessage":
+		return "any"
+	case gt == "bool":
+		return "boolean"
+	case strings.HasPrefix(gt, "string"):
+		return "string"
+	case strings.Contains(gt, "int"):
+		return "number"
+	case strings.Contains(gt, "float"):
+		return "number"
+	default:
+		return "any"
+	}
+}
+
+// vbenComponent HTMLType → 实际 vben 表单组件：
+// decimal 的 GoType 是 string，InputNumber 会送 number 触发 ShouldBindJSON 拒收 → 降为 Input。
+func vbenComponent(htmlType, goType string) string {
+	if htmlType == "" {
+		return "Input"
+	}
+	if htmlType == "InputNumber" && strings.Contains(goType, "string") {
+		return "Input"
+	}
+	return htmlType
 }

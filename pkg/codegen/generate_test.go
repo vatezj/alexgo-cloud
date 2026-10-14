@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -66,8 +67,8 @@ func TestGenerate_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 7 {
-		t.Fatalf("files = %d, want 7: %+v", len(files), pathsOf(files))
+	if len(files) != 10 {
+		t.Fatalf("files = %d, want 10: %+v", len(files), pathsOf(files))
 	}
 	for _, f := range files {
 		golden := filepath.Join("testdata", "golden", strings.ReplaceAll(f.Path, "/", "_"))
@@ -105,12 +106,15 @@ func TestGenerate_NoUnitTest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 6 {
-		t.Fatalf("files = %d, want 6 (no service_test)", len(files))
+	if len(files) != 9 {
+		t.Fatalf("files = %d, want 9 (no service_test)", len(files))
 	}
 	for _, f := range files {
 		if strings.HasSuffix(f.Path, "_test.go") {
 			t.Errorf("unexpected test file %s", f.Path)
+		}
+		if strings.HasSuffix(f.Path, ".test.ts") {
+			t.Errorf("unexpected front test file %s", f.Path)
 		}
 	}
 }
@@ -161,8 +165,8 @@ func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 14 {
-		t.Fatalf("files = %d, want 14: %+v", len(files), pathsOf(files))
+	if len(files) != 20 {
+		t.Fatalf("files = %d, want 20: %+v", len(files), pathsOf(files))
 	}
 	var testFiles []model.GeneratedFile
 	for _, f := range files {
@@ -196,6 +200,56 @@ func TestGenerate_TwoTablesSameModule_NoDuplicateTopLevelVars(t *testing.T) {
 					seen[name.Name] = f.Path
 				}
 			}
+		}
+	}
+}
+
+// 回归钉（M4 Review Focus ④）：JSONName="-" 的列不得出现在任何 front 产物中。
+func TestGenerate_FrontOmitsHiddenColumns(t *testing.T) {
+	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	found := 0
+	for _, f := range files {
+		if !strings.Contains(f.Path, "apps/web-antd/") {
+			continue
+		}
+		found++
+		for _, hidden := range []string{"password", "tenant_id"} {
+			if strings.Contains(string(f.Content), hidden) {
+				t.Errorf("%s leaks %q", f.Path, hidden)
+			}
+		}
+	}
+	if found < 3 {
+		t.Fatalf("front files = %d, want >= 3", found)
+	}
+}
+
+// 回归钉（M4 Review Focus ③）：front 产物不得残留未翻译的 Go 动作。
+// [[ = front delims 残留；{{ 后接 . - 或 Go 关键字 = 用错 delims 的 Go 动作。
+// Vue 插值 {{ f.value }}（空格+标识符）与 TS 对象字面量 { ... } 不在命中集。
+func TestGenerate_FrontNoDelimResidue(t *testing.T) {
+	files, err := codegen.Generate([]*model.Table{buildFixture(t)}, codegen.Options{UnitTestEnable: true})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	re := regexp.MustCompile(`\[\[|\{\{\s*([.\-]|(range|if|else|end|with|define|template)\b)`)
+	for _, f := range files {
+		if !strings.Contains(f.Path, "apps/web-antd/") {
+			continue
+		}
+		if loc := re.FindIndex(f.Content); loc != nil {
+			off := loc[0]
+			lo, hi := off-40, off+60
+			if lo < 0 {
+				lo = 0
+			}
+			if hi > len(f.Content) {
+				hi = len(f.Content)
+			}
+			t.Errorf("%s residue at %d: …%s…", f.Path, off, f.Content[lo:hi])
 		}
 	}
 }

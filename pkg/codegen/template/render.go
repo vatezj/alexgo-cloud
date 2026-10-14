@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strings"
 	texttpl "text/template"
 
 	"alexGo-cloud/pkg/codegen/model"
@@ -26,7 +27,12 @@ func Render(t *model.Table, opts Options) ([]model.GeneratedFile, error) {
 			continue
 		}
 		// ParseFS 按文件 base 名关联内容；接收者必须同名，否则 Execute 拿到空模板。
-		tpl, perr := texttpl.New(path.Base(name)).Funcs(FuncMap()).ParseFS(tplFS, "templates/"+name)
+		t := texttpl.New(path.Base(name)).Funcs(FuncMap())
+		// front 模板与 Vue 插值撞默认 delims → front 族切 [[ ]]（spec §3）。
+		if strings.HasPrefix(name, "front/") {
+			t.Delims("[[", "]]")
+		}
+		tpl, perr := t.ParseFS(tplFS, "templates/"+name)
 		if perr != nil {
 			errs = append(errs, fmt.Errorf("%w: %s: %v", model.ErrRender, name, perr))
 			continue

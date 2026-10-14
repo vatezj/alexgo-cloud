@@ -1,0 +1,8 @@
+// 生成代码，勿手改（codegen M4 · [[.TableName]]）。
+export interface [[.Entity]] {
+[[- range .Columns ]][[ if ne .JSONName "-" ]][[ if .IsPK ]]
+  [[ .JSONName ]]: [[ .TSType ]];
+[[- else ]]
+  [[ .JSONName ]]?: [[ .TSType ]];
+[[- end ]][[ end ]][[ end ]]
+}

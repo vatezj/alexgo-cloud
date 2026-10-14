@@ -41,3 +41,31 @@ func TestServerSinglePaths(t *testing.T) {
 		}
 	}
 }
+
+// TestFrontSinglePaths 钉住 vben5_antd 前端模板族输出路径（随任务推进 3→7）。
+func TestFrontSinglePaths(t *testing.T) {
+	b := template.NewBind(fixtureTable())
+	want := map[string]string{
+		"types.ts.tmpl": "apps/web-antd/src/api/order/order_item/types.ts",
+		"api.ts.tmpl":   "apps/web-antd/src/api/order/order_item/api.ts",
+		"index.ts.tmpl": "apps/web-antd/src/api/order/order_item/index.ts",
+	}
+	names := template.FrontSingleTemplateNames()
+	if len(names) != len(want) {
+		t.Fatalf("front template count = %d, want %d: %v", len(names), len(want), names)
+	}
+	serverBase := map[string]bool{}
+	for _, n := range template.ServerSingleTemplateNames() {
+		serverBase[path.Base(n)] = true
+	}
+	for _, name := range names {
+		if serverBase[path.Base(name)] {
+			t.Errorf("front base name collides with server family: %s", name)
+		}
+		pattern := template.FrontSingleTemplatePattern(name)
+		got := template.RenderPath(pattern, b)
+		if short := path.Base(name); got != want[short] {
+			t.Errorf("%s path = %q, want %q", name, got, want[short])
+		}
+	}
+}

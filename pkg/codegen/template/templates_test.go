@@ -3,6 +3,7 @@ package template_test
 
 import (
 	"io/fs"
+	"strings"
 	"testing"
 	texttpl "text/template"
 
@@ -19,7 +20,11 @@ func TestTemplatesParse(t *testing.T) {
 		if d.IsDir() {
 			return nil
 		}
-		if _, perr := texttpl.New(path).Funcs(template.FuncMap()).ParseFS(fsys, path); perr != nil {
+		tpl := texttpl.New(path).Funcs(template.FuncMap())
+		if strings.HasPrefix(path, "templates/front/") {
+			tpl.Delims("[[", "]]")
+		}
+		if _, perr := tpl.ParseFS(fsys, path); perr != nil {
 			t.Errorf("parse %s: %v", path, perr)
 		}
 		return nil
