@@ -29,6 +29,8 @@ const (
 	CodeCodegenTableNotFound Code = 30007
 	// CodeCodegenTableTaken codegen：表已导入（重复导入去重拒绝）。
 	CodeCodegenTableTaken Code = 30008
+	// CodeMobileTaken member：手机号已注册（注册查重拒绝）。
+	CodeMobileTaken Code = 30009
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -50,6 +52,7 @@ var registry = map[Code]string{
 
 	CodeCodegenTableNotFound: "数据表不存在",
 	CodeCodegenTableTaken:    "数据表已导入",
+	CodeMobileTaken:          "手机号已存在",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 }

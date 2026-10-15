@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/casbin/casbin/v2"
@@ -12,7 +11,9 @@ import (
 
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/logger"
+	"alexGo-cloud/pkg/resp"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -55,7 +56,10 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		tokenStr := c.GetHeader("Authorization")
 		claims, err := parseClaims(d, tokenStr)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			// 信封化：body 变 {code:20001,msg,data:null}，HTTP status 仍 401（前端 rejected 链不变）。
+			// resp.Fail 只写响应不中断——Abort 语义显式补回。
+			resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
+			c.Abort()
 			return
 		}
 		c.Set("claims", claims)
@@ -68,7 +72,9 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 		// 且置于 Enforcer 之前——micro 形态 member-server 未装配 enforcer，此门槛
 		// 在任何装配下都生效；即便 sub 撞名也进不了策略判定（I4）。
 		if claims.UserType != int(token.UserTypeAdmin) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			// 信封化：body 变 {code:20003,msg,data:null}，HTTP status 仍 403。
+			resp.Fail(c, errs.New(errs.CodeForbidden, nil))
+			c.Abort()
 			return
 		}
 
@@ -105,7 +111,9 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			}
 			ok, eerr := d.Enforcer.Enforce(sub, obj, c.Request.Method)
 			if eerr != nil || !ok {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				// 信封化：body 变 {code:20003,msg,data:null}，HTTP status 仍 403。
+				resp.Fail(c, errs.New(errs.CodeForbidden, nil))
+				c.Abort()
 				return
 			}
 		}

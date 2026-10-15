@@ -2,6 +2,7 @@ package middleware_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,21 @@ import (
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
+
+// envelopeOf 解析统一信封三键（旧 {"error":"forbidden"}/{"error":"unauthorized"} 精确串
+// 断言迁移为 code/msg/data 断言——20001 未登录、20003 无权限，data 恒 null）。
+func envelopeOf(t *testing.T, w *httptest.ResponseRecorder) (int, string, any) {
+	t.Helper()
+	var body struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data any    `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal envelope: %v, body=%s", err, w.Body.String())
+	}
+	return body.Code, body.Msg, body.Data
+}
 
 // fakeValidator：token.Validator 的测试替身。
 // jwt 模式下中间件不调用它（仅保证依赖非 nil）；token 模式下按注入值返回 claims/错误。
@@ -113,6 +129,11 @@ func TestAuthMiddleware_AdminWithoutToken_401(t *testing.T) {
 	w := do(newRouter(testCfg(), nil), "GET", "/api/admin/system/users", "")
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", w.Code)
+	}
+	// 信封适配：401 body 从旧 {"error":"unauthorized"} 变 {code:20001,...}（HTTP status 不变）。
+	if code, msg, data := envelopeOf(t, w); code != 20001 || msg != "未登录或登录已失效" || data != nil {
+		t.Errorf("code/msg/data = %d/%q/%v, want 20001/未登录或登录已失效/<nil>; body=%s",
+			code, msg, data, w.Body.String())
 	}
 }
 
@@ -482,8 +503,10 @@ func TestAuthMiddleware_MemberOnAdminPath_Forbidden(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Errorf("member on admin path status = %d, want 403; body=%s", w.Code, w.Body.String())
 	}
-	if body := w.Body.String(); body != `{"error":"forbidden"}` {
-		t.Errorf("body = %s, want {\"error\":\"forbidden\"}", body)
+	// 信封适配：403 body 从旧 {"error":"forbidden"} 变 {code:20003,...}（HTTP status 不变）。
+	if code, msg, data := envelopeOf(t, w); code != 20003 || msg != "无权限" || data != nil {
+		t.Errorf("code/msg/data = %d/%q/%v, want 20003/无权限/<nil>; body=%s",
+			code, msg, data, w.Body.String())
 	}
 }
 
@@ -697,8 +720,10 @@ func TestVbenSelfRead_Member_403(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403（member 门槛先于自读放行）; body=%s", w.Code, w.Body.String())
 	}
-	if w.Body.String() != `{"error":"forbidden"}` {
-		t.Errorf("body = %s, want {\"error\":\"forbidden\"}", w.Body.String())
+	// 信封适配：403 body 从旧 {"error":"forbidden"} 变 {code:20003,...}（HTTP status 不变）。
+	if code, msg, data := envelopeOf(t, w); code != 20003 || msg != "无权限" || data != nil {
+		t.Errorf("code/msg/data = %d/%q/%v, want 20003/无权限/<nil>; body=%s",
+			code, msg, data, w.Body.String())
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/pkg/repo"
 )
 
 // ClientRepository oauth2_client 访问层（D4：模型无 tenant_id/deleted → 租户插件跳过、硬删除）。
@@ -46,14 +47,8 @@ func (r *ClientRepository) Delete(ctx context.Context, id uint64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.Oauth2Client{}).Error
 }
 
+// List 分页列表（id ASC 保序）。page/size 由 controller Defaults() 保证，
+// repo.Paginate 内部仅做防御兜底；签名不变（service/controller 不动）。
 func (r *ClientRepository) List(ctx context.Context, page, size int) ([]*model.Oauth2Client, int64, error) {
-	var total int64
-	if err := r.db.WithContext(ctx).Model(&model.Oauth2Client{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var rows []*model.Oauth2Client
-	err := r.db.WithContext(ctx).
-		Order("id ASC").Offset((page - 1) * size).Limit(size).
-		Find(&rows).Error
-	return rows, total, err
+	return repo.Paginate[*model.Oauth2Client](ctx, r.db.Order("id ASC"), page, size)
 }

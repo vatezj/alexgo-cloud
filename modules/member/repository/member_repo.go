@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/member/model"
+	"alexGo-cloud/pkg/repo"
 )
 
 // MemberRepository 会员用户仓储。
@@ -43,21 +44,13 @@ func (r *memberRepo) Update(ctx context.Context, u *model.MemberUser) error {
 	return r.db.WithContext(ctx).Save(u).Error
 }
 
+// List 分页列出（id desc 保序）。page/size 由 controller Defaults() 保证，
+// repo.Paginate 内部仅做防御兜底；签名不变（service/controller 不动）。
 func (r *memberRepo) List(ctx context.Context, tid uint64, page, size int) ([]*model.MemberUser, int64, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if size <= 0 {
-		size = 20
-	}
-	var total int64
-	q := r.db.WithContext(ctx).Model(&model.MemberUser{}).Where("tenant_id = ? AND deleted = 0", tid)
-	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var items []*model.MemberUser
-	err := q.Order("id desc").Offset((page - 1) * size).Limit(size).Find(&items).Error
-	return items, total, err
+	q := r.db.Model(&model.MemberUser{}).
+		Where("tenant_id = ? AND deleted = 0", tid).
+		Order("id desc")
+	return repo.Paginate[*model.MemberUser](ctx, q, page, size)
 }
 
 func (r *memberRepo) CountByTenant(ctx context.Context, tid uint64) (int64, error) {

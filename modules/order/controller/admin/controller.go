@@ -1,12 +1,12 @@
 package admin
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/order/model"
 	"alexGo-cloud/modules/order/service"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 type AdminOrderController struct {
@@ -28,7 +28,7 @@ type createOrderRequest struct {
 func (c *AdminOrderController) Create(ctx *gin.Context) {
 	var req createOrderRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	entity := &model.Order{
@@ -39,19 +39,20 @@ func (c *AdminOrderController) Create(ctx *gin.Context) {
 		OrderNo:   req.OrderNo,
 	}
 	if err := c.orderSvc.Create(ctx.Request.Context(), entity); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err) // 写库类 → 500 裸透传
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
+// List 全量列表（无 page/size 入参）→ resp.OK 裸数组，不顺手加分页。
 func (c *AdminOrderController) List(ctx *gin.Context) {
 	data, err := c.orderSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": data})
+	resp.OK(ctx, data)
 }
 
 func (c *AdminOrderController) CreateOrder(ctx *gin.Context) {

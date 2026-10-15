@@ -49,7 +49,32 @@ func doJSON(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder
 	return w
 }
 
-// List 信封 {data,total}；secret 恒不回显（json:"-"）。
+// codeOf 解析统一信封的 code 字段（resp.OK/Fail/Page 出站；旧 {"status":"ok"}/{"error":...}
+// 断言迁移为查 code——0 成功、10001 参数）。
+func codeOf(t *testing.T, w *httptest.ResponseRecorder) int {
+	t.Helper()
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal envelope: %v, body=%s", err, w.Body.String())
+	}
+	return body.Code
+}
+
+// clientListBody 统一分页信封 data:{list,total,page,size}（原 {"data":items,"total":total}）。
+type clientListBody struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		List  []map[string]any `json:"list"`
+		Total int64            `json:"total"`
+		Page  int              `json:"page"`
+		Size  int              `json:"size"`
+	} `json:"data"`
+}
+
+// List 信封 data:{list,total,page,size}；secret 恒不回显（json:"-"）。
 func TestClients_ListEnvelope(t *testing.T) {
 	r, svc := newClientRouter(t)
 	for _, id := range []string{"c1", "c2"} {
@@ -63,27 +88,32 @@ func TestClients_ListEnvelope(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
-	var body struct {
-		Data  []map[string]any `json:"data"`
-		Total int64            `json:"total"`
-	}
+	var body clientListBody
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Data) != 2 || body.Total != 2 {
-		t.Errorf("data=%d total=%d, want 2/2", len(body.Data), body.Total)
+	if body.Code != 0 || body.Msg != "ok" {
+		t.Errorf("code/msg = %d/%q, want 0/ok; body=%s", body.Code, body.Msg, w.Body.String())
+	}
+	if len(body.Data.List) != 2 || body.Data.Total != 2 ||
+		body.Data.Page != 1 || body.Data.Size != 20 {
+		t.Errorf("list=%d total=%d page=%d size=%d, want 2/2/1/20",
+			len(body.Data.List), body.Data.Total, body.Data.Page, body.Data.Size)
 	}
 	if strings.Contains(w.Body.String(), "client_secret") {
 		t.Errorf("列表不得出现 client_secret 字段: %s", w.Body.String())
 	}
 }
 
-// Create 坏 body → 400 {"error"}（admin 信封，非 RFC）。
+// Create 坏 body → 400（信封 code 精确 10001，非 RFC）。
 func TestClients_Create_400BadBody(t *testing.T) {
 	r, _ := newClientRouter(t)
 	w := doJSON(r, http.MethodPost, "/api/admin/oauth2/clients", "not-json")
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), `"error"`) {
+	if w.Code != http.StatusBadRequest {
 		t.Errorf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if got := codeOf(t, w); got != 10001 {
+		t.Errorf("code = %d, want 10001; body=%s", got, w.Body.String())
 	}
 }
 
@@ -95,6 +125,9 @@ func TestClients_Create_OK_SecretEchoOnce(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("code = %d, want 0; body=%s", got, w.Body.String())
+	}
 	if !strings.Contains(w.Body.String(), `"client_secret":"plain-1"`) {
 		t.Errorf("创建响应须一次性回显明文 secret: %s", w.Body.String())
 	}
@@ -104,7 +137,7 @@ func TestClients_Create_OK_SecretEchoOnce(t *testing.T) {
 	}
 }
 
-// Delete → {"status":"ok"}，随后列表归零。
+// Delete → 信封 code 0（原 {"status":"ok"}），随后列表归零。
 func TestClients_Delete_OK(t *testing.T) {
 	r, svc := newClientRouter(t)
 	if err := svc.Create(context.Background(), &model.Oauth2Client{
@@ -113,24 +146,29 @@ func TestClients_Delete_OK(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := doJSON(r, http.MethodGet, "/api/admin/oauth2/clients", "")
-	var list struct {
-		Data []struct {
-			ID uint64 `json:"id"`
-		} `json:"data"`
-	}
+	var list clientListBody
 	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Data) != 1 {
+	if len(list.Data.List) != 1 {
 		t.Fatalf("seed list: %s", w.Body.String())
 	}
+	seedID, _ := list.Data.List[0]["id"].(float64)
 	w = doJSON(r, http.MethodDelete,
-		"/api/admin/oauth2/clients/"+strconv.FormatUint(list.Data[0].ID, 10), "")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"ok"`) {
+		"/api/admin/oauth2/clients/"+strconv.FormatUint(uint64(seedID), 10), "")
+	if w.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Fatalf("delete code = %d, want 0; body=%s", got, w.Body.String())
+	}
 	w = doJSON(r, http.MethodGet, "/api/admin/oauth2/clients", "")
-	if !strings.Contains(w.Body.String(), `"total":0`) {
-		t.Errorf("delete 后 total: %s", w.Body.String())
+	var after clientListBody
+	if err := json.Unmarshal(w.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Data.Total != 0 || len(after.Data.List) != 0 {
+		t.Errorf("delete 后 total/list = %d/%d, want 0/0; body=%s",
+			after.Data.Total, len(after.Data.List), w.Body.String())
 	}
 }

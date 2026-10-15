@@ -2,12 +2,13 @@ package admin
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/member/service"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 // UserController admin 端会员管理接口（列表 / 启停）。
@@ -18,16 +19,20 @@ type UserController struct {
 // NewUserController 构造控制器（fx 注入 MemberService）。
 func NewUserController(svc service.MemberService) *UserController { return &UserController{svc: svc} }
 
-// List 分页列出当前租户会员。
+// List 分页列出当前租户会员 → 统一分页信封 data:{list,total,page,size}。
 func (c *UserController) List(ctx *gin.Context) {
-	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(ctx.DefaultQuery("size", "20"))
-	items, total, err := c.svc.List(ctx.Request.Context(), page, size)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	var req resp.PageReq
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": items, "total": total})
+	req.Defaults()
+	items, total, err := c.svc.List(ctx.Request.Context(), req.Page, req.Size)
+	if err != nil {
+		resp.Fail(ctx, err) // 读库类 → 500 裸透传
+		return
+	}
+	resp.Page(ctx, items, total, req)
 }
 
 // UpdateStatus 启用/停用会员（PUT /users/:id/status）。
@@ -35,29 +40,33 @@ func (c *UserController) List(ctx *gin.Context) {
 // 不再出现"空 body 默认停用"；service 层再兜一层 ErrInvalidStatus 校验。
 func (c *UserController) UpdateStatus(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
+	if id == 0 {
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
+		return
+	}
 	var req struct {
 		Status *int `json:"status"`
 	}
-	if id == 0 || ctx.ShouldBindJSON(&req) != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if req.Status == nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "status required"})
+		resp.Fail(ctx, errs.New(errs.CodeParamMissing, nil))
 		return
 	}
 	// 控制器先行拒非法值（与 service 双层校验，controller 直测也 400 不依赖 service 实现）。
 	if *req.Status != 0 && *req.Status != 1 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "status must be 0 or 1"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.svc.Disable(ctx.Request.Context(), id, *req.Status); err != nil {
 		if errors.Is(err, service.ErrInvalidStatus) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
