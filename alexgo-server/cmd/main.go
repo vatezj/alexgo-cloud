@@ -15,8 +15,6 @@ import (
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/system"
 	"alexGo-cloud/modules/system/grpcserver"
-	"alexGo-cloud/modules/system/infra"
-	"alexGo-cloud/modules/system/oauth2"
 	systemservice "alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/circuitbreaker"
@@ -37,9 +35,9 @@ import (
 
 // main 是 alexGo-cloud 的 system-server 入口，支持双运行模式：
 //
-//   - mono 模式（默认，deployment.mode != "micro"）：单进程装配 oauth2+infra+system+order+member
+//   - mono 模式（默认，deployment.mode != "micro"）：单进程装配 system（内含 oauth2/infra）+order+member
 //     全部模块（make run 一键全起），token 签发/校验都用本地 token.Service；
-//   - micro 模式（DEPLOYMENT_MODE=micro，make run-system）：本进程只装 oauth2+infra+system+order，
+//   - micro 模式（DEPLOYMENT_MODE=micro，make run-system）：本进程只装 system（内含 oauth2/infra）+order，
 //     member 路由由 modules/member/cmd 独立进程提供（make run-member），
 //     会员登录经 gRPC TokenService 委托本进程签发。
 //
@@ -171,10 +169,7 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		// mono 直接 return——单进程模式 Token 走本地直调，无需监听）。
 		fx.Invoke(grpcserver.StartGRPCServer),
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
-		// oauth2：OAuth2 授权服务骨架——当前仅迁移源（Task 3 起加路由）。
-		oauth2.FxModule,
-		// infra：代码生成配置持久化（M2）——迁移源 + 三层 + admin 路由。
-		infra.FxModule,
+		// B 方案（2026-10-15）：oauth2/infra 已并入 system.FxModule，随 system 整体挂载。
 		system.FxModule,
 		order.FxModule,
 	}

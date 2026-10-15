@@ -13,6 +13,8 @@ import (
 	"alexGo-cloud/modules/system/controller/app"
 	"alexGo-cloud/modules/system/controller/vben"
 	"alexGo-cloud/modules/system/grpcserver"
+	"alexGo-cloud/modules/system/infra"
+	"alexGo-cloud/modules/system/oauth2"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/modules/system/service"
@@ -129,6 +131,10 @@ var FxModule = fx.Module("system",
 			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
+	// B 方案（2026-10-15）：oauth2/infra 并入 system——子模块装配随 system 整体挂载。
+	// 例外：member 微服务进程不装 system，仍直接引用 oauth2.FxModule（modules/member/cmd）。
+	oauth2.FxModule,
+	infra.FxModule,
 )
 
 type systemModule struct {
