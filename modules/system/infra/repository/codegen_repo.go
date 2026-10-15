@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/pkg/repo"
 )
 
 // CodegenRepository 配置表读写。删除一律硬删（spec §9.3）；
@@ -30,17 +31,10 @@ type codegenRepo struct{ db *gorm.DB }
 
 func NewCodegenRepository(db *gorm.DB) CodegenRepository { return &codegenRepo{db: db} }
 
+// ListTables 分页列表（id desc）。page/size 由 controller Defaults() 保证，
+// repo.Paginate 内部仅做防御兜底；签名不变（service/controller 不动）。
 func (r *codegenRepo) ListTables(ctx context.Context, page, size int) ([]*model.CodegenTable, int64, error) {
-	var total int64
-	if err := r.db.WithContext(ctx).Model(&model.CodegenTable{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var items []*model.CodegenTable
-	err := r.db.WithContext(ctx).
-		Order("id desc").
-		Offset((page - 1) * size).Limit(size).
-		Find(&items).Error
-	return items, total, err
+	return repo.Paginate[*model.CodegenTable](ctx, r.db.Order("id desc"), page, size)
 }
 
 func (r *codegenRepo) ListAllTables(ctx context.Context) ([]*model.CodegenTable, error) {

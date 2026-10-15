@@ -25,6 +25,10 @@ const (
 	CodeTenantDisabled Code = 30004
 	CodeCaptchaInvalid Code = 30005
 	CodeNoticeNotFound Code = 30006
+	// CodeCodegenTableNotFound codegen：配置表/元数据表不存在（导入/详情/同步）。
+	CodeCodegenTableNotFound Code = 30007
+	// CodeCodegenTableTaken codegen：表已导入（重复导入去重拒绝）。
+	CodeCodegenTableTaken Code = 30008
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -43,7 +47,11 @@ var registry = map[Code]string{
 	CodeTenantDisabled: "租户已停用",
 	CodeCaptchaInvalid: "验证码错误",
 	CodeNoticeNotFound: "公告不存在",
-	CodeInternal:       "系统繁忙，请稍后重试",
+
+	CodeCodegenTableNotFound: "数据表不存在",
+	CodeCodegenTableTaken:    "数据表已导入",
+
+	CodeInternal: "系统繁忙，请稍后重试",
 }
 
 // BizError 携带业务错误码的错误。cause 可为 nil；cause 只进日志，禁止外泄给客户端。

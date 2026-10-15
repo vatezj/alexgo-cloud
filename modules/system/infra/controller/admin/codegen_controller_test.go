@@ -2,13 +2,16 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/builder"
@@ -35,7 +38,8 @@ func (s *stubService) ListTables(context.Context, int, int) ([]*model.CodegenTab
 }
 func (s *stubService) GetTable(_ context.Context, id uint64) (*model.CodegenTable, []*model.CodegenColumn, error) {
 	if id != 1 {
-		return nil, nil, errors.New("record not found")
+		// 与真实 repo.GetTable 一致：First 未命中 → gorm.ErrRecordNotFound
+		return nil, nil, gorm.ErrRecordNotFound
 	}
 	return &model.CodegenTable{ID: 1, Name: "order_items"},
 		[]*model.CodegenColumn{{ID: 10, TableID: 1, Name: "id", IsPK: true}}, nil
@@ -110,19 +114,50 @@ func doJSON(t *testing.T, r *gin.Engine, method, path, body string) *httptest.Re
 	return w
 }
 
+// codeOf 解析统一信封的 code 字段（resp.OK/Fail/Page 出站；旧 {"status":"ok"}/{"error":...}
+// 断言迁移为查 code——0 成功、10001 参数、30007 数据表不存在、50000 系统兜底）。
+func codeOf(t *testing.T, w *httptest.ResponseRecorder) int {
+	t.Helper()
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal envelope: %v, body=%s", err, w.Body.String())
+	}
+	return body.Code
+}
+
+// 列表信封：data:{list,total,page,size}（原 {data,total} 平铺）。
 func TestListTables_Envelope(t *testing.T) {
 	r := newTestRouter(&stubService{})
 	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/tables?page=1&size=10", "")
 	if w.Code != 200 {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body)
 	}
-	body := w.Body.String()
-	if !strings.Contains(body, `"total":1`) || !strings.Contains(body, "order_items") {
-		t.Errorf("body=%s", body)
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("envelope code=%d, want 0; body=%s", got, w.Body)
+	}
+	var body struct {
+		Data struct {
+			List []struct {
+				TableName string `json:"table_name"`
+			} `json:"list"`
+			Total int64 `json:"total"`
+			Page  int   `json:"page"`
+			Size  int   `json:"size"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	d := body.Data
+	if d.Total != 1 || d.Page != 1 || d.Size != 10 || len(d.List) != 1 || d.List[0].TableName != "order_items" {
+		t.Errorf("page envelope mismatch: %+v, body=%s", d, w.Body)
 	}
 }
 
-// 信封铁律：列表 data+total；详情 data；变更 status ok；错误 error 字段。
+// 信封铁律：列表 data:{list,total,page,size}；详情 data；变更 data:null（code 0）；
+// 失败 code+msg（语义码）。
 func TestEnvelopes_AllShapes(t *testing.T) {
 	r := newTestRouter(&stubService{})
 
@@ -130,32 +165,44 @@ func TestEnvelopes_AllShapes(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"data"`) {
 		t.Errorf("detail: %d %s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("detail code=%d, want 0; body=%s", got, w.Body)
+	}
 
 	w = doJSON(t, r, "POST", "/api/admin/infra/codegen/import", `{"table_name":"order_items"}`)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"data"`) {
 		t.Errorf("import: %d %s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("import code=%d, want 0; body=%s", got, w.Body)
+	}
 
 	w = doJSON(t, r, "DELETE", "/api/admin/infra/codegen/tables/1", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"ok"`) {
+	if w.Code != 200 {
 		t.Errorf("delete: %d %s", w.Code, w.Body)
+	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("delete code=%d, want 0; body=%s", got, w.Body)
 	}
 
 	w = doJSON(t, r, "POST", "/api/admin/infra/codegen/tables/1/sync", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"added"`) {
 		t.Errorf("sync: %d %s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("sync code=%d, want 0; body=%s", got, w.Body)
+	}
 }
 
-// 业务拒绝/不存在 → 400 + error；绝不 404（仓库无此惯例）。
+// 业务拒绝/不存在 → 400 + 语义码（30007 数据表不存在）；绝不 404（仓库无此惯例）。
 func TestErrors_400Never404(t *testing.T) {
 	r := newTestRouter(&stubService{importErr: cgmodel.ErrTableNotFound})
 	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/import", `{"table_name":"ghost"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("import notfound: code=%d, want 400", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), `"error"`) {
-		t.Errorf("body=%s", w.Body)
+	if got := codeOf(t, w); got != 30007 {
+		t.Errorf("import notfound envelope code=%d, want 30007; body=%s", got, w.Body)
 	}
 
 	r2 := newTestRouter(&stubService{})
@@ -163,9 +210,12 @@ func TestErrors_400Never404(t *testing.T) {
 	if w2.Code != http.StatusBadRequest {
 		t.Errorf("detail missing: code=%d, want 400", w2.Code)
 	}
+	if got := codeOf(t, w2); got != 30007 {
+		t.Errorf("detail missing envelope code=%d, want 30007; body=%s", got, w2.Body)
+	}
 }
 
-// 空 table_name → 400，且不触达 service。
+// 空 table_name → 400 + 10001，且不触达 service。
 func TestImport_ValidationBeforeService(t *testing.T) {
 	stub := &stubService{}
 	r := newTestRouter(stub)
@@ -173,12 +223,15 @@ func TestImport_ValidationBeforeService(t *testing.T) {
 	if w.Code != 400 {
 		t.Errorf("code=%d", w.Code)
 	}
+	if got := codeOf(t, w); got != 10001 {
+		t.Errorf("envelope code=%d, want 10001; body=%s", got, w.Body)
+	}
 	if stub.gotImport != "" {
 		t.Error("空表名不应调用 service")
 	}
 }
 
-// M3：preview 端点（取代 generate 占位）——信封 {data:[{path,content}]}。
+// M3：preview 端点（取代 generate 占位）——信封 code 0 + data:[{path,content}]。
 func TestPreview_Envelope(t *testing.T) {
 	stub := &stubService{previewFiles: []cgmodel.GeneratedFile{{
 		Path:    "modules/infra/model/order_item.go",
@@ -189,6 +242,9 @@ func TestPreview_Envelope(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("envelope code=%d, want 0; body=%s", got, w.Body)
+	}
 	body := w.Body.String()
 	for _, want := range []string{`"data"`, `"path":`, `"content":`, "modules/infra/model/order_item.go", "package model"} {
 		if !strings.Contains(body, want) {
@@ -197,7 +253,7 @@ func TestPreview_Envelope(t *testing.T) {
 	}
 }
 
-// 空/缺 table_ids → 400，绝不静默当全表（Review Focus #3）。
+// 空/缺 table_ids → 400 + 10001，绝不静默当全表（Review Focus #3）。
 func TestPreview_EmptyIDs_400(t *testing.T) {
 	r := newTestRouter(&stubService{})
 	for _, payload := range []string{"", "{}", `{"table_ids":[]}`} {
@@ -205,14 +261,20 @@ func TestPreview_EmptyIDs_400(t *testing.T) {
 		if w.Code != 400 {
 			t.Errorf("payload=%q code=%d body=%s", payload, w.Code, w.Body)
 		}
+		if got := codeOf(t, w); got != 10001 {
+			t.Errorf("payload=%q envelope code=%d, want 10001; body=%s", payload, got, w.Body)
+		}
 	}
 	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/preview", `{"table_ids":[1]}`)
 	if w.Code != 200 { // stub 空 files → data:[]（合法信封，不算错）
 		t.Errorf("合法空渲染 code=%d body=%s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("合法空渲染 envelope code=%d, want 0; body=%s", got, w.Body)
+	}
 }
 
-// download：zip 流 + 两个头；业务错误 → 400（Review Focus #4）。
+// download：zip 流 + 两个头；业务错误 → 400 + 语义码（Review Focus #4）。
 func TestDownload_ZipStream(t *testing.T) {
 	r := newTestRouter(&stubService{zipBytes: []byte("PK\x03\x04fake-entry")})
 	w := doJSON(t, r, "POST", "/api/admin/infra/codegen/download", `{"table_ids":[1]}`)
@@ -229,20 +291,27 @@ func TestDownload_ZipStream(t *testing.T) {
 		t.Errorf("body 前缀=%q", w.Body.String()[:min(4, w.Body.Len())])
 	}
 
-	errStub := newTestRouter(&stubService{downloadErr: errors.New("table 9: not found")})
+	// 与真实 generate() 聚合一致：not found 以 %w 包装上抛
+	errStub := newTestRouter(&stubService{downloadErr: fmt.Errorf("table 9: %w", gorm.ErrRecordNotFound)})
 	w = doJSON(t, errStub, "POST", "/api/admin/infra/codegen/download", `{"table_ids":[9]}`)
 	if w.Code != 400 {
 		t.Errorf("download err code=%d body=%s", w.Code, w.Body)
 	}
+	if got := codeOf(t, w); got != 30007 {
+		t.Errorf("download err envelope code=%d, want 30007; body=%s", got, w.Body)
+	}
 }
 
-// db-tables：导入弹窗下拉数据源，信封 data 字符串数组；
-// 元数据不可达（读库类）→ 500 + error，绝不 404。
+// db-tables：导入弹窗下拉数据源，信封 code 0 + data 字符串数组；
+// 元数据不可达（读库类）→ 500 + code 50000，绝不 404。
 func TestDBTables_Envelope(t *testing.T) {
 	r := newTestRouter(&stubService{})
 	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/db-tables", "")
 	if w.Code != 200 {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body)
+	}
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("envelope code=%d, want 0; body=%s", got, w.Body)
 	}
 	body := w.Body.String()
 	if !strings.Contains(body, `"data"`) || !strings.Contains(body, "orders") {
@@ -253,7 +322,10 @@ func TestDBTables_Envelope(t *testing.T) {
 func TestDBTables_MetadataDown_500(t *testing.T) {
 	r := newTestRouter(&stubService{dbTablesErr: errors.New("metadata unreachable")})
 	w := doJSON(t, r, "GET", "/api/admin/infra/codegen/db-tables", "")
-	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), `"error"`) {
+	if w.Code != http.StatusInternalServerError {
 		t.Errorf("code=%d body=%s", w.Code, w.Body)
+	}
+	if got := codeOf(t, w); got != 50000 {
+		t.Errorf("envelope code=%d, want 50000; body=%s", got, w.Body)
 	}
 }
