@@ -243,7 +243,7 @@ func TestIssue_ClientCredentials_MissingClientID(t *testing.T) {
 }
 
 // Critical #1：机机 token 落库必须带随机 refresh——生产表 uk_refresh_token
-// 非空唯一，type-3 恒写 ” 会让第二笔 client_credentials 撞 1062 → 500。
+// 非空唯一，type-3 恒写空串会让第二笔 client_credentials 撞 1062 → 500。
 // 响应契约不变（D9 机机不带 refresh）：返回值恒为空串。
 func TestIssue_ClientCredentials_MultipleIssuances_OK(t *testing.T) {
 	svc := newTestService(t)
@@ -268,7 +268,7 @@ func TestIssue_ClientCredentials_MultipleIssuances_OK(t *testing.T) {
 }
 
 // Important #2（T6 收口）：Refresh 必须在源头拒空串——gRPC RefreshToken 直通，
-// 库内存在 refresh_token=” 残留行（修复前 type-3 落库形态 / 列 DEFAULT ”）时，
+// 库内存在 refresh_token 空串残留行（修复前 type-3 落库形态 / 列 DEFAULT 为空）时，
 // 空串不得命中、删行或轮换。
 func TestRefresh_EmptyStringRejected_NoRowTouched(t *testing.T) {
 	svc := newTestService(t)
