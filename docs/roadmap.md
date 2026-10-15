@@ -37,6 +37,8 @@
 | P1-4 | **API 文档** | swagger 注解 + 聚合页（或从 gin routes 生成）；减少 `docs/usage.md` 手维护漂移 | 无 |
 | P1-5 | **HTTP 基座规范化** | 统一信封 {code,msg,data} + 五位错误码 + Paginate[T] + DateTime + AccessLog/Recovery（spec：`docs/superpowers/specs/2026-10-15-http-foundation-design.md`） | ✅ |
 
+> **P1-5 遗留项**：codegen 模板/golden（`pkg/codegen/template/templates/**`、`pkg/codegen/testdata/golden/**`）仍旧使用旧信封（`gin.H{"error":...}`），须在 M6 动 codegen 前迁移 resp 信封并重生成 golden。
+
 ## P2 — 深水区（可缓，按需启动）
 
 | # | 项 | 内容 | 状态 |
@@ -61,6 +63,6 @@
 
 ## 执行约定
 
-- **顺序**：P0 按 1→2→3 严格推进；P0 清完再进 P1（P1 内四项无依赖，可任选）；P2 按需。
+- **顺序**：P0 按 1→2→3 严格推进；P0 清完再进 P1（P1 内五项无依赖，可任选）；P2 按需。
 - **流程**：每项先写实现计划（`docs/superpowers/plans/`）→ 执行 → 测试绿（`CGO_ENABLED=0 go test ./...` + `pnpm run typecheck`）→ 单独提交落 main。
 - **本文档**：每完成一项更新状态列与提交号；新发现的缺口追加到对应层，不在会话中散失。

@@ -44,17 +44,31 @@ func OK(c *gin.Context, data any) {
 }
 
 // Fail 写失败信封：*BizError 取码与文案；其他错误兜底 50000，原始错误只进日志不外泄。
+// BizError 的 cause（gin 校验细节如字段名）同样只进日志：warn 带 cause + path，
+// 响应体仍是 {code, msg: be.Msg(), data:null}，cause 绝不进 body。
 func Fail(c *gin.Context, err error) {
 	if err == nil {
 		write(c, http.StatusInternalServerError, int(errs.CodeInternal), "系统繁忙，请稍后重试", nil)
 		return
 	}
 	if be, ok := errs.As(err); ok {
+		if cause := be.Unwrap(); cause != nil && logger.Log != nil {
+			logger.Log.Warn("biz error", zap.Error(cause), zap.String("path", reqPath(c)))
+		}
 		write(c, statusFor(be.Code), int(be.Code), be.Msg(), nil)
 		return
 	}
 	if logger.Log != nil {
-		logger.Log.Error("unhandled error", zap.Error(err), zap.String("path", c.Request.URL.Path))
+		logger.Log.Error("unhandled error", zap.Error(err), zap.String("path", reqPath(c)))
 	}
 	write(c, http.StatusInternalServerError, int(errs.CodeInternal), "系统繁忙，请稍后重试", nil)
+}
+
+// reqPath 安全取请求路径：gin.CreateTestContext 构造的 c.Request 为 nil，
+// 单测里直接解引用会 panic，故先判空。
+func reqPath(c *gin.Context) string {
+	if c.Request != nil {
+		return c.Request.URL.Path
+	}
+	return ""
 }

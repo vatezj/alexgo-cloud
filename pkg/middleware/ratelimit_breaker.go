@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -25,6 +26,8 @@ import (
 // - FullPath 为空时会变成空字符串，实际可按需回退 URL.Path（可继续优化）。
 func RateLimitAndBreaker(cfg *config.Config, rl *limiter.RateLimiter, cb *circuitbreaker.CircuitBreaker) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 中止点补记访问日志用的起算时刻（方案②：中止短路链尾 AccessLog）。
+		start := time.Now()
 		// 运维端点不参与限流/熔断：/health 与 /health/ready 必须在依赖故障期间保持可用，
 		// 否则熔断打开会把 liveness 打成 503，触发 K8s 全员重启（防雪崩被击穿）。
 		// 同理这些端点也豁免限流（limiter.enabled=true 时同样直接放行），与 AuthMiddleware 的
@@ -39,7 +42,9 @@ func RateLimitAndBreaker(cfg *config.Config, rl *limiter.RateLimiter, cb *circui
 			tid := tenant.TenantIDFromContext(c.Request.Context())
 			key := fmt.Sprintf("%d:%s:%s", tid, c.ClientIP(), c.FullPath())
 			if !rl.Allow(c.Request.Context(), key, cfg.Limiter.Rate, cfg.Limiter.Burst) {
+				// AbortWithStatus 后 status 才是 429 → 先写状态再补记访问日志（无 claims，trace_id 缺省）。
 				c.AbortWithStatus(http.StatusTooManyRequests)
+				logAccess(c, time.Since(start))
 				return
 			}
 		}
@@ -59,6 +64,8 @@ func RateLimitAndBreaker(cfg *config.Config, rl *limiter.RateLimiter, cb *circui
 				// 否则 gin 的外层 handler 循环会继续执行下游路由、把请求照样放行。
 				// 不能靠 c.Writer.Status()==0 判断——gin 的 writer 在请求开始时初始 status 即 200。
 				c.AbortWithStatus(http.StatusServiceUnavailable)
+				// 同 429：链尾 AccessLog 被短路 → 此处补记（503 → Error 级）。
+				logAccess(c, time.Since(start))
 				return
 			}
 			if c.IsAborted() {

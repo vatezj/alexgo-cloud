@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,8 @@ type AuthDeps struct {
 
 func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 中止点补记访问日志用的起算时刻（方案②：中止短路链尾 AccessLog）。
+		start := time.Now()
 		path := c.Request.URL.Path
 		if path == "/health" || path == "/health/ready" || path == "/metrics" ||
 			strings.HasPrefix(path, "/debug/pprof/") {
@@ -60,6 +63,8 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			// resp.Fail 只写响应不中断——Abort 语义显式补回。
 			resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
 			c.Abort()
+			// 中止短路链尾 AccessLog → 此处补记一条（401 无 claims，trace_id 缺省不编造）。
+			logAccess(c, time.Since(start))
 			return
 		}
 		c.Set("claims", claims)
@@ -75,6 +80,8 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 			// 信封化：body 变 {code:20003,msg,data:null}，HTTP status 仍 403。
 			resp.Fail(c, errs.New(errs.CodeForbidden, nil))
 			c.Abort()
+			// 补记访问日志：claims 已注入 → user_id/tenant_id 可填。
+			logAccess(c, time.Since(start))
 			return
 		}
 
@@ -114,6 +121,8 @@ func NewAuthMiddleware(d AuthDeps) gin.HandlerFunc {
 				// 信封化：body 变 {code:20003,msg,data:null}，HTTP status 仍 403。
 				resp.Fail(c, errs.New(errs.CodeForbidden, nil))
 				c.Abort()
+				// 补记访问日志：claims 已注入 → user_id/tenant_id 可填。
+				logAccess(c, time.Since(start))
 				return
 			}
 		}

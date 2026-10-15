@@ -3,13 +3,18 @@ package resp
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/logger"
 )
 
 func newCtx() (*gin.Context, *httptest.ResponseRecorder) {
@@ -89,6 +94,47 @@ func TestFailPlainErrorNoLeak(t *testing.T) {
 	body := w.Body.String()
 	if contains(body, "secret") {
 		t.Fatalf("cause leaked to client: %s", body)
+	}
+}
+
+// 终审修复①：BizError 的 cause（gin 校验细节如字段名）必须进日志，
+// 且响应体仍为三键信封、cause 不外泄。newCtx 的 Request 为 nil——顺带钉住
+// 路径读取的 nil guard（否则在 logger.Log 非 nil 时单测 panic）。
+func TestFailBizErrorCauseInLogNotBody(t *testing.T) {
+	core, logs := observer.New(zapcore.DebugLevel)
+	old := logger.Log
+	logger.Log = zap.New(core)
+	t.Cleanup(func() { logger.Log = old })
+
+	c, w := newCtx()
+	cause := `gin: binding failed for field "username"`
+	Fail(c, errs.New(errs.CodeParamInvalid, errors.New(cause)))
+
+	// 响应侧：HTTP 400 + {code,msg,data:null}，body 无 cause。
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("http = %d", w.Code)
+	}
+	var e envelope
+	if err := json.Unmarshal(w.Body.Bytes(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Code != int(errs.CodeParamInvalid) || e.Msg != "参数校验失败" || e.Data != nil {
+		t.Fatalf("envelope = %+v", e)
+	}
+	if contains(w.Body.String(), "binding failed") {
+		t.Fatalf("cause leaked to client: %s", w.Body.String())
+	}
+
+	// 日志侧：cause 作为 error 字段出现在日志输出。
+	found := false
+	for _, entry := range logs.All() {
+		v, ok := entry.ContextMap()["error"]
+		if ok && contains(fmt.Sprintf("%v", v), "binding failed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("cause not logged, entries = %+v", logs.All())
 	}
 }
 

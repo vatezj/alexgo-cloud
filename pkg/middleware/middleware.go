@@ -26,9 +26,14 @@ func Recovery() gin.HandlerFunc {
 					log = pkglogger.Log
 				}
 				if log != nil {
+					// path 判空同 resp.reqPath：CreateTestContext 的 c.Request 为 nil。
+					path := ""
+					if c.Request != nil {
+						path = c.Request.URL.Path
+					}
 					log.Error("panic recovered",
 						zap.Any("panic", rec),
-						zap.String("path", c.Request.URL.Path),
+						zap.String("path", path),
 						zap.ByteString("stack", debug.Stack()))
 				}
 				resp.Fail(c, errs.New(errs.CodeInternal, nil))
