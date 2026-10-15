@@ -9,9 +9,9 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/infra/controller/admin"
-	"alexGo-cloud/modules/infra/repository"
-	"alexGo-cloud/modules/infra/service"
+	"alexGo-cloud/modules/system/infra/controller/admin"
+	"alexGo-cloud/modules/system/infra/repository"
+	"alexGo-cloud/modules/system/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodel "alexGo-cloud/pkg/codegen/model"

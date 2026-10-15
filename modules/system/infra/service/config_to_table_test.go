@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 )
 

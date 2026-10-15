@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/service"
+	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 )
 

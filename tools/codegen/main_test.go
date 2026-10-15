@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	inframodel "alexGo-cloud/modules/infra/model"
+	inframodel "alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/metadata"
 	"alexGo-cloud/pkg/codegen/model"
 )

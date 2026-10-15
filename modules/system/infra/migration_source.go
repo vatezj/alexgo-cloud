@@ -10,7 +10,7 @@ func NewMigrationSource() migrate.Source {
 
 // GetMigrationPath 迁移 SQL 所在目录（相对仓库根，Runner 以 file:// 打开）。
 func (s *migrationSource) GetMigrationPath() string {
-	return "modules/infra/migrations"
+	return "modules/system/infra/migrations"
 }
 
 // GetModuleName 决定 schema_migrations_<name> 记录表。

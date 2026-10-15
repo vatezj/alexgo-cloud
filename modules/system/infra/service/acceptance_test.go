@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 // TestM2_Acceptance_ImportEditSync 是 spec §8 M2 验收链：

@@ -16,9 +16,9 @@ import (
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	inframodel "alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/repository"
-	"alexGo-cloud/modules/infra/service"
+	inframodel "alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/repository"
+	"alexGo-cloud/modules/system/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	"alexGo-cloud/pkg/codegen/model"

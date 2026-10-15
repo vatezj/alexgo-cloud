@@ -13,13 +13,13 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/infra"
 	"alexGo-cloud/modules/system"
+	"alexGo-cloud/modules/system/infra"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 )
 
-// chdirRepoRoot 切到仓库根：Runner 的迁移源路径是 file://modules/infra/migrations，
+// chdirRepoRoot 切到仓库根：Runner 的迁移源路径是 file://modules/system/infra/migrations，
 // 相对进程 cwd 解析；测试 cwd 在包目录下，不切则 migrate init 失败。
 // （Runner 吞掉 init/up 错误返回 nil，症状表现为「表没建」而非报错。）
 func chdirRepoRoot(t *testing.T) {
@@ -29,11 +29,14 @@ func chdirRepoRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 幂等：一个测试里 openMultiStmtDB + runSystem 会各进一次，
-	// 第二次已在根则不再上跳三级（否则逃出仓库，相对路径全断）。
+	// 第二次已在根则不再上跳四级（否则逃出仓库，相对路径全断）。
 	if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
 		return
 	}
-	root := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
+	root := filepath.Clean(filepath.Join(wd, "..", "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("chdirRepoRoot 上跳后不在仓库根（缺 go.mod）：%s", root)
+	}
 	if err := os.Chdir(root); err != nil {
 		t.Fatal(err)
 	}

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/repository"
+	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/repository"
 	"alexGo-cloud/pkg/codegen"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"

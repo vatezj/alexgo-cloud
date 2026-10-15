@@ -11,11 +11,11 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/infra"
 	"alexGo-cloud/modules/member"
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/system"
 	"alexGo-cloud/modules/system/grpcserver"
+	"alexGo-cloud/modules/system/infra"
 	"alexGo-cloud/modules/system/oauth2"
 	systemservice "alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"

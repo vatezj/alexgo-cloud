@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 // CodegenRepository 配置表读写。删除一律硬删（spec §9.3）；

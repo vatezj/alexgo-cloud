@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodel "alexGo-cloud/pkg/codegen/model"

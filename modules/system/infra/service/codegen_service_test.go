@@ -9,8 +9,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/repository"
+	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/repository"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodelErr "alexGo-cloud/pkg/codegen/model"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 // 钉子①（Review Focus #2）：同步绝不覆盖配置字段——list/query 开关保持原值。

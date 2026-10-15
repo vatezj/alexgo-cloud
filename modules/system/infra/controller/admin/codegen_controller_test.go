@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/builder"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 )
