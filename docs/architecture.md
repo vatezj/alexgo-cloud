@@ -18,7 +18,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | 目录 | 职责 |
 | --- | --- |
 | `alexgo-server/` | 单体进程入口与 HTTP 层：`cmd/main.go` 统一启动装配，`configs/` 全局配置，`server/` Gin 路由、中间件链与 `server.Module` 抽象 |
-| `modules/` | 业务模块，当前有 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）、`infra`（代码生成在线链路）、`oauth2`（SSO 授权码+PKCE、客户端管理）、`order`（示例业务）与 `member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
+| `modules/` | 业务模块，顶层为 `system`、`order`、`member`；其中 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）**内含 `oauth2`（SSO 授权码+PKCE、客户端管理，`modules/system/oauth2`）与 `infra`（代码生成在线链路，`modules/system/infra`）两个子模块**；`member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
 | `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
 | `apps/web-antd/` | 管理后台前端（vendored vue-vben-admin v5.7.0，Ant Design Vue），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
@@ -43,7 +43,7 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
    `outbox.enabled` 控制是否真正启动）→ `trace.InitTracer`（OTel TracerProvider）→
    `migrate.Runner.Run`（`migrate.auto=false` 时整体跳过）。
 3. **`fx.Decorate`（替换最终实现）**：见第 4 节。
-4. **模块聚合**：`oauth2.FxModule`、`infra.FxModule`、`system.FxModule`、`order.FxModule` 通过
+4. **模块聚合**：`system.FxModule`（内嵌 `oauth2.FxModule`、`infra.FxModule`，2026-10-15 起并入）、`order.FxModule` 通过
    `fx.Annotate(..., fx.As(new(server.Module)), fx.ResultTags('group:"modules"'))` 把自己注册进
    `group:"modules"`；`server.StartHTTPServer` 的 `HTTPServerParams` 收到该 group 后，在
    `/api` 组上按序调用每个模块的 `RegisterRoutes`。

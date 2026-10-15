@@ -1,6 +1,6 @@
 # 模块功能与权限手册
 
-> 覆盖全部 5 个后端业务模块（system / infra / member / oauth2 / order）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
+> 覆盖后端业务子系统（顶层 3 模块：**system 含 oauth2、infra 两个子模块**，另有 member、order；功能口径仍按 system / infra / member / oauth2 / order 划分）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
 > 配套阅读：[架构说明](architecture.md)（中间件链/配置/部署）、[OAuth2 统一登录](oauth2.md)（登录与签发细节）、[使用文档](usage.md)（菜单管理与代码生成操作）、[服务通信](service-communication.md)（mono/micro 双形态）。
 > 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13。
 
@@ -30,9 +30,9 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 | 模块 | 目录 | 定位 | 端点前缀 | 端点数 | 租户隔离 |
 | --- | --- | --- | --- | --- | --- |
 | **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 57 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
-| **infra** | `modules/infra` | 代码生成：库表导入、字段配置、同步、预览、ZIP 下载 | `/api/admin/infra/codegen` | 11 | 无（系统级） |
+| **infra** | `modules/system/infra` | 代码生成：库表导入、字段配置、同步、预览、ZIP 下载 | `/api/admin/infra/codegen` | 11 | 无（系统级） |
 | **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 6 | `member_user.tenant_id` |
-| **oauth2** | `modules/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
+| **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
 | **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 2 | 无（gap，见 §7.4） |
 
 所有模块实现 `server.Module.RegisterRoutes`，由 `alexgo-server/server/http.go` 统一挂到 `/api` 组。
@@ -88,7 +88,7 @@ Recovery → Tenant → Logger → Prometheus → RateLimitAndBreaker → Auth �
 | 校验 | 每次查库无缓存 + 复查 `tenants.status` | 吊销即删行；过期行清扫保留 7 天 |
 | `mode=jwt` | HS256、24h 固定过期（`pkg/auth/jwt.go`）；**回滚开关**：无 refresh、logout 不可吊销 | — |
 
-统一登录门面 `UnifiedLogin`（`modules/oauth2/service/login.go`）：captcha（默认关）→ 按 `account_type` 路由到 system/member 凭据校验器 → `IssueFor` 签发 → 恰一次登录审计写 `login_logs`。
+统一登录门面 `UnifiedLogin`（`modules/system/oauth2/service/login.go`）：captcha（默认关）→ 按 `account_type` 路由到 system/member 凭据校验器 → `IssueFor` 签发 → 恰一次登录审计写 `login_logs`。
 
 ### 2.3 Casbin 模型与策略来源
 
@@ -303,7 +303,7 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 
 从 MySQL `information_schema` 导入库表 → 生成/编辑字段配置 → 与库结构同步差异 → 内存渲染代码预览 → ZIP 下载。生成引擎在 `pkg/codegen/{builder,metadata,model}`，构建选项 `Module=infra`、`TemplateType=Single`、`FrontType=Vben5Antd`。
 
-装配要点（`modules/infra/module.go`）：
+装配要点（`modules/system/infra/module.go`）：
 
 - `CodegenRepository`：配置表/字段 CRUD + 同步差异事务落库（`ApplySync`）
 - `MetadataReader`：按配置 DSN 惰性连接 information_schema，OnStop 关闭
@@ -430,7 +430,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 - **统一登录门面** `UnifiedLogin`：captcha → 按 account_type 路由 system/member 凭据校验 → 签发 → 恰一次登录审计——是 member 登录、vben SSO 的公共入口。
 - **客户端管理**：client CRUD（admin 端）。
 
-装配要点（`modules/oauth2/module.go`）：CaptchaService（Redis，`auth.captcha.enabled` 默认 false）、ClientRepository、AuthorizeCodeRepository、ClientService（secret bcrypt 比对）、AuthorizeCodeService（授权码 TTL **2min**、CAS 单次消费 + PKCE S256）、TokenService（四 grant 状态机，**第一步恒 client 认证**）。
+装配要点（`modules/system/oauth2/module.go`）：CaptchaService（Redis，`auth.captcha.enabled` 默认 false）、ClientRepository、AuthorizeCodeRepository、ClientService（secret bcrypt 比对）、AuthorizeCodeService（授权码 TTL **2min**、CAS 单次消费 + PKCE S256）、TokenService（四 grant 状态机，**第一步恒 client 认证**）。
 
 依赖的跨模块窄接口（fx optional）：`token.Issuer`/`Validator`、`UserAuthenticator`（system）、`MemberAuthenticator`（member）、`LoginAuditor`（system）、`JWTGenerator`（jwt 回滚）。
 

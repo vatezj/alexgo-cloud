@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 建成 `modules/infra` 配置持久化——迁移建表 + 导入/同步 + admin API + 菜单权限 seed，使「导入 → 改配置 → 同步 diff」全链路 HTTP 测试通过（spec §8 M2 验收）。
+**Goal:** 建成 `modules/system/infra` 配置持久化——迁移建表 + 导入/同步 + admin API + 菜单权限 seed，使「导入 → 改配置 → 同步 diff」全链路 HTTP 测试通过（spec §8 M2 验收）。
 
-**Architecture:** `modules/infra` 按 member/system 惯例做 fx 模块（module.go + migration_source.go + 三层 + admin 控制器），配置存 `codegen_table`/`codegen_column`（MySQL 快照 + 可编辑配置）；service 编排 `pkg/codegen`（metadata 读 → builder 初置/刷新 → diff），controller 提供 9 个端点（preview/download 属 M3）。同时按用户裁决修复两处引擎缺口：租户写路径（模板）与非 id 主键（构建期拒绝）。本计划仅覆盖 spec 里程碑 **M2**；M3–M7 依次续写独立计划。
+**Architecture:** `modules/system/infra` 按 member/system 惯例做 fx 模块（module.go + migration_source.go + 三层 + admin 控制器），配置存 `codegen_table`/`codegen_column`（MySQL 快照 + 可编辑配置）；service 编排 `pkg/codegen`（metadata 读 → builder 初置/刷新 → diff），controller 提供 9 个端点（preview/download 属 M3）。同时按用户裁决修复两处引擎缺口：租户写路径（模板）与非 id 主键（构建期拒绝）。本计划仅覆盖 spec 里程碑 **M2**；M3–M7 依次续写独立计划。
 
 **Tech Stack:** Go 1.25、gin、fx、gorm + glebarez/sqlite（单测）/ MySQL（迁移）、golang-migrate、go-sql-driver/mysql（ParseDSN）、text/template（已有引擎）。
 
@@ -16,7 +16,7 @@
   ① **租户写路径缺口 M2 内修复**——`tenant_id` json tag 固定 `-"；repository Create 打戳、Update 加租户过滤；service Create/Update 从 ctx 取租户；golden 刷新。
   ② **非 id 主键约定写进 spec + 构建期拒绝**——仅支持单列 `id` 主键；`builder.Build`（TemplateTypeSingle）对无主键/复合主键/非 `id` 主键返回 `ErrColumnInvalid`。
 - spec M2 范围（§8）：迁移建表 + 导入/同步 + admin API + 菜单权限 seed；**预览/下载（POST preview/download）与后台页面留 M3，本计划不实现**。
-- `modules/infra` → `pkg/codegen` 单向依赖；`pkg/codegen` 不 import `modules/*`、不依赖 fx。
+- `modules/system/infra` → `pkg/codegen` 单向依赖；`pkg/codegen` 不 import `modules/*`、不依赖 fx。
 - 系统级功能不做租户隔离（spec §1 非目标）：`codegen_table`/`codegen_column` **无 `tenant_id` 列**，infra 的 gorm 模型**不带 `TenantID` 字段**（租户插件对无该字段的模型自动跳过，无需进 ExemptTables）。
 - 配置删除 = **硬删除**（DELETE 级联删字段行，事务内），不设 `deleted` 列（spec errata，Task 1 落文本）。
 - 同步语义（spec §4，Task 1 落可执行定义）：新增列追加配置行且**开关默认关闭**；消失列标 `deprecated=1` 不物理删；快照字段刷新、**开关与配置字段一律不覆盖**；曾 deprecated 的列重新出现 → 恢复并计入 updated。
@@ -49,7 +49,7 @@ pkg/codegen/template/templates/server/go/single/
 └── service_test.go.tmpl                                        # Task 2：fake 签名 + 打戳断言
 pkg/codegen/template/tenant_writepath_test.go                   # Task 2：渲染断言 + gorm 语义镜像测试
 pkg/codegen/testdata/golden/*                                   # Task 2：-update 刷新（model/repository/service/service_test 4 个）
-modules/infra/
+modules/system/infra/
 ├── module.go                                                   # Task 3：骨架（迁移源）；Task 7：完整形态（repo/svc/ctrl/reader/route）
 ├── migration_source.go                                         # Task 3
 ├── migrations/
@@ -530,27 +530,27 @@ git commit -m "fix(codegen): 租户写路径——tenant_id json隐藏 + Create�
 
 ---
 
-### Task 3: `modules/infra` 骨架——fx 模块 + 迁移源 + 建表迁移
+### Task 3: `modules/system/infra` 骨架——fx 模块 + 迁移源 + 建表迁移
 
 **Files:**
-- Create: `modules/infra/module.go`
-- Create: `modules/infra/migration_source.go`
-- Create: `modules/infra/migrations/20261011000001_codegen_config.up.sql`
-- Create: `modules/infra/migrations/20261011000001_codegen_config.down.sql`
-- Test: `modules/infra/migrations/migrate_test.go`（`-tags integration`）
+- Create: `modules/system/infra/module.go`
+- Create: `modules/system/infra/migration_source.go`
+- Create: `modules/system/infra/migrations/20261011000001_codegen_config.up.sql`
+- Create: `modules/system/infra/migrations/20261011000001_codegen_config.down.sql`
+- Test: `modules/system/infra/migrations/migrate_test.go`（`-tags integration`）
 - Modify: `alexgo-server/cmd/main.go`（追加 `infra.FxModule`）
 
 **Interfaces:**
 - Consumes: `pkg/migrate.Source`（`GetMigrationPath()/GetModuleName()`）、`migrate.Runner`（按 `group:"migration_sources"` 聚合）、member 模块的 fx 装配惯例。
 - Produces（Task 4–9 依赖）:
   - `infra.FxModule fx.Option`——Task 7 在其中追加三层 Provider 与路由
-  - `infra.NewMigrationSource() migrate.Source`，path=`modules/infra/migrations`，module=`infra`（迁移记录表 `schema_migrations_infra`）
+  - `infra.NewMigrationSource() migrate.Source`，path=`modules/system/infra/migrations`，module=`infra`（迁移记录表 `schema_migrations_infra`）
   - 表 `codegen_table`（`uk_codegen_table_name` 唯一键、**无 `tenant_id`、无 `deleted`**——spec §9.3）与 `codegen_column`（`uk_codegen_column_table_name(table_id,name)`、`deprecated` 列）
   - `migrate_test.go` 的双重跑幂等断言骨架（Task 9 在同文件追加 seed 断言）
 
 - [ ] **Step 1: 写失败测试——迁移集成测试**
 
-新建 `modules/infra/migrations/migrate_test.go`：
+新建 `modules/system/infra/migrations/migrate_test.go`：
 
 ```go
 //go:build integration
@@ -564,7 +564,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/driver/mysql"
 
-	"alexGo-cloud/modules/infra"
+	"alexGo-cloud/modules/system/infra"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 )
@@ -644,12 +644,12 @@ func TestInfraMigrations_UpTwiceStable(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `go test -tags integration ./modules/infra/migrations/ -count=1 -v`
-Expected: FAIL（`no required module provides package alexGo-cloud/modules/infra`）
+Run: `go test -tags integration ./modules/system/infra/migrations/ -count=1 -v`
+Expected: FAIL（`no required module provides package alexGo-cloud/modules/system/infra`）
 
 - [ ] **Step 3: 最小实现**
 
-`modules/infra/migration_source.go`：
+`modules/system/infra/migration_source.go`：
 
 ```go
 package infra
@@ -664,7 +664,7 @@ func NewMigrationSource() migrate.Source {
 
 // GetMigrationPath 迁移 SQL 所在目录（相对仓库根，Runner 以 file:// 打开）。
 func (s *migrationSource) GetMigrationPath() string {
-	return "modules/infra/migrations"
+	return "modules/system/infra/migrations"
 }
 
 // GetModuleName 决定 schema_migrations_<name> 记录表。
@@ -673,7 +673,7 @@ func (s *migrationSource) GetModuleName() string {
 }
 ```
 
-`modules/infra/module.go`（Task 7 会在 `fx.Provide` 里追加三层构造器）：
+`modules/system/infra/module.go`（Task 7 会在 `fx.Provide` 里追加三层构造器）：
 
 ```go
 package infra
@@ -695,7 +695,7 @@ var FxModule = fx.Module("infra",
 
 （注意补 import：`"alexGo-cloud/pkg/migrate"`。）
 
-`modules/infra/migrations/20261011000001_codegen_config.up.sql`：
+`modules/system/infra/migrations/20261011000001_codegen_config.up.sql`：
 
 ```sql
 -- codegen 配置表（spec §4）：元数据快照 + 可编辑配置。
@@ -748,7 +748,7 @@ CREATE TABLE IF NOT EXISTS `codegen_column` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-`modules/infra/migrations/20261011000001_codegen_config.down.sql`：
+`modules/system/infra/migrations/20261011000001_codegen_config.down.sql`：
 
 ```sql
 -- 逆序删除配置表（硬删除语义：配置行即全部状态，无恢复诉求）。
@@ -756,7 +756,7 @@ DROP TABLE IF EXISTS `codegen_column`;
 DROP TABLE IF EXISTS `codegen_table`;
 ```
 
-`alexgo-server/cmd/main.go`：import 块加 `"alexGo-cloud/modules/infra"`，并在 `system.FxModule,`（约 172 行）之前加：
+`alexgo-server/cmd/main.go`：import 块加 `"alexGo-cloud/modules/system/infra"`，并在 `system.FxModule,`（约 172 行）之前加：
 
 ```go
 		// infra：代码生成配置持久化（M2）——迁移源 + 三层 + admin 路由。
@@ -765,7 +765,7 @@ DROP TABLE IF EXISTS `codegen_table`;
 
 - [ ] **Step 4: 运行迁移集成测试（需本地 MySQL）**
 
-Run: `DB_DSN='user:pass@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local' go test -tags integration ./modules/infra/migrations/ -count=1 -v`
+Run: `DB_DSN='user:pass@tcp(127.0.0.1:3306)/alexgo?charset=utf8mb4&parseTime=True&loc=Local' go test -tags integration ./modules/system/infra/migrations/ -count=1 -v`
 Expected: PASS（无 DB_DSN 时为 `skip`——如实记录跳过）
 
 - [ ] **Step 5: fx 干跑测试确认依赖图完好**
@@ -776,7 +776,7 @@ Expected: PASS（`TestMono_GraphValidates` / `TestMicro_GraphValidates` / `TestM
 - [ ] **Step 6: Commit**
 
 ```bash
-git add modules/infra/ alexgo-server/cmd/main.go
+git add modules/system/infra/ alexgo-server/cmd/main.go
 git commit -m "feat(infra): 模块骨架、迁移源与 codegen 配置表迁移"
 ```
 
@@ -785,9 +785,9 @@ git commit -m "feat(infra): 模块骨架、迁移源与 codegen 配置表迁移"
 ### Task 4: gorm 模型 + 配置仓库（sqlite 测试）
 
 **Files:**
-- Create: `modules/infra/model/codegen.go`
-- Create: `modules/infra/repository/codegen_repo.go`
-- Test: `modules/infra/repository/codegen_repo_test.go`
+- Create: `modules/system/infra/model/codegen.go`
+- Create: `modules/system/infra/repository/codegen_repo.go`
+- Test: `modules/system/infra/repository/codegen_repo_test.go`
 
 **Interfaces:**
 - Consumes: Task 3 的表结构；`github.com/glebarez/sqlite`（纯 Go 内存库，仓库既有惯例）；`model.SyncDiff/SyncResult`（本任务一并定义，Task 6 消费）。
@@ -800,7 +800,7 @@ git commit -m "feat(infra): 模块骨架、迁移源与 codegen 配置表迁移"
 
 - [ ] **Step 1: 写失败测试**
 
-新建 `modules/infra/repository/codegen_repo_test.go`：
+新建 `modules/system/infra/repository/codegen_repo_test.go`：
 
 ```go
 package repository
@@ -812,7 +812,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 func setupRepo(t *testing.T) (*gorm.DB, CodegenRepository) {
@@ -938,12 +938,12 @@ func TestRepo_ImportHelpers(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `go test ./modules/infra/repository/ -count=1`
+Run: `go test ./modules/system/infra/repository/ -count=1`
 Expected: FAIL（`undefined: CodegenRepository`、包不存在）
 
 - [ ] **Step 3: 最小实现**
 
-`modules/infra/model/codegen.go`：
+`modules/system/infra/model/codegen.go`：
 
 ```go
 package model
@@ -1013,7 +1013,7 @@ type SyncResult struct {
 }
 ```
 
-`modules/infra/repository/codegen_repo.go`：
+`modules/system/infra/repository/codegen_repo.go`：
 
 ```go
 package repository
@@ -1024,7 +1024,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 // CodegenRepository 配置表读写。删除一律硬删（spec §9.3）；
@@ -1188,13 +1188,13 @@ func (r *codegenRepo) ApplySync(ctx context.Context, tableID uint64, tableCommen
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `go test ./modules/infra/repository/ -count=1 -v`
+Run: `go test ./modules/system/infra/repository/ -count=1 -v`
 Expected: PASS（4 个测试全绿）
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/infra/model/ modules/infra/repository/
+git add modules/system/infra/model/ modules/system/infra/repository/
 git commit -m "feat(infra): codegen 配置模型与仓库（事务级联/配置字段白名单/同步落库)"
 ```
 
@@ -1203,8 +1203,8 @@ git commit -m "feat(infra): codegen 配置模型与仓库（事务级联/配置�
 ### Task 5: 导入服务——元数据读取 + 四类拒绝 + 配置落库
 
 **Files:**
-- Create: `modules/infra/service/codegen_service.go`
-- Test: `modules/infra/service/codegen_service_test.go`
+- Create: `modules/system/infra/service/codegen_service.go`
+- Test: `modules/system/infra/service/codegen_service_test.go`
 
 **Interfaces:**
 - Consumes: `pkg/codegen/metadata`（`MetadataReader`/`TableMeta`/`ColumnMeta`）、`pkg/codegen/builder`（`Build(meta, opts)`）、`pkg/codegen/model` 哨兵（`ErrTableInvalid`/`ErrColumnInvalid`）、Task 4 的 `CodegenRepository`。
@@ -1229,12 +1229,12 @@ type CodegenService interface {
 func NewCodegenService(reader metadata.MetadataReader, repo repository.CodegenRepository, opts builder.Options) CodegenService
 ```
 
-- 其中 `model` = `alexGo-cloud/modules/infra/model`（与仓库同包别名，见实现步骤的 import 约定）；`metadata.MetadataReader` 接口：`ListTables(ctx) ([]string, error)`、`ReadTable(ctx, table string) (*metadata.TableMeta, error)`。
+- 其中 `model` = `alexGo-cloud/modules/system/infra/model`（与仓库同包别名，见实现步骤的 import 约定）；`metadata.MetadataReader` 接口：`ListTables(ctx) ([]string, error)`、`ReadTable(ctx, table string) (*metadata.TableMeta, error)`。
 - `opts builder.Options{Module: "infra"}` 只作为模板构建的默认值（M2 导入仅落配置、不生成文件，文件生成在 M3/M4；`opts` 在 Import 时传给 `builder.Build` 以复用主键/租户校验）。
 
 - [ ] **Step 1: 写失败测试**
 
-新建 `modules/infra/service/codegen_service_test.go`。测试用 `fakeReader`（内存表，可 mutate 模拟库表变更）+ Task 4 的 sqlite 仓库：
+新建 `modules/system/infra/service/codegen_service_test.go`。测试用 `fakeReader`（内存表，可 mutate 模拟库表变更）+ Task 4 的 sqlite 仓库：
 
 ```go
 package service
@@ -1247,8 +1247,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	cgmodel "alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/repository"
+	cgmodel "alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/repository"
 	"alexGo-cloud/pkg/codegen/builder"
 	cgmodelErr "alexGo-cloud/pkg/codegen/model"
 	"alexGo-cloud/pkg/codegen/metadata"
@@ -1407,16 +1407,16 @@ func TestSync_NotImported_Rejected(t *testing.T) {
 }
 ```
 
-注意：`cgmodel` 别名 import 的是 `modules/infra/model`，而哨兵在 `pkg/codegen/model`（别名 `cgmodelErr`）。**两个 model 包同名，测试与实现里必须区分别名**——这是本任务最常见的编译错误，写实现时先想清楚。
+注意：`cgmodel` 别名 import 的是 `modules/system/infra/model`，而哨兵在 `pkg/codegen/model`（别名 `cgmodelErr`）。**两个 model 包同名，测试与实现里必须区分别名**——这是本任务最常见的编译错误，写实现时先想清楚。
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `go test ./modules/infra/service/ -count=1`
+Run: `go test ./modules/system/infra/service/ -count=1`
 Expected: FAIL（`undefined: NewCodegenService`、`undefined: CodegenService`）
 
 - [ ] **Step 3: 实现**
 
-新建 `modules/infra/service/codegen_service.go`：
+新建 `modules/system/infra/service/codegen_service.go`：
 
 ```go
 package service
@@ -1427,8 +1427,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/repository"
+	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/repository"
 	"alexGo-cloud/pkg/codegen/builder"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 	"alexGo-cloud/pkg/codegen/metadata"
@@ -1604,13 +1604,13 @@ func defaultHTMLType(c *model.CodegenColumn) string {
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `go test ./modules/infra/service/ -count=1 -v`
+Run: `go test ./modules/system/infra/service/ -count=1 -v`
 Expected: PASS（happy path + 4 拒绝子测试 + Sync 前置）
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/infra/service/
+git add modules/system/infra/service/
 git commit -m "feat(infra): 导入服务——元数据构建期校验与四类拒绝"
 ```
 
@@ -1619,8 +1619,8 @@ git commit -m "feat(infra): 导入服务——元数据构建期校验与四类�
 ### Task 6: 同步服务——diff 分类 + 事务落库（§9.4 三钉子）
 
 **Files:**
-- Modify: `modules/infra/service/codegen_service.go`（实现 `Sync`）
-- Test: `modules/infra/service/sync_test.go`
+- Modify: `modules/system/infra/service/codegen_service.go`（实现 `Sync`）
+- Test: `modules/system/infra/service/sync_test.go`
 
 **Interfaces:**
 - Consumes: Task 4 `repository.ApplySync(ctx, tableID, tableComment, diff)` 与 `model.SyncDiff/SyncResult`；Task 5 `fakeReader`（同包，直接复用）；`pkg/codegen/builder`（元数据→`model.Table` 规范化，复用 Task 1/2 后的规则）。
@@ -1636,7 +1636,7 @@ git commit -m "feat(infra): 导入服务——元数据构建期校验与四类�
 
 - [ ] **Step 1: 写失败测试**
 
-新建 `modules/infra/service/sync_test.go`（复用 Task 5 的 `newSvc`/`newFixtureReader`/`col`）：
+新建 `modules/system/infra/service/sync_test.go`（复用 Task 5 的 `newSvc`/`newFixtureReader`/`col`）：
 
 ```go
 package service
@@ -1645,7 +1645,7 @@ import (
 	"context"
 	"testing"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 )
 
 // 钉子①（Review Focus #2）：同步绝不覆盖配置字段——list/query 开关保持原值。
@@ -1812,7 +1812,7 @@ func TestSync_NewColumn_AllSwitchesOff(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `go test ./modules/infra/service/ -run Sync -count=1`
+Run: `go test ./modules/system/infra/service/ -run Sync -count=1`
 Expected: FAIL（`svc.Sync undefined`——`Sync` 方法尚未实现 / stub 返回 nil）
 
 - [ ] **Step 3: 实现 Sync**
@@ -1916,13 +1916,13 @@ func (s *codegenService) Sync(ctx context.Context, tableID uint64) (*model.SyncR
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `go test ./modules/infra/service/ -count=1 -v`
+Run: `go test ./modules/system/infra/service/ -count=1 -v`
 Expected: PASS（Task 5 的 6 例 + Task 6 的 4 例全绿）
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/infra/service/
+git add modules/system/infra/service/
 git commit -m "feat(infra): 同步 diff 分类——配置保留/硬删豁免/重现恢复（spec §9.4）"
 ```
 
@@ -1931,9 +1931,9 @@ git commit -m "feat(infra): 同步 diff 分类——配置保留/硬删豁免/�
 ### Task 7: Admin Controller——9 个端点 + fx 全量装配
 
 **Files:**
-- Create: `modules/infra/controller/admin/codegen_controller.go`
-- Test: `modules/infra/controller/admin/codegen_controller_test.go`
-- Modify: `modules/infra/module.go`（追加三层 Provider + RegisterRoutes）
+- Create: `modules/system/infra/controller/admin/codegen_controller.go`
+- Test: `modules/system/infra/controller/admin/codegen_controller_test.go`
+- Modify: `modules/system/infra/module.go`（追加三层 Provider + RegisterRoutes）
 
 **Interfaces:**
 - Consumes: Task 5/6 的 `service.CodegenService`；member 模块的 controller 测试模式（`gin.SetMode(gin.TestMode)` + `gin.New()` 手动挂路由 + `httptest`）；server `Module` 接口（`RegisterRoutes(rg *gin.RouterGroup)` 挂在 `/api` 组下）。
@@ -1959,7 +1959,7 @@ git commit -m "feat(infra): 同步 diff 分类——配置保留/硬删豁免/�
 
 - [ ] **Step 1: 写失败测试**
 
-新建 `modules/infra/controller/admin/codegen_controller_test.go`（stub 直接实现接口，参考 `modules/member/controller/admin/member_user_test.go`）：
+新建 `modules/system/infra/controller/admin/codegen_controller_test.go`（stub 直接实现接口，参考 `modules/member/controller/admin/member_user_test.go`）：
 
 ```go
 package admin
@@ -1974,7 +1974,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/builder"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 )
@@ -2124,12 +2124,12 @@ func TestGenerate_ReservedForM3(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `go test ./modules/infra/controller/admin/ -count=1`
+Run: `go test ./modules/system/infra/controller/admin/ -count=1`
 Expected: FAIL（`undefined: NewCodegenController`）
 
 - [ ] **Step 3: 实现 Controller**
 
-新建 `modules/infra/controller/admin/codegen_controller.go`：
+新建 `modules/system/infra/controller/admin/codegen_controller.go`：
 
 ```go
 package admin
@@ -2140,8 +2140,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/infra/model"
-	"alexGo-cloud/modules/infra/service"
+	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/modules/system/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 )
 
@@ -2325,12 +2325,12 @@ func errOr(err error, fallback string) error {
 
 - [ ] **Step 4: 运行 controller 测试**
 
-Run: `go test ./modules/infra/controller/admin/ -count=1 -v`
+Run: `go test ./modules/system/infra/controller/admin/ -count=1 -v`
 Expected: PASS（5 个测试全绿）
 
 - [ ] **Step 5: fx 全量装配**
 
-`modules/infra/module.go` 替换为完整形态：
+`modules/system/infra/module.go` 替换为完整形态：
 
 ```go
 package infra
@@ -2339,9 +2339,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 
-	"alexGo-cloud/modules/infra/controller/admin"
-	"alexGo-cloud/modules/infra/repository"
-	"alexGo-cloud/modules/infra/service"
+	"alexGo-cloud/modules/system/infra/controller/admin"
+	"alexGo-cloud/modules/system/infra/repository"
+	"alexGo-cloud/modules/system/infra/service"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	"alexGo-cloud/pkg/config"
@@ -2404,13 +2404,13 @@ func newMetadataReader(lc fx.Lifecycle, cfg *config.Config) (metadata.MetadataRe
 
 - [ ] **Step 6: fx 干跑 + 全量测试**
 
-Run: `CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1 && go test ./modules/infra/... -count=1`
+Run: `CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1 && go test ./modules/system/infra/... -count=1`
 Expected: PASS（fx 图有效；infra 全包绿）
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add modules/infra/ pkg/codegen/metadata/
+git add modules/system/infra/ pkg/codegen/metadata/
 git commit -m "feat(infra): admin 9 端点 + fx 全量装配 + 元数据读取器接线"
 ```
 
@@ -2419,7 +2419,7 @@ git commit -m "feat(infra): admin 9 端点 + fx 全量装配 + 元数据读取�
 ### Task 8: 端到端验收——导入→改配置→同步 diff（spec §8 M2 验收）
 
 **Files:**
-- Test: `modules/infra/service/acceptance_test.go`
+- Test: `modules/system/infra/service/acceptance_test.go`
 
 **Interfaces:**
 - Consumes: Task 5–7 的 `NewCodegenService` + `fakeReader` + sqlite 仓库；controller 层信封在 Task 7 已测，本任务专注**业务链路**：导入 → PUT 字段配置 → mutate 元数据 → Sync → diff 计数正确。
@@ -2427,7 +2427,7 @@ git commit -m "feat(infra): admin 9 端点 + fx 全量装配 + 元数据读取�
 
 - [ ] **Step 1: 写验收测试**
 
-新建 `modules/infra/service/acceptance_test.go`：
+新建 `modules/system/infra/service/acceptance_test.go`：
 
 ```go
 package service
@@ -2528,22 +2528,22 @@ func TestM2_Acceptance_ImportEditSync(t *testing.T) {
 }
 ```
 
-（`model` 包 import 用 `cgmodel "alexGo-cloud/modules/infra/model"` 别名或沿用本文件 `model`——与同包其他测试文件保持一致即可。）
+（`model` 包 import 用 `cgmodel "alexGo-cloud/modules/system/infra/model"` 别名或沿用本文件 `model`——与同包其他测试文件保持一致即可。）
 
 - [ ] **Step 2: 运行确认**
 
-Run: `go test ./modules/infra/service/ -run M2_Acceptance -count=1 -v`
+Run: `go test ./modules/system/infra/service/ -run M2_Acceptance -count=1 -v`
 Expected: PASS（若 step 1 的计数与实际分类逻辑有出入，**先修测试预期对齐 §9.4 语义，再修实现**——不允许为过测试改语义）
 
 - [ ] **Step 3: 全量回归**
 
-Run: `go test ./pkg/codegen/... ./modules/infra/... -count=1 && CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1`
+Run: `go test ./pkg/codegen/... ./modules/system/infra/... -count=1 && CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1`
 Expected: PASS
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add modules/infra/service/acceptance_test.go
+git add modules/system/infra/service/acceptance_test.go
 git commit -m "test(infra): M2 验收链——导入→改配置→同步 diff（spec §8）"
 ```
 
@@ -2556,7 +2556,7 @@ git commit -m "test(infra): M2 验收链——导入→改配置→同步 diff�
 - Create: `modules/system/migrations/20261011000002_codegen_menus.down.sql`
 - Create: `modules/system/service/permission_routes_test.go`
 - Modify: `modules/system/service/permission_routes.go`（`permissionRoutes` 追加 `infra:codegen` 条目）
-- Modify: `modules/infra/migrations/migrate_test.go`（追加 seed 双跑断言）
+- Modify: `modules/system/infra/migrations/migrate_test.go`（追加 seed 双跑断言）
 
 **Interfaces:**
 - Consumes: 菜单种子幂等惯例（`modules/system/migrations/20261009000001_menus_vben_backfill.up.sql` 的 `INSERT ... SELECT ... FROM DUAL WHERE NOT EXISTS` 模式）；`permissionRoutes` map + `permPrefix()`（取前两段 `infra:codegen`）；seed 测试模式 `modules/system/service/seed_test.go::TestSeedButtonPerms_MatchRouteKeys`。
@@ -2743,7 +2743,7 @@ WHERE `permission` LIKE 'infra:codegen%'
 Run: `go test ./modules/system/service/ -run "InfraSeed|CoverInfra" -count=1 -v`
 Expected: PASS（`permissionRoutes` 已注册 + 种子 SQL 存在且权限码被扫到）
 
-- [ ] **Step 6: 种子双跑幂等断言（改 `modules/infra/migrations/migrate_test.go`）**
+- [ ] **Step 6: 种子双跑幂等断言（改 `modules/system/infra/migrations/migrate_test.go`）**
 
 **执行者核对**：菜单种子在 **system** 模块迁移里。若 `runInfra` 只跑 infra 源，本断言需改为跑 system 源——在同文件加第二个 helper `runSystem(t)`（构造 `[]migrate.Source{system.NewMigrationSource()}`，import `"alexGo-cloud/modules/system"`）。追加测试：
 
@@ -2777,7 +2777,7 @@ func TestInfraSeedMenus_UpTwiceIdempotent(t *testing.T) {
 
 - [ ] **Step 7: 运行**
 
-Run: `DB_DSN='...' go test -tags integration ./modules/infra/migrations/ -count=1 -v && go test ./modules/system/service/ -count=1`
+Run: `DB_DSN='...' go test -tags integration ./modules/system/infra/migrations/ -count=1 -v && go test ./modules/system/service/ -count=1`
 Expected: PASS（无 DB_DSN 时集成部分 skip，service 部分必绿）
 
 - [ ] **Step 8: Commit**
@@ -2786,7 +2786,7 @@ Expected: PASS（无 DB_DSN 时集成部分 skip，service 部分必绿）
 git add modules/system/migrations/20261011000002_codegen_menus.* \
         modules/system/service/permission_routes.go \
         modules/system/service/permission_routes_test.go \
-        modules/infra/migrations/migrate_test.go
+        modules/system/infra/migrations/migrate_test.go
 git commit -m "feat(system): codegen 菜单种子 + infra:codegen 路由注册（403 闭环）"
 ```
 
@@ -3090,7 +3090,7 @@ Expected: PASS（无 DSN 时 skip）
 
 - [ ] **Step 6: 全量回归**
 
-Run: `go test ./pkg/... ./modules/infra/... ./modules/system/service/... ./tools/codegen/... -count=1 && CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1`
+Run: `go test ./pkg/... ./modules/system/infra/... ./modules/system/service/... ./tools/codegen/... -count=1 && CGO_ENABLED=0 go test ./alexgo-server/cmd/ -count=1`
 Expected: PASS（已知 cgo 链接问题的 5 个包用 `CGO_ENABLED=0`，见 architecture.md §8）
 
 - [ ] **Step 7: Commit**

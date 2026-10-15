@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 新建 `modules/oauth2` 授权服务（授权码+PKCE / password / refresh_token / client_credentials 四种 grant、图形验证码开关、client 管理），三套既有登录端点降级为兼容层，web-antd 登录页改走授权码 SSO，users/members 表与 Casbin 鉴权零改动。
+**Goal:** 新建 `modules/system/oauth2` 授权服务（授权码+PKCE / password / refresh_token / client_credentials 四种 grant、图形验证码开关、client 管理），三套既有登录端点降级为兼容层，web-antd 登录页改走授权码 SSO，users/members 表与 Casbin 鉴权零改动。
 
 **Architecture:** 认证统一、存储分开——oauth2 模块只做「谁有权拿到 token」的守门人，凭据校验走 `UserAuthenticator`（system 实现）与 `MemberAuthenticator`（member 实现）两个 Go 接口；token 模式走 `pkg/token` 不透明令牌（中间件/Casbin 零改动），jwt 回滚模式由 system 提供 `JWTGenerator`。协议手写（不引 go-oauth2），唯一新依赖 `base64Captcha`。
 
@@ -16,7 +16,7 @@
 - TDD RED→GREEN 强制：每个行为先写失败测试、亲眼看它失败（因缺符号/断言不符），再写最小实现。
 - 直接在 main 上提交，**不建功能分支、未经用户指示不推送**。
 - 全量回归：`CGO_ENABLED=0 go test ./...` 必须全绿；接线红线 `CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`。
-- 集成测试：`DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/oauth2/... ./modules/infra/migrations/`（`modules/system/migrations/` 无 Go 文件，不在命令内——T16 的菜单种子集成测试在 `modules/infra/migrations/migrate_test.go`）。
+- 集成测试：`DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/system/oauth2/... ./modules/system/infra/migrations/`（`modules/system/migrations/` 无 Go 文件，不在命令内——T16 的菜单种子集成测试在 `modules/system/infra/migrations/migrate_test.go`）。
 - 前端：`pnpm -C apps/web-antd typecheck`。
 - 不改 users/members 表结构；不动 Casbin 匹配器与中间件公开路径规则（`/api/oauth2/*` 已天然公开）。
 - 唯一新依赖 `github.com/mojocn/base64Captcha@v1.3.8`；不引 go-oauth2。
@@ -137,22 +137,22 @@ git commit -m "feat(config): auth.captcha.enabled 开关与 auth.login_page"
 ### Task 2: oauth2 模块骨架 + 两表迁移 + 种子 client + 双 main 装配 + 幂等
 
 **Files:**
-- Create: `modules/oauth2/module.go`
-- Create: `modules/oauth2/migration_source.go`
-- Create: `modules/oauth2/migrations/20261011000001_oauth2_tables.up.sql`
-- Create: `modules/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql`
-- Create: `modules/oauth2/model/client.go`、`modules/oauth2/model/authorize_code.go`
+- Create: `modules/system/oauth2/module.go`
+- Create: `modules/system/oauth2/migration_source.go`
+- Create: `modules/system/oauth2/migrations/20261011000001_oauth2_tables.up.sql`
+- Create: `modules/system/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql`
+- Create: `modules/system/oauth2/model/client.go`、`modules/system/oauth2/model/authorize_code.go`
 - Modify: `alexgo-server/cmd/main.go`（opts 列表约 174-176 行，插在 `infra.FxModule` 之前）
 - Modify: `modules/member/cmd/main.go`（约 119 行 `member.FxModule,` 之前插 `oauth2.FxModule,`）
-- Test: `modules/oauth2/migrations/migrate_test.go`（`//go:build integration`）
+- Test: `modules/system/oauth2/migrations/migrate_test.go`（`//go:build integration`）
 
 **Interfaces:**
-- Consumes: `pkg/migrate.Source` 接口（`GetMigrationPath() string`、`GetModuleName() string`）；infra 骨架 `modules/infra/migration_source.go` 模板；fx `group:"modules"` / `group:"migration_sources"` 范式。
+- Consumes: `pkg/migrate.Source` 接口（`GetMigrationPath() string`、`GetModuleName() string`）；infra 骨架 `modules/system/infra/migration_source.go` 模板；fx `group:"modules"` / `group:"migration_sources"` 范式。
 - Produces: `oauth2.FxModule`（fx.Option，两 main 消费）；`oauth2.NewMigrationSource()`；表 `oauth2_client`、`oauth2_authorize_code`；种子 client 两行；`model.Oauth2Client`、`model.Oauth2AuthorizeCode`（Task 7/9 消费）。
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/migrations/migrate_test.go`：
+`modules/system/oauth2/migrations/migrate_test.go`：
 
 ```go
 //go:build integration
@@ -209,7 +209,7 @@ func runOAuth2(t *testing.T) (*gorm.DB, *migrate.Runner) {
 }
 ```
 
-注意 import 需补 `"alexGo-cloud/modules/oauth2"` 与 `"alexGo-cloud/pkg/config"`（上面骨架省略，实现时补齐）。测试用例：
+注意 import 需补 `"alexGo-cloud/modules/system/oauth2"` 与 `"alexGo-cloud/pkg/config"`（上面骨架省略，实现时补齐）。测试用例：
 
 ```go
 // 双表建立 + 双跑稳定；oauth2_client 无 tenant_id/deleted（D4 硬删）。
@@ -244,7 +244,7 @@ func TestOAuth2Migrations_UpTwiceStable(t *testing.T) {
 }
 
 // 种子 SQL 直跑双次幂等（绕开 golang-migrate 只跑 pending 的真空坑）。
-const seedClientsPath = "modules/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql"
+const seedClientsPath = "modules/system/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql"
 
 func openMultiStmtDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -300,12 +300,12 @@ func TestOAuth2SeedClients_SQLFileExecutedTwiceStable(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/oauth2/... -v`
+Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/system/oauth2/... -v`
 Expected: FAIL —— 包不存在 / `oauth2.NewMigrationSource` undefined（模块尚未创建）。
 
 - [ ] **Step 3: 最小实现**
 
-`modules/oauth2/migration_source.go`（照抄 infra 模板）：
+`modules/system/oauth2/migration_source.go`（照抄 infra 模板）：
 
 ```go
 package oauth2
@@ -315,11 +315,11 @@ func NewMigrationSource() *MigrationSource { return &MigrationSource{} }
 
 type MigrationSource struct{}
 
-func (s *MigrationSource) GetMigrationPath() string { return "modules/oauth2/migrations" }
+func (s *MigrationSource) GetMigrationPath() string { return "modules/system/oauth2/migrations" }
 func (s *MigrationSource) GetModuleName() string     { return "oauth2" }
 ```
 
-`modules/oauth2/model/client.go`：
+`modules/system/oauth2/model/client.go`：
 
 ```go
 package model
@@ -387,7 +387,7 @@ func (c *Oauth2Client) AllowsRedirect(u string) bool {
 
 （需补 `import "strings"`。）
 
-`modules/oauth2/model/authorize_code.go`：
+`modules/system/oauth2/model/authorize_code.go`：
 
 ```go
 package model
@@ -416,7 +416,7 @@ type Oauth2AuthorizeCode struct {
 func (Oauth2AuthorizeCode) TableName() string { return "oauth2_authorize_code" }
 ```
 
-`modules/oauth2/migrations/20261011000001_oauth2_tables.up.sql`：
+`modules/system/oauth2/migrations/20261011000001_oauth2_tables.up.sql`：
 
 ```sql
 -- oauth2 两表（spec §9 D4）：client 注册 + 授权码。
@@ -460,7 +460,7 @@ CREATE TABLE IF NOT EXISTS `oauth2_authorize_code` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-`modules/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql`（D10；bcrypt 哈希为字面量，`alexgo-admin` secret 空=公开）：
+`modules/system/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql`（D10；bcrypt 哈希为字面量，`alexgo-admin` secret 空=公开）：
 
 ```sql
 -- 种子 client（D10）：alexgo-admin 公开（secret 空，授权码流靠 PKCE）、alexgo-app 机密。
@@ -482,7 +482,7 @@ FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `oauth2_client` WHERE `client_id`='alexgo-app');
 ```
 
-`modules/oauth2/module.go`（最小骨架：只挂迁移源，无路由；Task 3 起逐步加 Provide。迁移源**从一开始**就按 infra 模式注解进 `group:"migration_sources"`——不注解则生产启动的 `migrate.NewRunner` 收不到本模块，oauth2 迁移静默不跑）：
+`modules/system/oauth2/module.go`（最小骨架：只挂迁移源，无路由；Task 3 起逐步加 Provide。迁移源**从一开始**就按 infra 模式注解进 `group:"migration_sources"`——不注解则生产启动的 `migrate.NewRunner` 收不到本模块，oauth2 迁移静默不跑）：
 
 ```go
 package oauth2
@@ -494,7 +494,7 @@ import (
 )
 
 // FxModule oauth2 模块注册（D7：硬编码进两个 main.go）。
-// 照抄 modules/infra/module.go：迁移源注解进 group:"migration_sources"（ResultTags）。
+// 照抄 modules/system/infra/module.go：迁移源注解进 group:"migration_sources"（ResultTags）。
 var FxModule = fx.Module("oauth2",
 	fx.Provide(
 		fx.Annotate(
@@ -515,20 +515,20 @@ var FxModule = fx.Module("oauth2",
 	infra.FxModule,
 ```
 
-（补 import `"alexGo-cloud/modules/oauth2"`。）`modules/member/cmd/main.go` 在 `member.FxModule,` 行之前插 `oauth2.FxModule,` 同 import。
+（补 import `"alexGo-cloud/modules/system/oauth2"`。）`modules/member/cmd/main.go` 在 `member.FxModule,` 行之前插 `oauth2.FxModule,` 同 import。
 
 - [ ] **Step 4: 运行确认通过**
 
 Run: `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS（两 main 装配可编译可测）。
 
-Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/oauth2/... -v`
+Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/system/oauth2/... -v`
 Expected: PASS（两集成测试绿）。若 `runner.Run` 首跑未建表，检查 runner 吞错路径与 chdirRepoRoot。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/ alexgo-server/cmd/main.go modules/member/cmd/main.go
+git add modules/system/oauth2/ alexgo-server/cmd/main.go modules/member/cmd/main.go
 git commit -m "feat(oauth2): 模块骨架、两表迁移与种子 client、双 main 装配"
 ```
 
@@ -537,11 +537,11 @@ git commit -m "feat(oauth2): 模块骨架、两表迁移与种子 client、双 m
 ### Task 3: CaptchaService + GET /api/oauth2/captcha + ProtocolController 初版
 
 **Files:**
-- Create: `modules/oauth2/service/captcha.go`（含 `ErrCaptchaInvalid`）
-- Create: `modules/oauth2/service/captcha_test.go`
-- Create: `modules/oauth2/controller/protocol.go`（初版 ctor；Task 9 换成 `ProtocolDeps`(fx.In) 同名 ctor，此后 Task 11/13 只往结构体加字段、ctor 签名不再变）
-- Create: `modules/oauth2/controller/protocol_test.go`
-- Modify: `modules/oauth2/module.go`（Provide + 路由注册）
+- Create: `modules/system/oauth2/service/captcha.go`（含 `ErrCaptchaInvalid`）
+- Create: `modules/system/oauth2/service/captcha_test.go`
+- Create: `modules/system/oauth2/controller/protocol.go`（初版 ctor；Task 9 换成 `ProtocolDeps`(fx.In) 同名 ctor，此后 Task 11/13 只往结构体加字段、ctor 签名不再变）
+- Create: `modules/system/oauth2/controller/protocol_test.go`
+- Modify: `modules/system/oauth2/module.go`（Provide + 路由注册）
 
 **Interfaces:**
 - Consumes: `cfg.Auth.Captcha.Enabled`（Task 1）、`fx.In` + `optional:"true"` 范式、`pkg/redis` 的 `NewClient` 返回 `(*goredis.Client, error)`，未启用时 `(nil, nil)`。
@@ -567,7 +567,7 @@ func (s *CaptchaService) Verify(ctx context.Context, uuid, code string) error
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/service/captcha_test.go`：
+`modules/system/oauth2/service/captcha_test.go`：
 
 ```go
 package service
@@ -656,7 +656,7 @@ func TestCaptcha_SingleUse(t *testing.T) {
 	}
 ```
 
-`modules/oauth2/controller/protocol_test.go`（HTTP 层 RED——GET /oauth2/captcha 端点本身的第一条测试；Task 9 Step 5 整文件重写时把它迁到 `newProtoRouter` 新夹具）：
+`modules/system/oauth2/controller/protocol_test.go`（HTTP 层 RED——GET /oauth2/captcha 端点本身的第一条测试；Task 9 Step 5 整文件重写时把它迁到 `newProtoRouter` 新夹具）：
 
 ```go
 package controller
@@ -669,7 +669,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/config"
 )
 
@@ -703,12 +703,12 @@ func TestCaptchaImage_OK(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ ./modules/oauth2/controller/ -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ ./modules/system/oauth2/controller/ -v`
 Expected: FAIL（编译错误）—— service 侧 `undefined: CaptchaService / NewCaptchaService / ErrCaptchaInvalid`；controller 侧 `undefined: NewProtocolController`（及 `oauth2svc.NewCaptchaService`；controller 包此期只有测试文件，`go test` 正常报未定义符号）。
 
 - [ ] **Step 3: 最小实现**
 
-`modules/oauth2/service/captcha.go`：
+`modules/system/oauth2/service/captcha.go`：
 
 ```go
 package service
@@ -833,7 +833,7 @@ func (s *redisStore) Verify(id, answer string, clear bool) bool {
 }
 ```
 
-`modules/oauth2/controller/protocol.go` 初版（只做 captcha 端点；Task 11 换签名扩展同名 ctor）：
+`modules/system/oauth2/controller/protocol.go` 初版（只做 captcha 端点；Task 11 换签名扩展同名 ctor）：
 
 ```go
 package controller
@@ -843,7 +843,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // ProtocolController 协议端点（RFC 6749 信封）。
@@ -871,7 +871,7 @@ func (p *ProtocolController) captchaImage(c *gin.Context) {
 }
 ```
 
-`modules/oauth2/module.go` 扩展（整文件如下：保留 Task 2 的迁移源注解，新增控制器聚合与路由挂载）：
+`modules/system/oauth2/module.go` 扩展（整文件如下：保留 Task 2 的迁移源注解，新增控制器聚合与路由挂载）：
 
 ```go
 package oauth2
@@ -881,12 +881,12 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/oauth2/controller"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/controller"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
 
-// FxModule oauth2 模块装配（D7：硬编码进两个 main.go）。照抄 modules/infra/module.go：
+// FxModule oauth2 模块装配（D7：硬编码进两个 main.go）。照抄 modules/system/infra/module.go：
 // 迁移源注解进 group:"migration_sources"，NewModule 注解进 group:"modules"（均 ResultTags）。
 var FxModule = fx.Module("oauth2",
 	fx.Provide(
@@ -921,11 +921,11 @@ func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 }
 ```
 
-> 权威模板是 `modules/infra/module.go`，**逐行对齐、不新发明**：注解用 `fx.Annotate(NewModule, fx.As(new(server.Module)), fx.ResultTags(`group:"modules"`))`——是 **ResultTags 不是 ParamTags**（注解的是构造函数的返回值）；`server.Module` 接口为 `RegisterRoutes(r *gin.RouterGroup)`（`alexgo-server/server/http.go:32`），**不是** `*gin.Engine`，且入参已是 /api 组、内部不再 `r.Group("/api")`。**不需要 `fx.Invoke(registerRoutes)`**——infra 模式是 Module 实现 `server.Module` 进 `group:"modules"`，由 server 的 `Modules []Module` 收集后统一挂载。
+> 权威模板是 `modules/system/infra/module.go`，**逐行对齐、不新发明**：注解用 `fx.Annotate(NewModule, fx.As(new(server.Module)), fx.ResultTags(`group:"modules"`))`——是 **ResultTags 不是 ParamTags**（注解的是构造函数的返回值）；`server.Module` 接口为 `RegisterRoutes(r *gin.RouterGroup)`（`alexgo-server/server/http.go:32`），**不是** `*gin.Engine`，且入参已是 /api 组、内部不再 `r.Group("/api")`。**不需要 `fx.Invoke(registerRoutes)`**——infra 模式是 Module 实现 `server.Module` 进 `group:"modules"`，由 server 的 `Modules []Module` 收集后统一挂载。
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS。
 
 （若 `base64Captcha` 未引入：`go get github.com/mojocn/base64Captcha@v1.3.8 && go mod tidy`。）
@@ -933,7 +933,7 @@ Expected: PASS。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/ go.mod go.sum
+git add modules/system/oauth2/ go.mod go.sum
 git commit -m "feat(oauth2): 验证码服务（redis/内存双后端、开关）与 GET /oauth2/captcha"
 ```
 
@@ -942,8 +942,8 @@ git commit -m "feat(oauth2): 验证码服务（redis/内存双后端、开关）
 ### Task 4: 统一登录接口定义 + system 侧 UserAuthenticator / JWTGenerator / 审计映射
 
 **Files:**
-- Create: `modules/oauth2/service/login.go`（哨兵错误、ProtocolError、全部接口）
-- Create: `modules/oauth2/service/login_test.go`（接口形状/哨兵测试）
+- Create: `modules/system/oauth2/service/login.go`（哨兵错误、ProtocolError、全部接口）
+- Create: `modules/system/oauth2/service/login_test.go`（接口形状/哨兵测试）
 - Create: `modules/system/service/user_authenticator.go`
 - Create: `modules/system/service/user_authenticator_test.go`
 - Modify: `modules/system/module.go`（Provide 增三行，约 58 行附近）
@@ -953,7 +953,7 @@ git commit -m "feat(oauth2): 验证码服务（redis/内存双后端、开关）
 - Produces（Task 5/8/10/11/12 消费，逐字）：
 
 ```go
-package oauth2svc // import 路径 alexGo-cloud/modules/oauth2/service
+package oauth2svc // import 路径 alexGo-cloud/modules/system/oauth2/service
 
 const (
 	AccountTypeSystem = "system"
@@ -1055,7 +1055,7 @@ func NewJWTGenerator(cfg *config.Config) oauth2svc.JWTGenerator
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/service/login_test.go`（先钉接口与哨兵；UnifiedLogin 实现属 Task 8，这里只测类型形状可编译 + ProtocolError 文案）：
+`modules/system/oauth2/service/login_test.go`（先钉接口与哨兵；UnifiedLogin 实现属 Task 8，这里只测类型形状可编译 + ProtocolError 文案）：
 
 ```go
 package oauth2svc
@@ -1093,7 +1093,7 @@ import (
 	"testing"
 
 	"alexGo-cloud/modules/system/model"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 func TestNewUserAuthenticator_BadPassword(t *testing.T) {
@@ -1128,12 +1128,12 @@ func TestNewUserAuthenticator_Disabled(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ ./modules/system/service/ -run 'TestProtocolError|TestSentinels|TestNewUserAuthenticator' -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ ./modules/system/service/ -run 'TestProtocolError|TestSentinels|TestNewUserAuthenticator' -v`
 Expected: FAIL —— system 侧 `undefined: NewUserAuthenticator`；oauth2 侧若 login.go 未建则 `undefined: ProtocolError`。
 
 - [ ] **Step 3: 最小实现**
 
-1. 按 Produces 块原样创建 `modules/oauth2/service/login.go`（补 `fmt`/`errors`/`context`/`go.uber.org/fx`/`alexGo-cloud/pkg/config`/`alexGo-cloud/pkg/token` import；`NewUnifiedLogin` 此时只返回结构体占位——**但 Task 8 才实现 Login/IssueFor**，为使本任务编译，先给出接收 deps 返回 `UnifiedLogin` 的最小 stub，Task 8 覆写为真逻辑。裁决：`NewUnifiedLogin` 与 `unifiedLogin` 结构在 Task 4 就建好，`Login`/`IssueFor` 返回 `nil, ErrAuthenticatorMissing`（Task 8 补真身，测试 Task 8 写）。——**记录 Ruling 见 Task 8 开头**）。
+1. 按 Produces 块原样创建 `modules/system/oauth2/service/login.go`（补 `fmt`/`errors`/`context`/`go.uber.org/fx`/`alexGo-cloud/pkg/config`/`alexGo-cloud/pkg/token` import；`NewUnifiedLogin` 此时只返回结构体占位——**但 Task 8 才实现 Login/IssueFor**，为使本任务编译，先给出接收 deps 返回 `UnifiedLogin` 的最小 stub，Task 8 覆写为真逻辑。裁决：`NewUnifiedLogin` 与 `unifiedLogin` 结构在 Task 4 就建好，`Login`/`IssueFor` 返回 `nil, ErrAuthenticatorMissing`（Task 8 补真身，测试 Task 8 写）。——**记录 Ruling 见 Task 8 开头**）。
 2. `modules/system/service/user_authenticator.go`：
 
 ```go
@@ -1149,7 +1149,7 @@ import (
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // NewUserAuthenticator system 账号凭据校验（users 表零改动，spec §2 边界1）。
@@ -1211,17 +1211,17 @@ func (g *jwtGenerator) Issue(ctx context.Context, userID uint64, username string
 		func(svc service.AuditService) oauth2svc.LoginAuditor { return svc },
 ```
 
-补 import `oauth2svc "alexGo-cloud/modules/oauth2/service"`。
+补 import `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`。
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... ./modules/system/... -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... ./modules/system/... -v`
 Expected: PASS（新测试 + 既有 system 测试全绿）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/service/login.go modules/oauth2/service/login_test.go \
+git add modules/system/oauth2/service/login.go modules/system/oauth2/service/login_test.go \
         modules/system/service/user_authenticator.go modules/system/service/user_authenticator_test.go \
         modules/system/module.go
 git commit -m "feat(oauth2): 统一登录接口定义与 system 侧凭据/JWT/审计接线"
@@ -1243,7 +1243,7 @@ git commit -m "feat(oauth2): 统一登录接口定义与 system 侧凭据/JWT/�
 
 - [ ] **Step 1: 写失败测试**
 
-在 `modules/member/service/member_test.go` 追加（该文件夹具是 `memRepo`/`fakeIssuer`（返回 "ma"/"mr"）——**没有** `enabledRepo`/`okIssuer`，不要发明；用下面的助手就地构造）。该文件需补 import `golang.org/x/crypto/bcrypt` 与 `oauth2svc "alexGo-cloud/modules/oauth2/service"`：
+在 `modules/member/service/member_test.go` 追加（该文件夹具是 `memRepo`/`fakeIssuer`（返回 "ma"/"mr"）——**没有** `enabledRepo`/`okIssuer`，不要发明；用下面的助手就地构造）。该文件需补 import `golang.org/x/crypto/bcrypt` 与 `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`：
 
 ```go
 // newAuthenticateRepo 造一个持有效凭据的 member 行（Mobile 13800000000 / pw123456），
@@ -1306,7 +1306,7 @@ Expected: FAIL —— `svc.Authenticate undefined`（MemberService 接口无此�
 	Authenticate(ctx context.Context, mobile, password, ip string) (*oauth2svc.AuthIdentity, error)
 ```
 
-（补 import `oauth2svc "alexGo-cloud/modules/oauth2/service"`。）实现（全部签名已对过仓库现实：`GetByMobile(ctx, tid, mobile)` 三参、字段 `u.Password`、无 `UpdateLoginInfo`）：
+（补 import `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`。）实现（全部签名已对过仓库现实：`GetByMobile(ctx, tid, mobile)` 三参、字段 `u.Password`、无 `UpdateLoginInfo`）：
 
 ```go
 // Authenticate member 账号凭据校验（members 表零改动；校验通过即写 LoginIP/LoginDate，
@@ -1345,7 +1345,7 @@ module 映射（`modules/member/module.go` Provide 块）追加：
 		func(svc service.MemberService) oauth2svc.MemberAuthenticator { return svc },
 ```
 
-补 import `oauth2svc "alexGo-cloud/modules/oauth2/service"`。
+补 import `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`。
 
 - [ ] **Step 4: 运行确认通过**
 
@@ -1476,17 +1476,17 @@ git commit -m "feat(token): UserTypeClient=3 机机凭证（零用户放行、Cl
 ### Task 7: ClientRepository + ClientService（client 注册存储与认证）
 
 **Files:**
-- Create: `modules/oauth2/repository/client.go`
-- Create: `modules/oauth2/service/client.go`
-- Test: `modules/oauth2/service/client_test.go`
-- Modify: `modules/oauth2/module.go`（Provide 块追加两行）
+- Create: `modules/system/oauth2/repository/client.go`
+- Create: `modules/system/oauth2/service/client.go`
+- Test: `modules/system/oauth2/service/client_test.go`
+- Modify: `modules/system/oauth2/module.go`（Provide 块追加两行）
 
 **Interfaces:**
 - Consumes: Task 2 的 `model.Oauth2Client`（字段 `ClientID/ClientSecret/ClientName/GrantTypes/RedirectURIs/AccountTypes/Scopes/Activity` + `AllowsGrant/AllowsAccountType/AllowsRedirect`）、`gorm.DB`（fx 基座已 Provide）、D10 公开客户端规则（库中 secret 空 → 跳过 bcrypt）。
 - Produces（Task 9/10/13 消费，逐字）：
 
 ```go
-package repository // import 路径 alexGo-cloud/modules/oauth2/repository
+package repository // import 路径 alexGo-cloud/modules/system/oauth2/repository
 
 func NewClientRepository(db *gorm.DB) *ClientRepository
 func (r *ClientRepository) GetByClientID(ctx context.Context, clientID string) (*model.Oauth2Client, error)
@@ -1496,7 +1496,7 @@ func (r *ClientRepository) Update(ctx context.Context, c *model.Oauth2Client) er
 func (r *ClientRepository) Delete(ctx context.Context, id uint64) error
 func (r *ClientRepository) List(ctx context.Context, page, size int) ([]*model.Oauth2Client, int64, error)
 
-package oauth2svc // import 路径 alexGo-cloud/modules/oauth2/service
+package oauth2svc // import 路径 alexGo-cloud/modules/system/oauth2/service
 
 var ErrInvalidClient = errors.New("invalid client") // 未知/停用/凭据不符 → 401 invalid_client
 func NewClientService(repo *repository.ClientRepository) *ClientService
@@ -1512,7 +1512,7 @@ func (s *ClientService) Delete(ctx context.Context, id uint64) error
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/service/client_test.go`：
+`modules/system/oauth2/service/client_test.go`：
 
 ```go
 package service
@@ -1527,8 +1527,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 func newTestClientSvc(t *testing.T) (*ClientService, *gorm.DB) {
@@ -1681,12 +1681,12 @@ func TestClientService_Update_SecretRules(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ -run TestClientService -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ -run TestClientService -v`
 Expected: FAIL —— `undefined: NewClientService / repository.NewClientRepository`（编译错误）。
 
 - [ ] **Step 3: 最小实现**
 
-`modules/oauth2/repository/client.go`：
+`modules/system/oauth2/repository/client.go`：
 
 ```go
 package repository
@@ -1696,7 +1696,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/model"
 )
 
 // ClientRepository oauth2_client 访问层（D4：模型无 tenant_id/deleted → 租户插件跳过、硬删除）。
@@ -1750,7 +1750,7 @@ func (r *ClientRepository) List(ctx context.Context, page, size int) ([]*model.O
 }
 ```
 
-`modules/oauth2/service/client.go`：
+`modules/system/oauth2/service/client.go`：
 
 ```go
 package oauth2svc
@@ -1762,8 +1762,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 // ErrInvalidClient 未知/停用/凭据不符（Task 9 映射 400 invalid_client、Task 10 映射 401 invalid_client）。
@@ -1870,7 +1870,7 @@ func (s *ClientService) Delete(ctx context.Context, id uint64) error {
 }
 ```
 
-`modules/oauth2/module.go` 的 `fx.Provide` 块追加（import 补 `"alexGo-cloud/modules/oauth2/repository"`）：
+`modules/system/oauth2/module.go` 的 `fx.Provide` 块追加（import 补 `"alexGo-cloud/modules/system/oauth2/repository"`）：
 
 ```go
 		repository.NewClientRepository,
@@ -1879,13 +1879,13 @@ func (s *ClientService) Delete(ctx context.Context, id uint64) error {
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS（新测试 + fx 干跑图仍可满足——ClientService 依赖的 `*gorm.DB` 基座已 Provide）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/
+git add modules/system/oauth2/
 git commit -m "feat(oauth2): ClientRepository/ClientService（公开跳 bcrypt、CRUD、分页）"
 ```
 
@@ -1896,9 +1896,9 @@ git commit -m "feat(oauth2): ClientRepository/ClientService（公开跳 bcrypt�
 > **Ruling（覆写 Task 4）**：Task 4 落地的 `NewUnifiedLogin` 是占位 stub（`Login/IssueFor` 返回 `ErrAuthenticatorMissing`），仅为让当时的编译与图装配通过。**本任务删除 stub 方法体，换成下面的真逻辑**；Task 4 的接口、`LoginParams/LoginResult/AuthIdentity`、五哨兵、`ProtocolError`、`UnifiedDeps` 全部不动。
 
 **Files:**
-- Modify: `modules/oauth2/service/login.go`（删 stub，写真身）
-- Test: `modules/oauth2/service/unified_login_test.go`（新建）
-- Modify: `modules/oauth2/module.go`（Provide 追加 `oauth2svc.NewUnifiedLogin`）
+- Modify: `modules/system/oauth2/service/login.go`（删 stub，写真身）
+- Test: `modules/system/oauth2/service/unified_login_test.go`（新建）
+- Modify: `modules/system/oauth2/module.go`（Provide 追加 `oauth2svc.NewUnifiedLogin`）
 
 **Interfaces:**
 - Consumes: Task 4 的 `UnifiedLogin` 接口三方法、`UnifiedDeps`、五哨兵；Task 3 的 `CaptchaService.Verify/Enabled`、`ErrCaptchaInvalid`；`token.Issuer.Issue(IssueParams) (*Issued, error)`、`token.UserTypeAdmin/UserTypeMember`（+ Task 6 的 `UserTypeClient`）；`cfg.Auth.Mode`（`"jwt"` 回滚模式）。
@@ -1909,7 +1909,7 @@ git commit -m "feat(oauth2): ClientRepository/ClientService（公开跳 bcrypt�
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/service/unified_login_test.go`（夹具与 `captcha_test.go` 同包共享 `newTestCaptcha`）：
+`modules/system/oauth2/service/unified_login_test.go`（夹具与 `captcha_test.go` 同包共享 `newTestCaptcha`）：
 
 ```go
 package oauth2svc
@@ -2199,12 +2199,12 @@ func TestAuthorizeLogin_NoIssuance_AuditOnce(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ -run 'TestLogin_|TestIssueFor_|TestAuthorizeLogin_' -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ -run 'TestLogin_|TestIssueFor_|TestAuthorizeLogin_' -v`
 Expected: FAIL —— stub 的 `Login` 返回 `ErrAuthenticatorMissing`/`IssueFor` 返回 `ErrAuthenticatorMissing`，多数用例断言不过（如 `TestLogin_EmptyAccountTypeDefaultsSystem` 收到 `authenticator missing`）。
 
 - [ ] **Step 3: 实现真身**
 
-`modules/oauth2/service/login.go`：**删除 Task 4 留下的 stub**（`NewUnifiedLogin` 的占位构造与 `Login/AuthorizeLogin/IssueFor` 的占位方法），替换为：
+`modules/system/oauth2/service/login.go`：**删除 Task 4 留下的 stub**（`NewUnifiedLogin` 的占位构造与 `Login/AuthorizeLogin/IssueFor` 的占位方法），替换为：
 
 ```go
 // === Task 8 真身（覆写 Task 4 stub；接口/哨兵/ProtocolError/UnifiedDeps 不动）===
@@ -2363,7 +2363,7 @@ func (u *unifiedLogin) IssueFor(ctx context.Context, ident *AuthIdentity, client
 
 （`fmt`、`errors`、`context`、`go.uber.org/fx`、`alexGo-cloud/pkg/config`、`alexGo-cloud/pkg/token` 的 import Task 4 已备好。）
 
-`modules/oauth2/module.go` 的 `fx.Provide` 块追加：
+`modules/system/oauth2/module.go` 的 `fx.Provide` 块追加：
 
 ```go
 		oauth2svc.NewUnifiedLogin,
@@ -2371,13 +2371,13 @@ func (u *unifiedLogin) IssueFor(ctx context.Context, ident *AuthIdentity, client
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS（新增 10 例全绿；两个 fx 干跑图仍可满足——`UnifiedDeps` 的必填项 `Cfg/Issuer/Captcha` 均已 Provide，其余 optional）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/
+git add modules/system/oauth2/
 git commit -m "feat(oauth2): UnifiedLogin 真身（类型校验→captcha→路由→签发→恰一次审计）"
 ```
 
@@ -2386,12 +2386,12 @@ git commit -m "feat(oauth2): UnifiedLogin 真身（类型校验→captcha→路�
 ### Task 9: AuthorizeCodeService + GET /api/oauth2/authorize + module.go 具体化
 
 **Files:**
-- Create: `modules/oauth2/repository/authorize_code.go`
-- Create: `modules/oauth2/service/authorize_code.go`
-- Test: `modules/oauth2/service/authorize_code_test.go`
-- Modify: `modules/oauth2/controller/protocol.go`（ctor 换 `ProtocolDeps`、加 GET /oauth2/authorize、`protocolErr` helper）
-- Modify: `modules/oauth2/controller/protocol_test.go`（整文件重写：新 ctor 夹具 + captcha 回归 + authorize 四例）
-- Modify: `modules/oauth2/module.go`（**整文件重写**为 infra 模式的具体实现）
+- Create: `modules/system/oauth2/repository/authorize_code.go`
+- Create: `modules/system/oauth2/service/authorize_code.go`
+- Test: `modules/system/oauth2/service/authorize_code_test.go`
+- Modify: `modules/system/oauth2/controller/protocol.go`（ctor 换 `ProtocolDeps`、加 GET /oauth2/authorize、`protocolErr` helper）
+- Modify: `modules/system/oauth2/controller/protocol_test.go`（整文件重写：新 ctor 夹具 + captcha 回归 + authorize 四例）
+- Modify: `modules/system/oauth2/module.go`（**整文件重写**为 infra 模式的具体实现）
 
 **Interfaces:**
 - Consumes: Task 2 的 `model.Oauth2AuthorizeCode`（含 `OwnerTenantID`/`CodeChallenge`/`CodeChallengeMethod`/`Revoked`）与 `model.Oauth2Client.AllowsGrant/AllowsRedirect`；Task 7 的 `ClientService.Get`、`ErrInvalidClient`；Task 3 的 `NewProtocolController` 同名 ctor（本任务换参数类型为 `ProtocolDeps`，此后 Task 11/13 只加字段不再改签名）；`cfg.Auth.LoginPage`（Task 1，默认 `/auth/login`）。
@@ -2451,7 +2451,7 @@ func NewProtocolController(deps ProtocolDeps) *ProtocolController
 
 - [ ] **Step 1: 写失败测试（service 层）**
 
-`modules/oauth2/service/authorize_code_test.go`：
+`modules/system/oauth2/service/authorize_code_test.go`：
 
 ```go
 package oauth2svc
@@ -2467,8 +2467,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 func newTestCodes(t *testing.T) (*AuthorizeCodeService, *gorm.DB) {
@@ -2618,12 +2618,12 @@ func TestExchangeCode_PKCE(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ -run TestExchangeCode -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ -run TestExchangeCode -v`
 Expected: FAIL —— `undefined: NewAuthorizeCodeService`（编译错误）。
 
 - [ ] **Step 3: 实现 repo + service**
 
-`modules/oauth2/repository/authorize_code.go`：
+`modules/system/oauth2/repository/authorize_code.go`：
 
 ```go
 package repository
@@ -2633,7 +2633,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/model"
 )
 
 // AuthorizeCodeRepository 授权码访问层（D4：OwnerTenantID → tenant_id 列）。
@@ -2671,7 +2671,7 @@ func (r *AuthorizeCodeRepository) MarkRevoked(ctx context.Context, code string) 
 }
 ```
 
-`modules/oauth2/service/authorize_code.go`：
+`modules/system/oauth2/service/authorize_code.go`：
 
 ```go
 package oauth2svc
@@ -2685,8 +2685,8 @@ import (
 	"fmt"
 	"time"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 // CodeTTL 授权码有效期 2 分钟（D15 补充语义）。
@@ -2793,12 +2793,12 @@ func (s *AuthorizeCodeService) Exchange(ctx context.Context, p ExchangeParams) (
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ -run TestExchangeCode -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ -run TestExchangeCode -v`
 Expected: PASS（5 例全绿）。
 
 - [ ] **Step 5: 写失败测试（HTTP 层）**
 
-`modules/oauth2/controller/protocol_test.go` **整文件重写**（新 ctor 夹具 + Task 3 的 captcha 回归用例迁到新夹具 + authorize 四例）：
+`modules/system/oauth2/controller/protocol_test.go` **整文件重写**（新 ctor 夹具 + Task 3 的 captcha 回归用例迁到新夹具 + authorize 四例）：
 
 ```go
 package controller
@@ -2815,9 +2815,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/config"
 )
 
@@ -2958,12 +2958,12 @@ func TestGrant_NotAllowed_400(t *testing.T) {
 
 - [ ] **Step 6: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/controller/ -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/controller/ -v`
 Expected: FAIL —— `undefined: ProtocolDeps`（ctor 尚未换签名）、`NewProtocolController` 参数不匹配（编译错误）。
 
 - [ ] **Step 7: 实现 controller + module 具体化**
 
-`modules/oauth2/controller/protocol.go` **整文件重写**：
+`modules/system/oauth2/controller/protocol.go` **整文件重写**：
 
 ```go
 package controller
@@ -2975,8 +2975,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 
-	"alexGo-cloud/modules/oauth2/model"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/config"
 )
 
@@ -3079,7 +3079,7 @@ func (p *ProtocolController) authorize(c *gin.Context) {
 
 （`model` import 实际未用则删——`client` 由 `Get` 返回，只调方法不命名类型；实现时按编译器提示收敛 import。）
 
-`modules/oauth2/module.go` **整文件重写**（照抄 `modules/infra/module.go` 的 fx 范式——迁移源必须带 `ResultTags` 进 `group:"migration_sources"`，否则生产启动不跑 oauth2 迁移）：
+`modules/system/oauth2/module.go` **整文件重写**（照抄 `modules/system/infra/module.go` 的 fx 范式——迁移源必须带 `ResultTags` 进 `group:"migration_sources"`，否则生产启动不跑 oauth2 迁移）：
 
 ```go
 package oauth2
@@ -3089,14 +3089,14 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/oauth2/controller"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/controller"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
 
 // FxModule oauth2 模块装配（D7：硬编码进两个 main.go）。
-// 照抄 modules/infra/module.go：迁移源注解进 group:"migration_sources"，
+// 照抄 modules/system/infra/module.go：迁移源注解进 group:"migration_sources"，
 // NewModule 注解进 group:"modules"（ResultTags 不是 ParamTags）。
 var FxModule = fx.Module("oauth2",
 	fx.Provide(
@@ -3136,17 +3136,17 @@ func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 }
 ```
 
-> 若 `alexgo-server/server` 的 `Module` 接口方法名与 `RegisterRoutes` 签名有出入，**打开 `modules/infra/module.go` 与 `alexgo-server/server/http.go` 逐行对齐**——infra 是唯一权威模板，不新发明。Task 2/3 期的过渡版 FxModule（注解形态已同 infra，仅 Provide 面更小）在本步被整体替换。
+> 若 `alexgo-server/server` 的 `Module` 接口方法名与 `RegisterRoutes` 签名有出入，**打开 `modules/system/infra/module.go` 与 `alexgo-server/server/http.go` 逐行对齐**——infra 是唯一权威模板，不新发明。Task 2/3 期的过渡版 FxModule（注解形态已同 infra，仅 Provide 面更小）在本步被整体替换。
 
 - [ ] **Step 8: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS（service 5 例 + controller 6 例 + 两 main fx 干跑图可满足——新增 Provide 的依赖 `*gorm.DB`/`*config.Config` 基座已有，`migrate.Source` 进组后 `migrate.NewRunner` 的 `group:"migration_sources"` 能收到）。
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add modules/oauth2/
+git add modules/system/oauth2/
 git commit -m "feat(oauth2): 授权码签发/消费（首错即消费 CAS）+ GET /authorize + module 具体化"
 ```
 
@@ -3155,8 +3155,8 @@ git commit -m "feat(oauth2): 授权码签发/消费（首错即消费 CAS）+ GE
 ### Task 10: TokenService（四 grant 状态机 + LoginProtoErr）
 
 **Files:**
-- Create: `modules/oauth2/service/token.go`
-- Test: `modules/oauth2/service/token_test.go`
+- Create: `modules/system/oauth2/service/token.go`
+- Test: `modules/system/oauth2/service/token_test.go`
 - （module.go 本任务不动——`NewTokenService` 的 Provide 在 Task 11 随控制器依赖一起接）
 
 **Interfaces:**
@@ -3216,7 +3216,7 @@ func (s *TokenService) Exchange(ctx context.Context, req *TokenRequest) (*TokenR
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/service/token_test.go`（复用同包 `okIssuer`/`stubUnified` 需本文件自带——`stubUnified` 为本任务新夹具）：
+`modules/system/oauth2/service/token_test.go`（复用同包 `okIssuer`/`stubUnified` 需本文件自带——`stubUnified` 为本任务新夹具）：
 
 ```go
 package oauth2svc
@@ -3229,8 +3229,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
@@ -3547,12 +3547,12 @@ func (s *stubUnified) Login(_ context.Context, p LoginParams) (*LoginResult, *Au
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/service/ -run 'TestExchange_|TestLoginProtoErr' -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/service/ -run 'TestExchange_|TestLoginProtoErr' -v`
 Expected: FAIL —— `undefined: NewTokenService / LoginProtoErr / GrantPassword`（编译错误）。
 
 - [ ] **Step 3: 最小实现**
 
-`modules/oauth2/service/token.go`：
+`modules/system/oauth2/service/token.go`：
 
 ```go
 package oauth2svc
@@ -3754,17 +3754,17 @@ func (s *TokenService) authCodeGrant(ctx context.Context, client *model.Oauth2Cl
 }
 ```
 
-（`model` import：`alexGo-cloud/modules/oauth2/model`。`fmt` 若未用则删。）
+（`model` import：`alexGo-cloud/modules/system/oauth2/model`。`fmt` 若未用则删。）
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v`
 Expected: PASS（新 12 例 + 既有全绿）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/service/
+git add modules/system/oauth2/service/
 git commit -m "feat(oauth2): TokenService 四 grant 状态机 + LoginProtoErr 映射矩阵"
 ```
 
@@ -3773,9 +3773,9 @@ git commit -m "feat(oauth2): TokenService 四 grant 状态机 + LoginProtoErr �
 ### Task 11: POST /authorize/login + POST /token 协议端点
 
 **Files:**
-- Modify: `modules/oauth2/controller/protocol.go`
-- Test: `modules/oauth2/controller/protocol_test.go`（追加夹具与 7 例）
-- Modify: `modules/oauth2/module.go`（Provide 块加一行 `oauth2svc.NewTokenService`）
+- Modify: `modules/system/oauth2/controller/protocol.go`
+- Test: `modules/system/oauth2/controller/protocol_test.go`（追加夹具与 7 例）
+- Modify: `modules/system/oauth2/module.go`（Provide 块加一行 `oauth2svc.NewTokenService`）
 
 **Interfaces:**
 - Consumes: Task 9 `ProtocolDeps`/`protocolErr`/`seedSpaClient` 与 authorize 校验顺序；Task 8 `UnifiedLogin.AuthorizeLogin` + `LoginParams`；Task 10 `NewTokenService/Exchange/TokenRequest/TokenResponse/LoginProtoErr/Grant*`；Task 7 `ClientService.Get/AllowsGrant/AllowsRedirect`；Task 9 `AuthorizeCodeService.Issue(IssueCodeParams) (string, error)`。
@@ -3805,7 +3805,7 @@ func NewProtocolController(deps ProtocolDeps) *ProtocolController
 
 - [ ] **Step 1: 写失败测试**
 
-`modules/oauth2/controller/protocol_test.go` 追加（在 Task 9 文件末尾；import 增 `encoding/json`、`"alexGo-cloud/pkg/token"`）：
+`modules/system/oauth2/controller/protocol_test.go` 追加（在 Task 9 文件末尾；import 增 `encoding/json`、`"alexGo-cloud/pkg/token"`）：
 
 ```go
 // —— Task 11 夹具：真 UnifiedLogin + 真 TokenService 的协议全栈 ——
@@ -4030,12 +4030,12 @@ func TestToken_ClientAuthFail_401(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/controller/ -v`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/controller/ -v`
 Expected: FAIL —— 编译错：`unknown field "Login" in struct literal of type controller.ProtocolDeps`、`undefined: oauth2svc.NewTokenService`。
 
 - [ ] **Step 3: 实现两个协议端点 + module Provide**
 
-`modules/oauth2/controller/protocol.go` 修改：
+`modules/system/oauth2/controller/protocol.go` 修改：
 
 1. `ProtocolDeps` 追加两字段（放 `Cfg` 之后，其余不动）：
 
@@ -4158,7 +4158,7 @@ func (p *ProtocolController) token(c *gin.Context) {
 }
 ```
 
-4. `modules/oauth2/module.go`：Provide 块 `oauth2svc.NewUnifiedLogin,` 之后加一行：
+4. `modules/system/oauth2/module.go`：Provide 块 `oauth2svc.NewUnifiedLogin,` 之后加一行：
 
 ```go
 			oauth2svc.NewTokenService,
@@ -4166,13 +4166,13 @@ func (p *ProtocolController) token(c *gin.Context) {
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... -v && CGO_ENABLED=0 go test ./alexgo-server/cmd/ ./modules/member/cmd/`
 Expected: PASS（controller 新 7 例 + 既有 6 例全绿；两 main fx 干跑图满足 `NewTokenService` 的 `Cfg/Clients/Codes/Login/Issuer` 五个依赖）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add modules/oauth2/controller/ modules/oauth2/module.go
+git add modules/system/oauth2/controller/ modules/system/oauth2/module.go
 git commit -m "feat(oauth2): authorize/login 302 回跳与 POST /token 协议端点"
 ```
 
@@ -4249,7 +4249,7 @@ func (f *fakeUnified) IssueFor(_ context.Context, _ *oauth2svc.AuthIdentity, _ s
 }
 ```
 
-补 import `oauth2svc "alexGo-cloud/modules/oauth2/service"`。
+补 import `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`。
 
 **(b) `vben/controller_test.go`**：
 
@@ -4308,7 +4308,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // stubUnified 本包独立夹具（system/controller/app 与 vben 是不同包，不能共用）。
@@ -4406,7 +4406,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // stubUnified 本包独立夹具（member/controller/app 独立命名空间）。
@@ -4559,7 +4559,7 @@ func TestLogin_JwtRollbackMode(t *testing.T) {
 }
 ```
 
-补 import `oauth2svc "alexGo-cloud/modules/oauth2/service"`（`auth`/`token`/`config`/`context` 既有）。
+补 import `oauth2svc "alexGo-cloud/modules/system/oauth2/service"`（`auth`/`token`/`config`/`context` 既有）。
 
 Run: `CGO_ENABLED=0 go test ./modules/system/... ./modules/member/... 2>&1 | tail -30`
 Expected: FAIL —— 编译错：vben `NewController` 参数不匹配、app `NewAppController` 参数不匹配、member `NewAuthController` 参数不匹配（auth_test 迁移例此时已可编译，随包级失败一起呈现）。
@@ -4621,7 +4621,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 type AppController struct {
@@ -4735,11 +4735,11 @@ git commit -m "feat(auth): 三端兼容层切换统一登录（审计归服务�
 ### Task 13: userinfo 自校验端点 + client 管理 CRUD + oauth2:client 路由注册
 
 **Files:**
-- Modify: `modules/oauth2/controller/protocol.go`（`ProtocolDeps` 加 `Validator`、Register 加路由、`userInfo` handler）
-- Test: `modules/oauth2/controller/protocol_test.go`（追加夹具与 4 例）
-- Create: `modules/oauth2/controller/admin/client.go`
-- Test: `modules/oauth2/controller/admin/client_test.go`（新包，仅测试文件起步）
-- Modify: `modules/oauth2/module.go`（Provide 加 `admin.NewClientController`、`NewModule` 聚合、`RegisterRoutes` 挂 admin 组）
+- Modify: `modules/system/oauth2/controller/protocol.go`（`ProtocolDeps` 加 `Validator`、Register 加路由、`userInfo` handler）
+- Test: `modules/system/oauth2/controller/protocol_test.go`（追加夹具与 4 例）
+- Create: `modules/system/oauth2/controller/admin/client.go`
+- Test: `modules/system/oauth2/controller/admin/client_test.go`（新包，仅测试文件起步）
+- Modify: `modules/system/oauth2/module.go`（Provide 加 `admin.NewClientController`、`NewModule` 聚合、`RegisterRoutes` 挂 admin 组）
 - Modify: `modules/system/service/permission_routes.go`（加 `"oauth2:client"` 条目）
 - Test: `modules/system/service/permission_routes_test.go`（追加注册守护 1 例）
 
@@ -4765,7 +4765,7 @@ type ProtocolDeps struct {
 // 响应 200 {"user_id","username","user_type","tenant_id","scope":"all"}；
 // 失败/缺 token 401 {"error":"invalid_token","error_description":...}（RFC 信封）。
 
-package admin // alexGo-cloud/modules/oauth2/controller/admin
+package admin // alexGo-cloud/modules/system/oauth2/controller/admin
 
 func NewClientController(svc *oauth2svc.ClientService) *ClientController
 // module RegisterRoutes 内联挂载（r 为 /api 组）：
@@ -4788,7 +4788,7 @@ func NewClientController(svc *oauth2svc.ClientService) *ClientController
 
 - [ ] **Step 1: 写失败测试**
 
-**(a) `modules/oauth2/controller/protocol_test.go` 追加**（import 增 `"alexGo-cloud/pkg/auth"`）：
+**(a) `modules/system/oauth2/controller/protocol_test.go` 追加**（import 增 `"alexGo-cloud/pkg/auth"`）：
 
 ```go
 // —— Task 13：userinfo 自校验 ——
@@ -4906,7 +4906,7 @@ func TestUserInfo_ValidatorMissing_401(t *testing.T) {
 }
 ```
 
-**(b) 新建 `modules/oauth2/controller/admin/client_test.go`**：
+**(b) 新建 `modules/system/oauth2/controller/admin/client_test.go`**：
 
 ```go
 package admin
@@ -4924,9 +4924,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 func newClientRouter(t *testing.T) (*gin.Engine, *oauth2svc.ClientService) {
@@ -5072,12 +5072,12 @@ func TestPermissionRoutes_Oauth2ClientRegistered(t *testing.T) {
 }
 ```
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... ./modules/system/service/ 2>&1 | tail -30`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... ./modules/system/service/ 2>&1 | tail -30`
 Expected: FAIL —— 编译错 `undefined: NewClientController`（admin 包仅测试文件）、`unknown field "Validator" in struct literal of type controller.ProtocolDeps`；外加 `--- FAIL: TestPermissionRoutes_Oauth2ClientRegistered`（缺键断言）。
 
 - [ ] **Step 2: 实现（GREEN）**
 
-**(a) `modules/oauth2/controller/protocol.go`**：
+**(a) `modules/system/oauth2/controller/protocol.go`**：
 
 1. import 补 `"strings"`（若未有）、`"alexGo-cloud/pkg/auth"`、`"alexGo-cloud/pkg/token"`。
 2. `ProtocolDeps` 追加字段（`Tokens` 之后）：
@@ -5142,7 +5142,7 @@ func (p *ProtocolController) userInfo(c *gin.Context) {
 }
 ```
 
-**(b) 新建 `modules/oauth2/controller/admin/client.go`**：
+**(b) 新建 `modules/system/oauth2/controller/admin/client.go`**：
 
 ```go
 package admin
@@ -5153,8 +5153,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/oauth2/model"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // ClientController OAuth2 client 管理（admin 信封 {data}/{data,total}/{status}/{error}，
@@ -5252,7 +5252,7 @@ func (c *ClientController) Delete(ctx *gin.Context) {
 }
 ```
 
-**(c) `modules/oauth2/module.go`**：import 补 `"alexGo-cloud/modules/oauth2/controller/admin"`；Provide 块 `controller.NewProtocolController,` 之后加一行：
+**(c) `modules/system/oauth2/module.go`**：import 补 `"alexGo-cloud/modules/system/oauth2/controller/admin"`；Provide 块 `controller.NewProtocolController,` 之后加一行：
 
 ```go
 		admin.NewClientController,
@@ -5288,7 +5288,7 @@ func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 	"oauth2:client": {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"},
 ```
 
-Run: `CGO_ENABLED=0 go test ./modules/oauth2/... ./modules/system/service/ -v 2>&1 | tail -60`
+Run: `CGO_ENABLED=0 go test ./modules/system/oauth2/... ./modules/system/service/ -v 2>&1 | tail -60`
 Expected: PASS（userinfo 4 例 + admin client 4 例 + `TestPermissionRoutes_Oauth2ClientRegistered` + 既有全绿）。
 
 - [ ] **Step 3: 全量回归 + 接线红线**
@@ -5299,7 +5299,7 @@ Expected: PASS（`NewModule` 多收一个 `*admin.ClientController`——fx 自�
 - [ ] **Step 4: Commit**
 
 ```bash
-git add modules/oauth2/ modules/system/service/permission_routes.go modules/system/service/permission_routes_test.go
+git add modules/system/oauth2/ modules/system/service/permission_routes.go modules/system/service/permission_routes_test.go
 git commit -m "feat(oauth2): userinfo 自校验 + client 管理 CRUD + oauth2:client 路由注册"
 ```
 
@@ -5765,7 +5765,7 @@ git commit -m "feat(web-antd): 登录页切 OAuth2 授权码+PKCE SSO，新增 /
 ### Task 15: 端到端集成测试（password / 授权码全流 / 403 / 401 / 篡改 / 重放）
 
 **Files:**
-- Create: `modules/oauth2/e2e_test.go`（`//go:build integration` + `package oauth2`——与生产代码同包，直接消费根包 `NewMigrationSource`；手工 DI 装配，不经 fx）
+- Create: `modules/system/oauth2/e2e_test.go`（`//go:build integration` + `package oauth2`——与生产代码同包，直接消费根包 `NewMigrationSource`；手工 DI 装配，不经 fx）
 
 **Interfaces:**
 - Consumes:
@@ -5793,7 +5793,7 @@ git commit -m "feat(web-antd): 登录页切 OAuth2 授权码+PKCE SSO，新增 /
 
 - [ ] **Step 1: 写失败测试**
 
-创建 `modules/oauth2/e2e_test.go`。**先只写测试**：import 块只含用例本体用到的 5 个包（辅助函数尚不存在，gin/casbin 等类型在用例里全部靠推断，不出现于 import），7 个用例引用尚不存在的辅助函数 → 编译失败即 RED。
+创建 `modules/system/oauth2/e2e_test.go`。**先只写测试**：import 块只含用例本体用到的 5 个包（辅助函数尚不存在，gin/casbin 等类型在用例里全部靠推断，不出现于 import），7 个用例引用尚不存在的辅助函数 → 编译失败即 RED。
 
 ```go
 //go:build integration
@@ -6076,7 +6076,7 @@ func TestE2E_CodeReplay_400(t *testing.T) {
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') CGO_ENABLED=0 go test -tags=integration -run TestE2E ./modules/oauth2/ -v`
+Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') CGO_ENABLED=0 go test -tags=integration -run TestE2E ./modules/system/oauth2/ -v`
 
 Expected: **FAIL（编译错误）**——`undefined: newE2E`、`undefined: postJSON`、`undefined: doReq`、`undefined: allowPing`、`undefined: pkcePair`、`undefined: locParam` 六个未定义符号（编译期失败，与 DSN 无关）。
 
@@ -6109,10 +6109,10 @@ import (
 	membermodel "alexGo-cloud/modules/member/model"
 	memberrepo "alexGo-cloud/modules/member/repository"
 	membersvc "alexGo-cloud/modules/member/service"
-	"alexGo-cloud/modules/oauth2/controller"
-	oauth2model "alexGo-cloud/modules/oauth2/model"
-	oauth2repo "alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/controller"
+	oauth2model "alexGo-cloud/modules/system/oauth2/model"
+	oauth2repo "alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system"
 	sysmodel "alexGo-cloud/modules/system/model"
 	sysrepo "alexGo-cloud/modules/system/repository"
@@ -6127,7 +6127,7 @@ import (
 
 ```go
 // chdirRepoRoot 切到仓库根：Runner 迁移源路径 file://modules/... 相对进程 cwd
-// 解析，本包位于 modules/oauth2（距根两级）。幂等：已在根则不上跳。
+// 解析，本包位于 modules/system/oauth2（距根两级）。幂等：已在根则不上跳。
 func chdirRepoRoot(t *testing.T) {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -6355,7 +6355,7 @@ func locParam(t *testing.T, w *httptest.ResponseRecorder, key string) string {
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') CGO_ENABLED=0 go test -tags=integration -run TestE2E ./modules/oauth2/ -v`
+Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') CGO_ENABLED=0 go test -tags=integration -run TestE2E ./modules/system/oauth2/ -v`
 
 Expected: **PASS——7 例全绿**（`--- PASS: TestE2E_...` ×7）。DSN 未设置时为 7×`SKIP`，不计入门禁；门禁以带 DSN 的真跑为准。
 
@@ -6368,7 +6368,7 @@ Expected: 全绿（e2e 带 `integration` tag 不参与本命令；两 main 的 f
 - [ ] **Step 6: Commit**
 
 ```bash
-git add modules/oauth2/e2e_test.go
+git add modules/system/oauth2/e2e_test.go
 git commit -m "feat(oauth2): 端到端集成测试（password/授权码全流/403/401/篡改/重放）"
 ```
 
@@ -6380,12 +6380,12 @@ git commit -m "feat(oauth2): 端到端集成测试（password/授权码全流/40
 - Test: `modules/system/service/permission_routes_test.go`（追加扫描守护 1 例）
 - Create: `modules/system/migrations/20261011000003_oauth2_client_menu.up.sql`
 - Create: `modules/system/migrations/20261011000003_oauth2_client_menu.down.sql`
-- Test: `modules/infra/migrations/migrate_test.go`（追加直跑双次幂等 1 例）
+- Test: `modules/system/infra/migrations/migrate_test.go`（追加直跑双次幂等 1 例）
 - Create: `apps/web-antd/src/views/system/Oauth2ClientsPage.vue`
 - Modify: `apps/web-antd/src/api/admin.ts`（文件末尾追加 OAuth2 客户端两接口 + 四函数）
 
 **Interfaces:**
-- Consumes: Task 13 已注册的 `"oauth2:client": {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"}`（`permission_routes.go`——本任务**不碰**该文件，只依赖它先落地）与守护例 `TestPermissionRoutes_Oauth2ClientRegistered`；Task 13 admin 端点语义（`GET /admin/oauth2/clients?page&size` → 200 `{data,total}`，page/size 归正 1/20、size 上限 200；`POST` → `{data}` 且 `createClientResponse` 明文 `client_secret` 仅创建回显一次；`PUT /clients/:id` → `{data}` 且 secret 留空=保留旧值、`json:"-"` 恒不回显；`DELETE /clients/:id` → `{"status":"ok"}`）；Task 7 `model.Oauth2Client` JSON 字段名（`id/client_id/client_name/website/grant_types/redirect_uris/account_types/scopes/activity/created_at/updated_at`，`ClientSecret json:"-"`）；codegen 种子模板 `modules/system/migrations/20261011000002_codegen_menus.up.sql`/`.down.sql`（COALESCE 父目录、按业务键 NOT EXISTS、按钮 JOIN 子表、role_menus JOIN roles、down 两段 DELETE）；`modules/infra/migrations/migrate_test.go` 的 `chdirRepoRoot/openMultiStmtDB/runSystem` 夹具与 `TestInfraSeedMenus_SQLFileExecutedTwiceStable` 直跑双次模式；`permission_routes_test.go` 的 `TestInfraSeed_PermsRegistered` 扫描模式（`os.ReadDir` + 文件名过滤 + `permRe` + `checked==0` 自失效断言）；`localPage<T>(rows, currentPage, pageSize): T[]`（`#/utils/local-page`）与 `SystemPostsPage` 的 size=200+本地切页网格模式（`requestClient` 拦截器解包 `{data,total}` 后 **total 丢失**，`request.ts:84-90` 的 `dataField` 只取 `response.data`）；`SystemMenusPage` 编辑模式（`editingId`/`onCreate`/`onEdit` 的 setState→open→setValues 入队顺序注释、`onOpenChange` 分支、`handleSubmit` 分支）；`v-access:code` **精确匹配**语义（`packages/effects/access/src/directive.ts` → `hasAccessByCodes` 是 `Set.has` 逐字比对，无通配展开；`UserPermCodes` 返回 `UserMenus` 的原始 `permission` 且**不过滤 type** → 按钮行权限码会到达前端；admin 角色由迁移 role_menus JOIN + seeder `SetRoleMenus` 全量绑定兜底）；`access.ts` 的 `pageMap = import.meta.glob('../views/**/*.vue')` + `normalizeViewPath`（去 `../` 前缀、补 `.vue` 后缀）→ component 值 `views/system/Oauth2ClientsPage` 自动解析，**零路由文件改动**；表单组件 `'VbenInputPassword'`/`'Textarea'`（`BaseFormComponentType`）；门禁 `pnpm -C apps/web-antd typecheck`。
+- Consumes: Task 13 已注册的 `"oauth2:client": {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"}`（`permission_routes.go`——本任务**不碰**该文件，只依赖它先落地）与守护例 `TestPermissionRoutes_Oauth2ClientRegistered`；Task 13 admin 端点语义（`GET /admin/oauth2/clients?page&size` → 200 `{data,total}`，page/size 归正 1/20、size 上限 200；`POST` → `{data}` 且 `createClientResponse` 明文 `client_secret` 仅创建回显一次；`PUT /clients/:id` → `{data}` 且 secret 留空=保留旧值、`json:"-"` 恒不回显；`DELETE /clients/:id` → `{"status":"ok"}`）；Task 7 `model.Oauth2Client` JSON 字段名（`id/client_id/client_name/website/grant_types/redirect_uris/account_types/scopes/activity/created_at/updated_at`，`ClientSecret json:"-"`）；codegen 种子模板 `modules/system/migrations/20261011000002_codegen_menus.up.sql`/`.down.sql`（COALESCE 父目录、按业务键 NOT EXISTS、按钮 JOIN 子表、role_menus JOIN roles、down 两段 DELETE）；`modules/system/infra/migrations/migrate_test.go` 的 `chdirRepoRoot/openMultiStmtDB/runSystem` 夹具与 `TestInfraSeedMenus_SQLFileExecutedTwiceStable` 直跑双次模式；`permission_routes_test.go` 的 `TestInfraSeed_PermsRegistered` 扫描模式（`os.ReadDir` + 文件名过滤 + `permRe` + `checked==0` 自失效断言）；`localPage<T>(rows, currentPage, pageSize): T[]`（`#/utils/local-page`）与 `SystemPostsPage` 的 size=200+本地切页网格模式（`requestClient` 拦截器解包 `{data,total}` 后 **total 丢失**，`request.ts:84-90` 的 `dataField` 只取 `response.data`）；`SystemMenusPage` 编辑模式（`editingId`/`onCreate`/`onEdit` 的 setState→open→setValues 入队顺序注释、`onOpenChange` 分支、`handleSubmit` 分支）；`v-access:code` **精确匹配**语义（`packages/effects/access/src/directive.ts` → `hasAccessByCodes` 是 `Set.has` 逐字比对，无通配展开；`UserPermCodes` 返回 `UserMenus` 的原始 `permission` 且**不过滤 type** → 按钮行权限码会到达前端；admin 角色由迁移 role_menus JOIN + seeder `SetRoleMenus` 全量绑定兜底）；`access.ts` 的 `pageMap = import.meta.glob('../views/**/*.vue')` + `normalizeViewPath`（去 `../` 前缀、补 `.vue` 后缀）→ component 值 `views/system/Oauth2ClientsPage` 自动解析，**零路由文件改动**；表单组件 `'VbenInputPassword'`/`'Textarea'`（`BaseFormComponentType`）；门禁 `pnpm -C apps/web-antd typecheck`。
 - Produces（终测消费——本任务为计划最后一个功能任务）：
 
 ```go
@@ -6394,7 +6394,7 @@ func TestOauth2Seed_PermsRegistered(t *testing.T)
 // 扫 modules/system/migrations/*oauth2_client_menu* 内 '(oauth2:[a-z0-9_:]+)' 字面量，
 // 每个权限码前缀必须在 permissionRoutes；checked==0 → t.Error 自失效。
 
-// modules/infra/migrations/migrate_test.go 追加：
+// modules/system/infra/migrations/migrate_test.go 追加：
 const oauth2SeedSQLPath = "modules/system/migrations/20261011000003_oauth2_client_menu.up.sql"
 func oauth2SeedMenuCount(t *testing.T, raw *sql.DB) int64
 // 口径：(path IN ('/oauth2','/oauth2/clients') AND type IN ('dir','menu') AND deleted=0)
@@ -6465,7 +6465,7 @@ func TestOauth2Seed_PermsRegistered(t *testing.T) {
 }
 ```
 
-**(b) `modules/infra/migrations/migrate_test.go` 文件末尾追加**（import 块无需变——`os/sql/testing` 已齐）：
+**(b) `modules/system/infra/migrations/migrate_test.go` 文件末尾追加**（import 块无需变——`os/sql/testing` 已齐）：
 
 ```go
 const oauth2SeedSQLPath = "modules/system/migrations/20261011000003_oauth2_client_menu.up.sql"
@@ -6517,7 +6517,7 @@ Run: `CGO_ENABLED=0 go test ./modules/system/service/ -run TestOauth2Seed -v`
 
 Expected: FAIL —— `--- FAIL: TestOauth2Seed_PermsRegistered`，错误 `oauth2 菜单迁移未扫到任何权限码——文件名或正则失配，测试失效`（种子文件尚不存在，`checked==0`）。
 
-Run（DSN 可达时）: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/infra/migrations/ -run TestOauth2MenuSeed -v`
+Run（DSN 可达时）: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/system/infra/migrations/ -run TestOauth2MenuSeed -v`
 
 Expected: FAIL —— `open modules/system/migrations/20261011000003_oauth2_client_menu.up.sql: no such file or directory`；若 `DB_DSN` 未配置则 SKIP（集成 RED 以本条为准，门禁在 Step 4 统一跑）。
 
@@ -6591,7 +6591,7 @@ Run: `CGO_ENABLED=0 go test ./modules/system/service/ -run "TestOauth2Seed|TestP
 
 Expected: PASS —— `TestOauth2Seed_PermsRegistered` 扫到 5 处字面量（up.sql：页面码 1 + 按钮码 3 + 按钮 WHERE 引用 1；down.sql 仅 LIKE 与 path 字面量不入正则），全部 `permPrefix → oauth2:client` 命中 Task 13 注册的键。
 
-Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/infra/migrations/ -run "TestOauth2MenuSeed|TestInfraSeedMenus" -v`
+Run: `DB_DSN=$(grep 'dsn:' alexgo-server/configs/config.yaml | sed 's/.*dsn: "//;s/".*//') go test -tags=integration ./modules/system/infra/migrations/ -run "TestOauth2MenuSeed|TestInfraSeedMenus" -v`
 
 Expected: PASS —— `TestOauth2MenuSeed_SQLFileExecutedTwiceStable`：baseline 后 `before=5`，直跑两遍 `after=5`；同包既有 codegen 断言（恒 5）不受影响（谓词仅 `infra:codegen%`）。
 
@@ -6602,7 +6602,7 @@ Expected: 全绿（本任务未动生产代码，仅测试与 SQL；e2e 带 `int
 - [ ] **Step 5: Commit（后端）**
 
 ```bash
-git add modules/system/service/permission_routes_test.go modules/system/migrations/20261011000003_oauth2_client_menu.up.sql modules/system/migrations/20261011000003_oauth2_client_menu.down.sql modules/infra/migrations/migrate_test.go
+git add modules/system/service/permission_routes_test.go modules/system/migrations/20261011000003_oauth2_client_menu.up.sql modules/system/migrations/20261011000003_oauth2_client_menu.down.sql modules/system/infra/migrations/migrate_test.go
 git commit -m "feat(system): OAuth2 客户端管理菜单种子 + 权限码注册扫描"
 ```
 

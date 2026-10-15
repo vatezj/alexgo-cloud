@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - spec M3 范围（§8）：预览/ZIP API + 后台页面能力 + CLI 改读配置表 + `make generate-*` 切换；**M4（前端模板族）/M5（树表）/M6（主子表）/M7（删旧工具、codegen-smoke 文档化）不在本计划**。
-- 单向依赖：`modules/infra` → `pkg/codegen`；`pkg/codegen` 不 import `modules/*`。映射器放 `modules/infra/service`（CLI 亦可 import）。
+- 单向依赖：`modules/system/infra` → `pkg/codegen`；`pkg/codegen` 不 import `modules/*`。映射器放 `modules/system/infra/service`（CLI 亦可 import）。
 - 响应信封对齐仓库惯例：预览 `{data:[{path,content}]}`、下载 `application/zip` 流 + `Content-Disposition`、错误 `{error}`；HTTP 只用 **400/500**，业务/配置/生成类错误一律 400（对齐 getTable/import 先例）。
 - **预览/ZIP 纯内存**（spec §6）：引擎失败零副作用；CLI 全部渲染成功才写盘；写盘沿用「已存在不覆盖，`-force` 才覆盖」。
 - **权限**：`permission_routes.go` 已有 `infra:codegen` + `/api/admin/infra/codegen/*` 通配，新端点免迁移；前端预览/下载按钮复用页面权限码 `infra:codegen`（无新按钮码，免 seed）。
@@ -43,14 +43,14 @@
 ## File Structure
 
 ```
-modules/infra/service/config_to_table.go                    # Task 1：TableFromConfig 映射器
-modules/infra/service/config_to_table_test.go                # Task 1：表驱动/边界测试
-modules/infra/service/codegen_service.go                     # Task 2：接口 + Preview/Download/generate/zipFiles；ctor 加 unitTestEnable
-modules/infra/service/codegen_service_test.go                # Task 2：newSvc 改签名 + Preview/Download 错误测试
-modules/infra/service/acceptance_test.go                     # Task 2：TestM3_Acceptance_PreviewDownload
-modules/infra/module.go                                      # Task 2：newCodegenService 注入 *config.Config
-modules/infra/controller/admin/codegen_controller.go         # Task 3：POST preview/download；删 generate 占位
-modules/infra/controller/admin/codegen_controller_test.go    # Task 3：stub 加两方法；占位测试换新三测试
+modules/system/infra/service/config_to_table.go                    # Task 1：TableFromConfig 映射器
+modules/system/infra/service/config_to_table_test.go                # Task 1：表驱动/边界测试
+modules/system/infra/service/codegen_service.go                     # Task 2：接口 + Preview/Download/generate/zipFiles；ctor 加 unitTestEnable
+modules/system/infra/service/codegen_service_test.go                # Task 2：newSvc 改签名 + Preview/Download 错误测试
+modules/system/infra/service/acceptance_test.go                     # Task 2：TestM3_Acceptance_PreviewDownload
+modules/system/infra/module.go                                      # Task 2：newCodegenService 注入 *config.Config
+modules/system/infra/controller/admin/codegen_controller.go         # Task 3：POST preview/download；删 generate 占位
+modules/system/infra/controller/admin/codegen_controller_test.go    # Task 3：stub 加两方法；占位测试换新三测试
 apps/web-antd/src/api/infra.ts                               # Task 4：CodegenFile/previewCodegen/downloadCodegen/saveBlob
 apps/web-antd/src/views/infra/codegen/index.vue              # Task 4：预览 Modal + 行内预览/下载 + 启用工具栏按钮
 tools/codegen/main.go                                        # Task 5：配置表默认模式 + -import 分支 + filterConfigTables
@@ -65,16 +65,16 @@ README.md                                                    # Task 7：命令�
 ### Task 1: 配置行 → 引擎模型映射器（TableFromConfig）
 
 **Files:**
-- Create: `modules/infra/service/config_to_table.go`
-- Test: `modules/infra/service/config_to_table_test.go`
+- Create: `modules/system/infra/service/config_to_table.go`
+- Test: `modules/system/infra/service/config_to_table_test.go`
 
 **Interfaces:**
-- Consumes: `modules/infra/model.CodegenTable{Name,TableComment,Module,BusinessName,ClassName,TemplateType int,FrontType int,ParentTableID uint64,Remark}` / `CodegenColumn{Name,Type,Comment,GoType,JSONName,IsPK,AutoIncrement,Nullable,HTMLType,ListEnable,FormEnable,QueryEnable,QueryOperation,ListRequired,FormRequired,DictType,SortOrder,Deprecated}`；`pkg/codegen/naming.ToGoName(col string) string`；`pkg/codegen/builder.BuildGormTag(c metadata.ColumnMeta) string`（只用 Name/Key/Extra）；`pkg/codegen/model.Table/Column/TemplateTypeSingle/FrontTypeVben5Antd/ErrTableInvalid/ErrColumnInvalid`。
+- Consumes: `modules/system/infra/model.CodegenTable{Name,TableComment,Module,BusinessName,ClassName,TemplateType int,FrontType int,ParentTableID uint64,Remark}` / `CodegenColumn{Name,Type,Comment,GoType,JSONName,IsPK,AutoIncrement,Nullable,HTMLType,ListEnable,FormEnable,QueryEnable,QueryOperation,ListRequired,FormRequired,DictType,SortOrder,Deprecated}`；`pkg/codegen/naming.ToGoName(col string) string`；`pkg/codegen/builder.BuildGormTag(c metadata.ColumnMeta) string`（只用 Name/Key/Extra）；`pkg/codegen/model.Table/Column/TemplateTypeSingle/FrontTypeVben5Antd/ErrTableInvalid/ErrColumnInvalid`。
 - Produces: `func TableFromConfig(t *model.CodegenTable, cols []*model.CodegenColumn) (*cgmodel.Table, error)` —— Task 2（service 生成链 `generate()`）直接调用；Task 5 的 CLI 经 `svc.Preview` 间接受益。注意 `CodegenTable.ParentTableID` 是 **uint64** 而 `cgmodel.Table.ParentTableID` 是 **int64**，须转换。
 
 - [ ] **Step 1: 写失败测试**
 
-新建 `modules/infra/service/config_to_table_test.go`：
+新建 `modules/system/infra/service/config_to_table_test.go`：
 
 ```go
 package service
@@ -84,7 +84,7 @@ import (
 	"strings"
 	"testing"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 )
 
@@ -201,12 +201,12 @@ func TestTableFromConfig_RejectsEmpty(t *testing.T) {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `go test ./modules/infra/service/ -run TestTableFromConfig -v`
+Run: `go test ./modules/system/infra/service/ -run TestTableFromConfig -v`
 Expected: FAIL — `undefined: TableFromConfig`
 
 - [ ] **Step 3: 最小实现**
 
-新建 `modules/infra/service/config_to_table.go`：
+新建 `modules/system/infra/service/config_to_table.go`：
 
 ```go
 package service
@@ -215,7 +215,7 @@ import (
 	"fmt"
 	"sort"
 
-	"alexGo-cloud/modules/infra/model"
+	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
@@ -302,15 +302,15 @@ func TableFromConfig(t *model.CodegenTable, cols []*model.CodegenColumn) (*cgmod
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `go test ./modules/infra/service/ -run TestTableFromConfig -v`
+Run: `go test ./modules/system/infra/service/ -run TestTableFromConfig -v`
 Expected: PASS（3 个测试全绿）
-Run: `go vet ./modules/infra/service/`
+Run: `go vet ./modules/system/infra/service/`
 Expected: 无输出
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add modules/infra/service/config_to_table.go modules/infra/service/config_to_table_test.go
+git add modules/system/infra/service/config_to_table.go modules/system/infra/service/config_to_table_test.go
 git commit -m "feat(codegen): 配置行→引擎模型映射器（重算 GoName/GormTag，剔除 deprecated）"
 ```
 
@@ -319,10 +319,10 @@ git commit -m "feat(codegen): 配置行→引擎模型映射器（重算 GoName/
 ### Task 2: Service Preview / Download 编排
 
 **Files:**
-- Modify: `modules/infra/service/codegen_service.go`（接口 + struct + ctor + generate/zipFiles）
-- Modify: `modules/infra/service/codegen_service_test.go`（newSvc 改签名 + 错误测试）
-- Modify: `modules/infra/module.go`（newCodegenService 注入 cfg）
-- Test: `modules/infra/service/acceptance_test.go`（M3 验收链）
+- Modify: `modules/system/infra/service/codegen_service.go`（接口 + struct + ctor + generate/zipFiles）
+- Modify: `modules/system/infra/service/codegen_service_test.go`（newSvc 改签名 + 错误测试）
+- Modify: `modules/system/infra/module.go`（newCodegenService 注入 cfg）
+- Test: `modules/system/infra/service/acceptance_test.go`（M3 验收链）
 
 **Interfaces:**
 - Consumes: Task 1 的 `TableFromConfig`；已有 `s.GetTable(ctx, id) (*model.CodegenTable, []*model.CodegenColumn, error)`；`codegen.Generate(tables []*cgmodel.Table, opts codegen.Options{UnitTestEnable bool}) ([]cgmodel.GeneratedFile, error)`（`GeneratedFile{Path string; Content []byte}`，按 Path 排序、聚合错误）；`cgmodel.ErrTableInvalid`（service 文件里 pkg 模型的既有别名就是 `cgmodel`，第 13 行）。
@@ -334,7 +334,7 @@ git commit -m "feat(codegen): 配置行→引擎模型映射器（重算 GoName/
 
 - [ ] **Step 1: 写失败测试（验收链）**
 
-在 `modules/infra/service/acceptance_test.go` 末尾追加（import 块补 `archive/zip`、`bytes`、`strings`）：
+在 `modules/system/infra/service/acceptance_test.go` 末尾追加（import 块补 `archive/zip`、`bytes`、`strings`）：
 
 ```go
 // TestM3_Acceptance_PreviewDownload 是 spec §8 M3 验收链（服务层）：
@@ -402,7 +402,7 @@ func TestM3_Acceptance_PreviewDownload(t *testing.T) {
 }
 ```
 
-再在 `modules/infra/service/codegen_service_test.go` 追加：
+再在 `modules/system/infra/service/codegen_service_test.go` 追加：
 
 ```go
 // 空入参 / 未知 id：不渲染、不静默当全表（Review Focus #3）。
@@ -426,12 +426,12 @@ func TestPreview_Download_Errors(t *testing.T) {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `go test ./modules/infra/service/ -run 'TestM3_Acceptance|TestPreview_Download' -v`
+Run: `go test ./modules/system/infra/service/ -run 'TestM3_Acceptance|TestPreview_Download' -v`
 Expected: FAIL — 编译错（`svc.Preview undefined`）与 `NewCodegenService` 参数数不匹配（先只应出现前者；newSvc 改签名在 Step 3 一起做则此步先看到 undefined Preview）
 
 - [ ] **Step 3: 实现 service**
 
-`modules/infra/service/codegen_service.go` 三处修改：
+`modules/system/infra/service/codegen_service.go` 三处修改：
 
 (a) import 块追加（保持分组习惯）：
 
@@ -537,7 +537,7 @@ func zipFiles(files []cgmodel.GeneratedFile) ([]byte, error) {
 	svc := NewCodegenService(r, repo, builder.Options{Module: "infra"}, true)
 ```
 
-(e) `modules/infra/module.go` 装配改签名（`config.Config` fx 图已有提供者，`newMetadataReader` 在用）：
+(e) `modules/system/infra/module.go` 装配改签名（`config.Config` fx 图已有提供者，`newMetadataReader` 在用）：
 
 ```go
 // newCodegenService 组装业务层，注入统一构建选项与单测骨架开关。
@@ -557,9 +557,9 @@ func newCodegenService(
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `go test ./modules/infra/service/ -v`
+Run: `go test ./modules/system/infra/service/ -v`
 Expected: 全绿（含新增 TestM3_Acceptance_PreviewDownload、TestPreview_Download_Errors 与全部旧测试）
-Run: `go vet ./modules/infra/service/ ./modules/infra/`
+Run: `go vet ./modules/system/infra/service/ ./modules/system/infra/`
 Expected: 无输出
 
 - [ ] **Step 5: fx 依赖图干跑 + 提交**
@@ -568,8 +568,8 @@ Run: `go test ./alexgo-server/cmd/`
 Expected: PASS。**若**挂在这 5 包预存 cgo 链接失败（tapi/Security.tbd）上，如实记录为预存并继续（DI 变更只加了一个已被 `newMetadataReader` 证明可注入的 `*config.Config` 参数）。
 
 ```bash
-git add modules/infra/service/codegen_service.go modules/infra/service/codegen_service_test.go \
-  modules/infra/service/acceptance_test.go modules/infra/module.go
+git add modules/system/infra/service/codegen_service.go modules/system/infra/service/codegen_service_test.go \
+  modules/system/infra/service/acceptance_test.go modules/system/infra/module.go
 git commit -m "feat(codegen): service Preview/ZIP 编排（纯内存渲染，聚合错误）"
 ```
 
@@ -578,8 +578,8 @@ git commit -m "feat(codegen): service Preview/ZIP 编排（纯内存渲染，聚
 ### Task 3: Controller `POST /preview` + `POST /download`，移除 generate 占位
 
 **Files:**
-- Modify: `modules/infra/controller/admin/codegen_controller.go`（路由、两个 handler、errOr 改写、删占位）
-- Modify: `modules/infra/controller/admin/codegen_controller_test.go`（stub 扩两方法、删占位测试、加三个测试）
+- Modify: `modules/system/infra/controller/admin/codegen_controller.go`（路由、两个 handler、errOr 改写、删占位）
+- Modify: `modules/system/infra/controller/admin/codegen_controller_test.go`（stub 扩两方法、删占位测试、加三个测试）
 
 **Interfaces:**
 - Consumes: Task 2 的 `Preview/Download` 签名；已有 `fail(c, status, err)`、`errOr(err, fallback)`、`doJSON(t, r, method, path, body)`、`newTestRouter(stub)`。
@@ -682,7 +682,7 @@ func TestDownload_ZipStream(t *testing.T) {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `go test ./modules/infra/controller/admin/ -run 'TestPreview|TestDownload' -v`
+Run: `go test ./modules/system/infra/controller/admin/ -run 'TestPreview|TestDownload' -v`
 Expected: FAIL — `stubService does not implement service.CodegenService`（Preview/Download 未实现）或路由 404
 
 - [ ] **Step 3: 实现 controller**
@@ -756,16 +756,16 @@ func errOr(err error, fallback string) error {
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `go test ./modules/infra/... -v`（integration tag 的迁移测试不跑）
-Expected: 全绿；确认 `TestGenerate_ReservedForM3` 已不存在：`grep -n "M3" modules/infra/controller/admin/codegen_controller_test.go` 无占位断言残留。
-Run: `go vet ./modules/infra/...`
+Run: `go test ./modules/system/infra/... -v`（integration tag 的迁移测试不跑）
+Expected: 全绿；确认 `TestGenerate_ReservedForM3` 已不存在：`grep -n "M3" modules/system/infra/controller/admin/codegen_controller_test.go` 无占位断言残留。
+Run: `go vet ./modules/system/infra/...`
 Expected: 无输出
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add modules/infra/controller/admin/codegen_controller.go \
-  modules/infra/controller/admin/codegen_controller_test.go
+git add modules/system/infra/controller/admin/codegen_controller.go \
+  modules/system/infra/controller/admin/codegen_controller_test.go
 git commit -m "feat(codegen): POST preview/download 端点，移除 generate M3 占位"
 ```
 
@@ -1057,7 +1057,7 @@ git commit -m "feat(web-antd): 代码预览弹窗（文件树+代码+ZIP）与�
 - Test: `tools/codegen/main_test.go`（过滤器测试）
 
 **Interfaces:**
-- Consumes: Task 2 的 `service.NewCodegenService(reader, repo, opts, unitTestEnable bool)` 与 `svc.Preview(ctx, ids)`、`svc.ImportTable(ctx, name)`；`repository.NewCodegenRepository(gdb *gorm.DB)`、`repo.ListAllTables(ctx)`、`repo.ImportedTableNames(ctx)`；`inframodel.CodegenTable.Name/Module/ID`（import 别名 `inframodel "alexGo-cloud/modules/infra/model"`——main.go 的 `model` 已被 `pkg/codegen/model` 占用，勿直接用 `model.CodegenTable`）；既有 `writeFiles/parseTables/schemaFromDSN`（**不动**）。smoke 集成测试（`-tags integration`）直接调 pkg 层，不受本任务影响。
+- Consumes: Task 2 的 `service.NewCodegenService(reader, repo, opts, unitTestEnable bool)` 与 `svc.Preview(ctx, ids)`、`svc.ImportTable(ctx, name)`；`repository.NewCodegenRepository(gdb *gorm.DB)`、`repo.ListAllTables(ctx)`、`repo.ImportedTableNames(ctx)`；`inframodel.CodegenTable.Name/Module/ID`（import 别名 `inframodel "alexGo-cloud/modules/system/infra/model"`——main.go 的 `model` 已被 `pkg/codegen/model` 占用，勿直接用 `model.CodegenTable`）；既有 `writeFiles/parseTables/schemaFromDSN`（**不动**）。smoke 集成测试（`-tags integration`）直接调 pkg 层，不受本任务影响。
 - Produces: CLI flag 契约（Task 6/7 依赖）：
   - 配置模式（默认）：`go run ./tools/codegen [-module=order] [-tables=a,b] [-out .] [-force] [-dry-run] [-no-tests] [-dsn ...]` —— 过滤已导入配置表（空 = 全部），经 `svc.Preview` 渲染后写盘；无匹配 → 报错退出（非 0）。
   - 导入模式：追加 `-import`（**必须配 `-module`**），先现场读元数据写配置表（已导入的跳过、幂等），再同上生成；`-schema` 仅此分支用。
@@ -1065,7 +1065,7 @@ git commit -m "feat(web-antd): 代码预览弹窗（文件树+代码+ZIP）与�
 
 - [ ] **Step 1: 写失败测试（过滤器）**
 
-`tools/codegen/main_test.go`：import 块追加 `inframodel "alexGo-cloud/modules/infra/model"`（该文件现有 `model` 是 `pkg/codegen/model`，别冲突），末尾追加：
+`tools/codegen/main_test.go`：import 块追加 `inframodel "alexGo-cloud/modules/system/infra/model"`（该文件现有 `model` 是 `pkg/codegen/model`，别冲突），末尾追加：
 
 ```go
 // 配置模式选表过滤：module/tables 皆可空（空=不过滤）；无匹配必须报错（Review Focus #5）。
@@ -1119,7 +1119,7 @@ Expected: FAIL — `undefined: filterConfigTables`
 
 (a) import 块四处改动：
 - **删除** `"alexGo-cloud/pkg/codegen"`（直调 `codegen.Generate` 的路径没了，生成统一走 service）
-- **追加** `inframodel "alexGo-cloud/modules/infra/model"`、`"alexGo-cloud/modules/infra/repository"`、`"alexGo-cloud/modules/infra/service"`、`"gorm.io/driver/mysql"`（gorm 用，注意与已有 `"github.com/go-sql-driver/mysql"` 不同包，后者被 `schemaFromDSN` 的 `mysql.ParseDSN` 引用**保留**）、`"gorm.io/gorm"`
+- **追加** `inframodel "alexGo-cloud/modules/system/infra/model"`、`"alexGo-cloud/modules/system/infra/repository"`、`"alexGo-cloud/modules/system/infra/service"`、`"gorm.io/driver/mysql"`（gorm 用，注意与已有 `"github.com/go-sql-driver/mysql"` 不同包，后者被 `schemaFromDSN` 的 `mysql.ParseDSN` 引用**保留**）、`"gorm.io/gorm"`
 - `builder`/`metadata`/`database/sql`/`pkg/config` 均保留（import 分支用）
 - `"alexGo-cloud/pkg/codegen/model"` 保持原样（别名仍为 `model`，供 `ErrMetadataUnreachable`、`writeFiles` 的 `model.GeneratedFile` 用）
 
@@ -1525,7 +1525,7 @@ Expected: 全部非 0 退出仅出现在「故意无匹配」场景；正常场�
 - [ ] **Step 4: 回归面**
 
 ```bash
-go test ./modules/infra/... ./tools/codegen/ ./pkg/codegen/...
+go test ./modules/system/infra/... ./tools/codegen/ ./pkg/codegen/...
 cd apps/web-antd && pnpm run typecheck
 ```
 

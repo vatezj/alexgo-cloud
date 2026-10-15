@@ -1499,7 +1499,7 @@ Expected: FAIL（`cfg.Codegen` 未定义，编译错误）
 在 `pkg/config/config.go` 的 `Config` struct 中（与其他段平级）追加：
 
 ```go
-	// Codegen：代码生成器（modules/infra + tools/codegen）配置。
+	// Codegen：代码生成器（modules/system/infra + tools/codegen）配置。
 	Codegen struct {
 		// UnitTestEnable：生成代码时是否附带单元测试骨架（默认开启）。
 		UnitTestEnable bool `mapstructure:"unit_test_enable"`

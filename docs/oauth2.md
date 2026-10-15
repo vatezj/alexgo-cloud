@@ -5,7 +5,7 @@
 
 ## 0. 概览
 
-`modules/oauth2` 是全站唯一的签发点：三端登录（后台 / app / member）内部都走统一登录，token 为**不透明令牌**（`auth.mode=opaque`，DB 落库；`jwt` 模式下不支持 refresh）。
+`modules/system/oauth2` 是全站唯一的签发点：三端登录（后台 / app / member）内部都走统一登录，token 为**不透明令牌**（`auth.mode=opaque`，DB 落库；`jwt` 模式下不支持 refresh）。
 
 **信封约定**（与 admin 接口不同）：
 

@@ -24,13 +24,13 @@ alexGo-cloud 现有 3 套重叠的生成器：
 |---|---|
 | 总体范围 | D：全面对齐 yudao（引擎 + 后台界面 + 前端 + 高级表结构） |
 | 代码落地方式 | C：后台预览 + ZIP 下载 与 CLI 写入仓库并存，共用同一引擎与模板 |
-| 服务端归属 | A：新建 `modules/infra` |
+| 服务端归属 | A：新建 `modules/system/infra` |
 | 前端模板覆盖 | A：只做 `apps/web-antd`（vben5 + ant-design-vue），目录保留 front-type 扩展维度 |
 | 高级特性范围 | C：单表 + 树表 + 三种主子表模式全部进第一期 |
 | 旧生成器处置 | A：新引擎验证通过后删除 3 套旧工具与旧模板 |
 | 测试模板 | A：可配置开关 `unit-test-enable`，默认开启，前后端测试骨架都生成 |
 | 数据库范围 | A：仅 MySQL；元数据读取抽象为 `MetadataReader` 接口保留扩展位 |
-| 架构方案 | 方案一：引擎独立成 `pkg/codegen` 纯库，`modules/infra` 做宿主，CLI 复用同一库 |
+| 架构方案 | 方案一：引擎独立成 `pkg/codegen` 纯库，`modules/system/infra` 做宿主，CLI 复用同一库 |
 
 ### 非目标（YAGNI，明确不做）
 
@@ -49,7 +49,7 @@ alexGo-cloud 现有 3 套重叠的生成器：
 └──────────────────────┬──────────────────────────┘
                        │ admin REST API（RBAC 权限点）
 ┌──────────────────────▼──────────────────────────┐
-│ modules/infra（新模块，fx 注册进现有进程）          │
+│ modules/system/infra（新模块，fx 注册进现有进程）          │
 │  controller → service（编排） → repository        │
 └──────┬───────────────────────────────┬──────────┘
        │ ①配置读写                      │ ②生成请求
@@ -76,7 +76,7 @@ alexGo-cloud 现有 3 套重叠的生成器：
 
 - 配置表存"**元数据快照 + 生成配置**"（yudao 同款）：导入时快照表结构，表结构变化后可"同步"，用户配置不丢。
 - 引擎无状态：输入 = 配置表行 + 元数据，输出 = `[]GeneratedFile{Path, Content}`。预览、ZIP、CLI 是消费同一输出的三种方式。
-- 依赖方向：`modules/infra` → `pkg/codegen`；`pkg/codegen` 只依赖 MySQL 驱动和标准库，不 import `modules/*`、不依赖 fx。
+- 依赖方向：`modules/system/infra` → `pkg/codegen`；`pkg/codegen` 只依赖 MySQL 驱动和标准库，不 import `modules/*`、不依赖 fx。
 
 ## 3. `pkg/codegen` 核心组件与模板体系
 
@@ -137,12 +137,12 @@ pkg/codegen/templates/
 | prettyCode | `postprocess`（go/format + 碰撞校验） |
 | DataGenerator | 不做 |
 
-## 4. `modules/infra` — 配置存储与 admin API
+## 4. `modules/system/infra` — 配置存储与 admin API
 
 ### 模块结构（对齐现有 `modules/*/` 惯例）
 
 ```
-modules/infra/
+modules/system/infra/
 ├── module.go            # fx 模块注册（同 system/member/order 模式）
 ├── model/               # CodegenTable、CodegenColumn（gorm）
 ├── repository/          # 配置表读写
@@ -238,7 +238,7 @@ go run ./tools/codegen --dsn=... --tables=t1 --import       # 现场读元数据
 | `builder/naming` `builder/typing` | 表驱动单测：表名→类名/模块、MySQL 类型→Go/控件、树表/主子表命名 |
 | `template` + `postprocess` | **Golden 测试**：fixture 表 → 渲染 → `testdata/` 期望输出逐字节比对（go/format 后）；覆盖 单表/树表/主子表 × 后端/前端 |
 | `metadata/mysql` | 接口层 fake reader 测上层；MySQL 实现 docker-compose 集成测试（`-tags integration`） |
-| `modules/infra` service | fake repository + 真引擎（fixture 模板），测导入/同步 diff/预览编排 |
+| `modules/system/infra` service | fake repository + 真引擎（fixture 模板），测导入/同步 diff/预览编排 |
 | controller | 按现有 `*_test.go` HTTP 测试惯例 |
 | **端到端冒烟** | `make codegen-smoke`：order 真实表生成到临时目录 → `go build`/`go vet` 通过 → 前端产物 golden 比对 |
 
@@ -249,7 +249,7 @@ go run ./tools/codegen --dsn=... --tables=t1 --import       # 现场读元数据
 | # | 里程碑 | 内容 | 验收标准 |
 |---|---|---|---|
 | **M1** | 引擎地基 | `pkg/codegen` 全组件 + 单表后端模板族（含测试骨架）+ CLI 草稿模式（`--dsn` 直读写盘） | golden 通过；order 真实表产物 `go build ./...` 通过 |
-| **M2** | 配置持久化 | `modules/infra`：迁移建表 + 导入/同步 + admin API + 菜单权限 seed | HTTP 测试：导入→改配置→同步 diff 通过 |
+| **M2** | 配置持久化 | `modules/system/infra`：迁移建表 + 导入/同步 + admin API + 菜单权限 seed | HTTP 测试：导入→改配置→同步 diff 通过 |
 | **M3** | 在线链路打通 | 预览/ZIP API + 后台三页面 + CLI 改读配置表 + `make generate-*` 切换 | 浏览器完成"导入→配置→预览→ZIP"；CLI 与旧命令用法等价 |
 | **M4** | 前端生成 | vben5_antd 单表模板族（api/list/form/drawer/types + Vitest 测试骨架）+ 接入预览与 CLI | golden 通过；生成页在 web-antd 本地可打开 |
 | **M5** | 树表 | 模板类型=2 后端+前端变体 + 页面树交互配置 | 树表族 golden + 冒烟 |

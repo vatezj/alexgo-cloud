@@ -1388,7 +1388,7 @@ git commit -m "feat(codegen): 树表前端 list/form overlay（spec §10.4）
 - Modify: `apps/web-antd/src/views/infra/codegen/index.vue`（EditForm schema + `onEdit` setValues）
 
 **Interfaces:**
-- Consumes: `updateCodegenTable(id, payload: Partial<CodegenTable>)`（`apps/web-antd/src/api/infra.ts` 已有 `template_type: number // 1 单表 2 树 3 主子`）；后端 `UpdateTable` 白名单 `if t.TemplateType != 0 { existing.TemplateType = t.TemplateType }`（`modules/infra/service/codegen_service.go`，已支持、仅缺 UI 入口）；`model.TemplateTypeSingle/Tree/MainSub = 1/2/3`；grid 已有 `field: 'template_type'` 列（index.vue ~71 行）。
+- Consumes: `updateCodegenTable(id, payload: Partial<CodegenTable>)`（`apps/web-antd/src/api/infra.ts` 已有 `template_type: number // 1 单表 2 树 3 主子`）；后端 `UpdateTable` 白名单 `if t.TemplateType != 0 { existing.TemplateType = t.TemplateType }`（`modules/system/infra/service/codegen_service.go`，已支持、仅缺 UI 入口）；`model.TemplateTypeSingle/Tree/MainSub = 1/2/3`；grid 已有 `field: 'template_type'` 列（index.vue ~71 行）。
 - Produces: 编辑弹窗可切 1/2（3 置灰），PUT 携带 `template_type` 落库。无 Go 侧改动。
 
 - [ ] **Step 1: 改 UI（先写后测，本任务无独立单测——门禁在 Step 2）**

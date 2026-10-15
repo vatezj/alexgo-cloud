@@ -40,7 +40,7 @@ alexGo-cloud 现有 3 套各自为政的登录：
 
 ```
                           ┌────────────────────────────┐
-   第三方应用 ──授权码/机机──▶│  modules/oauth2（新模块）    │
+   第三方应用 ──授权码/机机──▶│  modules/system/oauth2（新模块）    │
    (外部系统)              │  · /oauth2/authorize      │
                           │  · /oauth2/token          │
    管理后台 SPA ──登录/SSO──▶│  · /oauth2/authorize/login│──▶ 签发 JWT（复用 pkg/auth）
@@ -59,14 +59,14 @@ alexGo-cloud 现有 3 套各自为政的登录：
 
 1. **账号存储不动**：oauth2 模块不建账号表；凭据校验走 `UserAuthenticator`（system 实现）与 `MemberAuthenticator`（member 实现）两个 Go 接口，按 `account_type` 路由。users/members 表结构零改动。
 2. **token 签发仍走 `pkg/auth`**：access token 保持 JWT 格式，网关中间件、Casbin 判定零改动；oauth2 只是「谁有权拿到这个 JWT」的新守门人。
-3. **oauth2 模块自治**：client 表、授权码、refresh token 都在 `modules/oauth2/migrations`，fx 装配同 infra 模块模式（实现 `server.Module`，路由挂 `/api` 组）。
+3. **oauth2 模块自治**：client 表、授权码、refresh token 都在 `modules/system/oauth2/migrations`，fx 装配同 infra 模块模式（实现 `server.Module`，路由挂 `/api` 组）。
 4. **老登录端点降级为兼容层**：vben/app/member 登录端点内部改调统一登录服务，响应结构不变；前端全迁后下线（计划单列任务）。
 
 **库选型**：`github.com/go-oauth2/oauth2/v4`（协议层：四种 grant、code/refresh 生命周期）+ 其 `jwt` 子包对接现有 `pkg/auth` 密钥；存储层由本模块实现其 Store 接口，落到自己的 MySQL 表。
 
 ## 3. 数据模型与配置
 
-`modules/oauth2/migrations`，四张表（对齐 yudao oauth2 系列表）：
+`modules/system/oauth2/migrations`，四张表（对齐 yudao oauth2 系列表）：
 
 ### 3.1 `oauth2_client` — 接入方注册（第三方 + 内部端）
 
@@ -184,7 +184,7 @@ POST /oauth2/token
 
 ## 7. 测试策略（TDD）
 
-**单元层**（`modules/oauth2/service`，sqlite 内存库 + 假 authenticator）：
+**单元层**（`modules/system/oauth2/service`，sqlite 内存库 + 假 authenticator）：
 - 验证码开关 true/false 两条路径（核心配置需求，RED 先行）
 - account_type 路由与 client 白名单拒绝
 - 授权码：过期/重放/redirect 不匹配/verifier 错误拒绝

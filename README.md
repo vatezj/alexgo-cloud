@@ -13,8 +13,8 @@
 | 模块 | 功能 |
 | --- | --- |
 | 系统管理（`modules/system`） | 用户、角色、菜单、部门、岗位、字典、配置、公告/通知（含「我的通知」已读）、租户 |
-| 代码生成（`modules/infra`） | 在线 CRUD 代码生成：配置表驱动、在线预览、ZIP 下载、CLI |
-| OAuth2（`modules/oauth2`） | SSO 授权码 + PKCE、客户端管理、四种 grant、统一 Token 签发 |
+| 代码生成（`modules/system/infra`） | 在线 CRUD 代码生成：配置表驱动、在线预览、ZIP 下载、CLI |
+| OAuth2（`modules/system/oauth2`） | SSO 授权码 + PKCE、客户端管理、四种 grant、统一 Token 签发 |
 | 登录与用户体系 | 账号密码 / Token 签发刷新注销（OAuth2 不透明令牌）/ 会员 mobile 注册登录 |
 | 权限与安全 | Casbin RBAC（菜单粒度授权，主体带租户前缀）、data_scope 数据权限、登录日志、操作审计 |
 | 会员（`modules/member`） | mobile 注册/登录/刷新/登出、会员列表与启停（micro 形态经 gRPC 委托 system 签发） |
@@ -31,7 +31,7 @@
 | 可靠事件 | Transactional Outbox（`FOR UPDATE SKIP LOCKED`）→ NATS JetStream |
 | 多租户 | `X-Tenant-ID` 头 / 域名解析注入租户上下文，GORM 插件自动过滤 `tenant_id`，租户管理 |
 | 可观测性 | `/health` 存活、`/health/ready` DB 探活、`/metrics` Prometheus、OTel 链路追踪、pprof（默认关闭） |
-| 代码生成 | 模板 CRUD 生成器（`pkg/codegen`）+ 在线生成链路（`modules/infra`：配置表、预览、ZIP、CLI） |
+| 代码生成 | 模板 CRUD 生成器（`pkg/codegen`）+ 在线生成链路（`modules/system/infra`：配置表、预览、ZIP、CLI） |
 | 部署 | docker-compose / Kustomize / Helm（dev·gray·prod）+ ArgoCD 多环境 |
 
 ## 🚀 快速开始
