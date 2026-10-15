@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -82,6 +81,19 @@ func doReq(r *gin.Engine, method, path string) *httptest.ResponseRecorder {
 	return w
 }
 
+// codeOf 解析统一信封的 code 字段（resp.OK/Fail 出站；旧 {"status":"ok"}/{"error":...} 断言
+// 迁移为查 code——0 成功、10001 参数、20001 未登录、30006 公告不存在）。
+func codeOf(t *testing.T, w *httptest.ResponseRecorder) int {
+	t.Helper()
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal envelope: %v, body=%s", err, w.Body.String())
+	}
+	return body.Code
+}
+
 // mine 信封：data 平铺公告字段 + read_status（NoticeItem 内嵌指针展开）。
 func TestListMyNotices_OK(t *testing.T) {
 	svc := &fakeNoticeSvc{items: []*service.NoticeItem{
@@ -94,6 +106,7 @@ func TestListMyNotices_OK(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
 	var resp struct {
+		Code int `json:"code"`
 		Data []struct {
 			ID         uint64 `json:"id"`
 			Title      string `json:"title"`
@@ -102,6 +115,9 @@ func TestListMyNotices_OK(t *testing.T) {
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
+	}
+	if resp.Code != 0 {
+		t.Errorf("code = %d, want 0", resp.Code)
 	}
 	if len(resp.Data) != 2 {
 		t.Fatalf("data len = %d, want 2", len(resp.Data))
@@ -119,8 +135,8 @@ func TestListMyNotices_NoClaims_401(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401; body=%s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "unauthorized") {
-		t.Errorf("body = %s, want unauthorized", w.Body.String())
+	if got := codeOf(t, w); got != 20001 {
+		t.Errorf("code = %d, want 20001; body=%s", got, w.Body.String())
 	}
 }
 
@@ -134,8 +150,8 @@ func TestMarkNoticeRead_OK(t *testing.T) {
 	if svc.markID != 5 || svc.markUser != 42 {
 		t.Errorf("MarkRead(notice=%d, user=%d), want (5, 42)", svc.markID, svc.markUser)
 	}
-	if !strings.Contains(w.Body.String(), `"status":"ok"`) {
-		t.Errorf("body = %s, want {\"status\":\"ok\"}", w.Body.String())
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("code = %d, want 0; body=%s", got, w.Body.String())
 	}
 }
 
@@ -146,16 +162,20 @@ func TestMarkNoticeRead_NotFound_400(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "notice not found") {
-		t.Errorf("body = %s, want notice not found", w.Body.String())
+	if got := codeOf(t, w); got != 30006 {
+		t.Errorf("code = %d, want 30006; body=%s", got, w.Body.String())
 	}
 }
 
 func TestMarkNoticeRead_ZeroID_400(t *testing.T) {
 	w := doReq(newNoticeRouter(&fakeNoticeSvc{}, &auth.Claims{UserID: 42}),
 		http.MethodPost, "/api/admin/system/notices/0/read")
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "invalid id") {
-		t.Errorf("status = %d body = %s, want 400 invalid id", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d body = %s, want 400", w.Code, w.Body.String())
+		return
+	}
+	if got := codeOf(t, w); got != 10001 {
+		t.Errorf("code = %d, want 10001; body=%s", got, w.Body.String())
 	}
 }
 
@@ -166,7 +186,7 @@ func TestReadAllNotices_OK(t *testing.T) {
 	if w.Code != http.StatusOK || !svc.markAll || svc.markUser != 42 {
 		t.Errorf("status = %d markAll = %v user = %d, want 200/true/42", w.Code, svc.markAll, svc.markUser)
 	}
-	if !strings.Contains(w.Body.String(), `"status":"ok"`) {
-		t.Errorf("body = %s, want {\"status\":\"ok\"}", w.Body.String())
+	if got := codeOf(t, w); got != 0 {
+		t.Errorf("code = %d, want 0; body=%s", got, w.Body.String())
 	}
 }

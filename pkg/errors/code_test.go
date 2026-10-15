@@ -21,6 +21,7 @@ func TestRegistryNoDuplicateAndAllHaveMsg(t *testing.T) {
 		CodeParamInvalid, CodeParamMissing,
 		CodeUnauthorized, CodeTokenExpired, CodeForbidden,
 		CodeUsernameTaken, CodeUserNotFound, CodeRoleTaken, CodeTenantDisabled, CodeCaptchaInvalid,
+		CodeNoticeNotFound,
 		CodeInternal,
 	} {
 		if _, ok := registry[c]; !ok {

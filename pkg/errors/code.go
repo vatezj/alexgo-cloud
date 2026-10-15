@@ -24,6 +24,7 @@ const (
 	CodeRoleTaken      Code = 30003
 	CodeTenantDisabled Code = 30004
 	CodeCaptchaInvalid Code = 30005
+	CodeNoticeNotFound Code = 30006
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -41,6 +42,7 @@ var registry = map[Code]string{
 	CodeRoleTaken:      "角色标识已存在",
 	CodeTenantDisabled: "租户已停用",
 	CodeCaptchaInvalid: "验证码错误",
+	CodeNoticeNotFound: "公告不存在",
 	CodeInternal:       "系统繁忙，请稍后重试",
 }
 

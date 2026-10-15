@@ -2,7 +2,6 @@ package admin
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +9,8 @@ import (
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 type BasicController struct {
@@ -53,350 +54,350 @@ func claimsOf(ctx *gin.Context) (*auth.Claims, bool) {
 func (c *BasicController) ListDepts(ctx *gin.Context) {
 	list, err := c.deptSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreateDept(ctx *gin.Context) {
 	var req model.Dept
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.deptSvc.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeleteDept(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.deptSvc.Delete(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdateDept(ctx *gin.Context) {
 	var req model.Dept
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.deptSvc.Update(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) ListPosts(ctx *gin.Context) {
 	list, err := c.postSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreatePost(ctx *gin.Context) {
 	var req model.Post
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.postSvc.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeletePost(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.postSvc.Delete(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdatePost(ctx *gin.Context) {
 	var req model.Post
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.postSvc.Update(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) ListDictTypes(ctx *gin.Context) {
 	list, err := c.dictSvc.ListTypes(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreateDictType(ctx *gin.Context) {
 	var req model.DictType
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.dictSvc.CreateType(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeleteDictType(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.dictSvc.DeleteType(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdateDictType(ctx *gin.Context) {
 	var req model.DictType
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.dictSvc.UpdateType(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) ListDictDatas(ctx *gin.Context) {
 	typeID, _ := strconv.ParseUint(ctx.Query("type_id"), 10, 64)
 	if typeID == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid type_id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	list, err := c.dictSvc.ListDatas(ctx.Request.Context(), typeID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreateDictData(ctx *gin.Context) {
 	var req model.DictData
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.dictSvc.CreateData(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeleteDictData(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.dictSvc.DeleteData(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdateDictData(ctx *gin.Context) {
 	var req model.DictData
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.dictSvc.UpdateData(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) ListConfigs(ctx *gin.Context) {
 	list, err := c.configSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreateConfig(ctx *gin.Context) {
 	var req model.SystemConfig
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.configSvc.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeleteConfig(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.configSvc.Delete(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdateConfig(ctx *gin.Context) {
 	var req model.SystemConfig
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.configSvc.Update(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) UpdateNotice(ctx *gin.Context) {
 	var req model.SystemNotice
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.noticeSvc.Update(ctx.Request.Context(), &req); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *BasicController) ListNotices(ctx *gin.Context) {
 	list, err := c.noticeSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *BasicController) CreateNotice(ctx *gin.Context) {
 	var req model.SystemNotice
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	out, err := c.noticeSvc.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": out})
+	resp.OK(ctx, out)
 }
 
 func (c *BasicController) DeleteNotice(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.noticeSvc.Delete(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 // ListMyNotices 我的通知：本租户公告 + 当前用户已读标记（P0-1）。
 func (c *BasicController) ListMyNotices(ctx *gin.Context) {
 	claims, ok := claimsOf(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	list, err := c.noticeSvc.ListMine(ctx.Request.Context(), claims.UserID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 // MarkNoticeRead 标记单条已读（幂等；公告不存在或跨租户 → 400）。
 func (c *BasicController) MarkNoticeRead(ctx *gin.Context) {
 	claims, ok := claimsOf(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.noticeSvc.MarkRead(ctx.Request.Context(), claims.UserID, id); err != nil {
 		if errors.Is(err, service.ErrNoticeNotFound) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			resp.Fail(ctx, errs.New(errs.CodeNoticeNotFound, nil))
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 // ReadAllNotices 一键全部标记已读（幂等）。
 func (c *BasicController) ReadAllNotices(ctx *gin.Context) {
 	claims, ok := claimsOf(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	if err := c.noticeSvc.MarkAllRead(ctx.Request.Context(), claims.UserID); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
