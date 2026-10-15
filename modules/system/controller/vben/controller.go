@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
 )

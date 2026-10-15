@@ -3,8 +3,8 @@ package vben
 import (
 	"context"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/model"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/service"
 )
 

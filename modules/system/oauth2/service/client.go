@@ -7,8 +7,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 // ErrInvalidClient 未知/停用/凭据不符（Task 9 映射 400 invalid_client、Task 10 映射 401 invalid_client）。

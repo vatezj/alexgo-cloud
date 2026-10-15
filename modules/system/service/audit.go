@@ -64,4 +64,3 @@ func (s *auditService) ListLogin(ctx context.Context, limit int) ([]*model.Login
 func (s *auditService) ListOperate(ctx context.Context, limit int) ([]*model.OperateLog, error) {
 	return s.repo.ListOperate(ctx, tenant.TenantIDFromContext(ctx), limit)
 }
-

@@ -11,7 +11,7 @@ import (
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/member"
-	"alexGo-cloud/modules/oauth2"
+	"alexGo-cloud/modules/system/oauth2"
 	"alexGo-cloud/pkg/client"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/database"

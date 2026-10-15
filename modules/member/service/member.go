@@ -12,7 +12,7 @@ import (
 
 	"alexGo-cloud/modules/member/model"
 	"alexGo-cloud/modules/member/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -21,7 +21,7 @@ import (
 var mobileRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
 // ErrIssuance 签发失败哨兵：密码/状态校验已通过，是 token.Issuer 侧故障
-//（gRPC 不可达、DB 故障、issuer 未装配）→ controller 映射 503，
+// （gRPC 不可达、DB 故障、issuer 未装配）→ controller 映射 503，
 // 与"凭据错误 401"区分——否则 infra 故障会被误报成"密码错误"（I2）。
 var ErrIssuance = errors.New("issuance failed")
 

@@ -55,4 +55,3 @@ func (r *auditRepo) ListOperate(ctx context.Context, tenantID uint64, limit int)
 		Find(&list).Error
 	return list, err
 }
-

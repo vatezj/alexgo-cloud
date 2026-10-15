@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/member/service"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // AuthController app 端会员鉴权接口（register/login/refresh/logout 全部公开入口：
@@ -91,7 +91,7 @@ func (c *AuthController) Login(ctx *gin.Context) {
 }
 
 // Refresh 刷新令牌。possession-based：凭 body 里的 refresh_token，无须中间件登录态
-//（access 过期正是刷新的场景——见 I1，中间件不再拦 /api/app/**）。
+// （access 过期正是刷新的场景——见 I1，中间件不再拦 /api/app/**）。
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`

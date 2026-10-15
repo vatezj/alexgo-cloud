@@ -9,11 +9,11 @@ import (
 	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system/controller/admin"
 	"alexGo-cloud/modules/system/controller/app"
 	"alexGo-cloud/modules/system/controller/vben"
 	"alexGo-cloud/modules/system/grpcserver"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/audit"

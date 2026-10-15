@@ -95,4 +95,3 @@ type SystemNoticeRead struct {
 }
 
 func (SystemNoticeRead) TableName() string { return "system_notice_reads" }
-

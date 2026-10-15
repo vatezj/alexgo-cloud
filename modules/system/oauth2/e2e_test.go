@@ -1,6 +1,6 @@
 //go:build integration
 
-package oauth2
+package oauth2_test
 
 import (
 	"bytes"
@@ -26,12 +26,13 @@ import (
 	membermodel "alexGo-cloud/modules/member/model"
 	memberrepo "alexGo-cloud/modules/member/repository"
 	membersvc "alexGo-cloud/modules/member/service"
-	"alexGo-cloud/modules/oauth2/controller"
-	oauth2model "alexGo-cloud/modules/oauth2/model"
-	oauth2repo "alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
 	"alexGo-cloud/modules/system"
 	sysmodel "alexGo-cloud/modules/system/model"
+	"alexGo-cloud/modules/system/oauth2"
+	"alexGo-cloud/modules/system/oauth2/controller"
+	oauth2model "alexGo-cloud/modules/system/oauth2/model"
+	oauth2repo "alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	sysrepo "alexGo-cloud/modules/system/repository"
 	sysvc "alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
@@ -307,7 +308,7 @@ func TestE2E_CodeReplay_400(t *testing.T) {
 }
 
 // chdirRepoRoot 切到仓库根：Runner 迁移源路径 file://modules/... 相对进程 cwd
-// 解析，本包位于 modules/oauth2（距根两级）。幂等：已在根则不上跳。
+// 解析，本包位于 modules/system/oauth2（距根三级）。幂等：已在根则不上跳。
 func chdirRepoRoot(t *testing.T) {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -317,7 +318,10 @@ func chdirRepoRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
 		return
 	}
-	root := filepath.Clean(filepath.Join(wd, "..", ".."))
+	root := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("chdirRepoRoot 上跳后不在仓库根（缺 go.mod）：%s", root)
+	}
 	if err := os.Chdir(root); err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +362,7 @@ func newE2E(t *testing.T) (*gin.Engine, *casbin.Enforcer) {
 	cfg.Database.DSN = dsn
 
 	runner := migrate.NewRunner(db, cfg, []migrate.Source{
-		NewMigrationSource(),        // oauth2_client / oauth2_authorize_code + 种子 client
+		oauth2.NewMigrationSource(), // oauth2_client / oauth2_authorize_code + 种子 client
 		system.NewMigrationSource(), // system_users / roles / menus / token 表
 		member.NewMigrationSource(), // member_user
 	})

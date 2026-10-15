@@ -10,8 +10,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 func newTestClientSvc(t *testing.T) (*ClientService, *gorm.DB) {

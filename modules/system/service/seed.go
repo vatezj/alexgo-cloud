@@ -408,7 +408,7 @@ func seed(ctx context.Context, p SeederParams) error {
 }
 
 // hasPermPrefix 判断菜单集中是否已有任一菜单的 permission 前缀命中给定前缀
-//（permPrefix 取前两段，故 "system:auth:profile" 与 "system:auth:refresh" 同组）。
+// （permPrefix 取前两段，故 "system:auth:profile" 与 "system:auth:refresh" 同组）。
 func hasPermPrefix(menus []*model.Menu, prefix string) bool {
 	for _, m := range menus {
 		if m != nil && permPrefix(m.Permission) == prefix {

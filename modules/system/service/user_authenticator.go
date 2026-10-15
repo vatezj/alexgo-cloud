@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"

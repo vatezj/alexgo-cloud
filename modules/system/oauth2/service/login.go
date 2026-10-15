@@ -217,6 +217,7 @@ func (u *unifiedLogin) AuthorizeLogin(ctx context.Context, p LoginParams) (*Auth
 //   - client：恒不透明（jwt 模式也如此），refresh 强制空；
 //   - system + mode=jwt：JWTGenerator，无 refresh、expires 0；
 //   - system/member 其余：token.Issuer 按类型签不透明令牌。
+//
 // 任何签发失败 wrap ErrIssuance（协议端点 500 server_error 的映射依据）。
 func (u *unifiedLogin) IssueFor(ctx context.Context, ident *AuthIdentity, clientID string) (*LoginResult, error) {
 	if ident == nil {

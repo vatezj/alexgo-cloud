@@ -53,4 +53,3 @@ func OperateLogMiddleware(rec audit.OperateRecorder) gin.HandlerFunc {
 		)
 	}
 }
-

@@ -30,4 +30,3 @@ type OperateLog struct {
 }
 
 func (OperateLog) TableName() string { return "operate_logs" }
-

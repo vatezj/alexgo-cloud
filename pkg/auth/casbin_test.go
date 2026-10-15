@@ -7,7 +7,7 @@ import (
 )
 
 // C1：用户 sub 必须带 user_type 维度——member 昵称与管理员用户名同名时永不同 sub
-//（否则 casbin g(x,x) 恒等 → 成员继承管理员策略）。
+// （否则 casbin g(x,x) 恒等 → 成员继承管理员策略）。
 func TestUserSub_TypeDimension(t *testing.T) {
 	admin := auth.UserSub(2, 1, "admin", 9)
 	member := auth.UserSub(2, 2, "admin", 9)

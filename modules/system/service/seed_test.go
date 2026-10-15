@@ -15,7 +15,7 @@ func TestHasPermPrefix_ScalesMatch(t *testing.T) {
 		nil, // 容忍 nil 节点
 	}
 	for prefix, want := range map[string]bool{
-		"system:auth":   true, // 已存在（seed 的三组之一）
+		"system:auth":   true,  // 已存在（seed 的三组之一）
 		"system:tenant": false, // 缺 → 应补
 		"member:user":   false, // 缺 → 应补
 		"system:user":   true,

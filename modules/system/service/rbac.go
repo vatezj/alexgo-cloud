@@ -523,7 +523,7 @@ func (s *permissionService) RebuildRolePolicies(ctx context.Context, roleID uint
 }
 
 // EnsureUserRolePolicy 绑定用户→角色的 g 关系，主体与角色 sub 均带租户前缀
-//（{tid}:{ut}:{username} → {tid}:{roleCode}），与中间件 sub 构造一致。
+// （{tid}:{ut}:{username} → {tid}:{roleCode}），与中间件 sub 构造一致。
 // 本方法只服务 system 侧管理员登录/配权 → user_type 恒 1（C1：member 昵称与管理员
 // 用户名撞 sub 会经 g(x,x) 恒等提权，故 user_type 维度必须与中间件同构）。
 func (s *permissionService) EnsureUserRolePolicy(ctx context.Context, username string, roles []*model.Role) error {
@@ -556,11 +556,11 @@ func (s *permissionService) EnsureUserRolePolicy(ctx context.Context, username s
 }
 
 type VbenRoute struct {
-	Path      string      `json:"path"`
-	Name      string      `json:"name"`
-	Component string      `json:"component"`
+	Path      string        `json:"path"`
+	Name      string        `json:"name"`
+	Component string        `json:"component"`
 	Meta      VbenRouteMeta `json:"meta"`
-	Children  []*VbenRoute `json:"children,omitempty"`
+	Children  []*VbenRoute  `json:"children,omitempty"`
 }
 
 type VbenRouteMeta struct {

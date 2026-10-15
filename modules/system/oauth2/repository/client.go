@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/model"
 )
 
 // ClientRepository oauth2_client 访问层（D4：模型无 tenant_id/deleted → 租户插件跳过、硬删除）。

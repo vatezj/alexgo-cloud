@@ -10,7 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"alexGo-cloud/modules/member/model"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -212,7 +212,7 @@ func (b *brokenIssuer) Issue(context.Context, token.IssueParams) (*token.Issued,
 func (b *brokenIssuer) Refresh(context.Context, string) (*token.Issued, error) {
 	return nil, errors.New("grpc unavailable")
 }
-func (b *brokenIssuer) Revoke(context.Context, string) error  { return errors.New("grpc unavailable") }
+func (b *brokenIssuer) Revoke(context.Context, string) error { return errors.New("grpc unavailable") }
 func (b *brokenIssuer) RevokeAll(context.Context, token.UserType, uint64) error {
 	return errors.New("grpc unavailable")
 }

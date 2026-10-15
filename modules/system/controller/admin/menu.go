@@ -73,4 +73,3 @@ func (c *MenuController) Delete(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
-

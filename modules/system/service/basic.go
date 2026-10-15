@@ -68,11 +68,15 @@ type dictService struct{ repo repository.DictRepository }
 type configService struct{ repo repository.ConfigRepository }
 type noticeService struct{ repo repository.NoticeRepository }
 
-func NewDeptService(repo repository.DeptRepository) DeptService       { return &deptService{repo: repo} }
-func NewPostService(repo repository.PostRepository) PostService       { return &postService{repo: repo} }
-func NewDictService(repo repository.DictRepository) DictService       { return &dictService{repo: repo} }
-func NewConfigService(repo repository.ConfigRepository) ConfigService { return &configService{repo: repo} }
-func NewNoticeService(repo repository.NoticeRepository) NoticeService { return &noticeService{repo: repo} }
+func NewDeptService(repo repository.DeptRepository) DeptService { return &deptService{repo: repo} }
+func NewPostService(repo repository.PostRepository) PostService { return &postService{repo: repo} }
+func NewDictService(repo repository.DictRepository) DictService { return &dictService{repo: repo} }
+func NewConfigService(repo repository.ConfigRepository) ConfigService {
+	return &configService{repo: repo}
+}
+func NewNoticeService(repo repository.NoticeRepository) NoticeService {
+	return &noticeService{repo: repo}
+}
 
 func (s *deptService) List(ctx context.Context) ([]*model.Dept, error) {
 	return s.repo.List(ctx, tenant.TenantIDFromContext(ctx))

@@ -25,21 +25,21 @@ type Bind struct {
 }
 
 type BindColumn struct {
-	Name         string
-	Comment      string
-	GoName       string
-	GoType       string
-	JSONName     string
-	GormTag      string
-	HTMLType     string
-	QueryOp      string
-	IsPK         bool
-	Nullable     bool
-	ListEnable   bool
-	FormEnable   bool
-	QueryEnable  bool
-	ListRequired bool
-	FormRequired bool
+	Name          string
+	Comment       string
+	GoName        string
+	GoType        string
+	JSONName      string
+	GormTag       string
+	HTMLType      string
+	QueryOp       string
+	IsPK          bool
+	Nullable      bool
+	ListEnable    bool
+	FormEnable    bool
+	QueryEnable   bool
+	ListRequired  bool
+	FormRequired  bool
 	TSType        string
 	VbenComponent string
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"alexGo-cloud/modules/oauth2/model"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // ClientController OAuth2 client 管理（admin 信封 {data}/{data,total}/{status}/{error}，

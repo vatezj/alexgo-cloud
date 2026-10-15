@@ -13,9 +13,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 func newClientRouter(t *testing.T) (*gin.Engine, *oauth2svc.ClientService) {

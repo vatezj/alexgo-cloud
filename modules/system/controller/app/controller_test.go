@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // stubUnified 本包独立夹具（system/controller/app 与 vben 是不同包，不能共用）。

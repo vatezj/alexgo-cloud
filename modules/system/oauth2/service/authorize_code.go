@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
 )
 
 // CodeTTL 授权码有效期 2 分钟（D15 补充语义）。

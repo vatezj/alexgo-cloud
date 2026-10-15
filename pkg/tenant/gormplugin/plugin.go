@@ -2,12 +2,12 @@
 // INSERT 自动填 tenant_id，SELECT/UPDATE/DELETE 自动追加 tenant_id 条件。
 //
 // 设计边界（为什么这样做）：
-// - tid=0 不注入：平台/未解析租户保持历史行为（仓库层已有显式过滤，插件是隔离下限不是唯一手段）；
-// - 无 TenantID 字段的模型跳过：存量表零影响；
-// - 白名单（tenants/casbin_rule 等全局表）跳过；
-// - IgnoreTenant 显式放行：平台侧全量查询的唯一通道；
-// - data_scope（T10）：仅 Query 回调、且模型带 DeptID 字段时叠加可见性条件，
-//   Update/Delete 只做租户过滤；ctx 未注入 scope 则保持老行为（不过滤）。
+//   - tid=0 不注入：平台/未解析租户保持历史行为（仓库层已有显式过滤，插件是隔离下限不是唯一手段）；
+//   - 无 TenantID 字段的模型跳过：存量表零影响；
+//   - 白名单（tenants/casbin_rule 等全局表）跳过；
+//   - IgnoreTenant 显式放行：平台侧全量查询的唯一通道；
+//   - data_scope（T10）：仅 Query 回调、且模型带 DeptID 字段时叠加可见性条件，
+//     Update/Delete 只做租户过滤；ctx 未注入 scope 则保持老行为（不过滤）。
 //
 // ctx key 约定：租户编号一律复用 pkg/tenant 的 key（WithTenantID/TenantIDFromContext），
 // 避免出现两套互不相认的 key；本包只定义自己的 ignoreKey。

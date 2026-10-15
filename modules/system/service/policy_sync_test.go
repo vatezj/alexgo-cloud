@@ -113,7 +113,7 @@ func TestPermPrefix(t *testing.T) {
 
 // TestRebuildAllPolicies 全量重建路径（C1 回归）：清空各租户陈旧 p、按 roleMenus
 // 重建当前规则、不跨租户串、且保留 g 绑定。此前该路径零测试导致 RemoveFilteredPolicy(0)
-//（casbin v2.135 拒绝空 fieldValues）带病上线。
+// （casbin v2.135 拒绝空 fieldValues）带病上线。
 func TestRebuildAllPolicies(t *testing.T) {
 	e := newMemEnforcer(t)
 	// 陈旧策略：tenant1 + tenant2 各一条（重建后必须都被清掉）。
@@ -233,7 +233,7 @@ func TestEnsureUserRolePolicy_SubHasUserType(t *testing.T) {
 }
 
 // order 模块启用后：角色按 "order:order:*" 权限必须拿到 /api/admin/order/orders
-//（集合 + item 两形态），且未授权的 system 路由仍拒绝——判别表项真加进去了、
+// （集合 + item 两形态），且未授权的 system 路由仍拒绝——判别表项真加进去了、
 // rebuild 不再对 order 按钮权限静默丢弃。
 func TestRebuild_OrderRoutes(t *testing.T) {
 	e := newMemEnforcer(t)

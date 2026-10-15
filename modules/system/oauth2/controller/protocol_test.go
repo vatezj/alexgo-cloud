@@ -13,9 +13,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
@@ -55,9 +55,9 @@ func seedSpaClient(t *testing.T, clients *oauth2svc.ClientService) {
 	t.Helper()
 	if err := clients.Create(context.Background(), &model.Oauth2Client{
 		ClientID: "spa", ClientName: "SPA",
-		GrantTypes:    "authorization_code,password,refresh_token",
-		RedirectURIs:  "http://localhost:5173/callback",
-		AccountTypes:  "system",
+		GrantTypes:   "authorization_code,password,refresh_token",
+		RedirectURIs: "http://localhost:5173/callback",
+		AccountTypes: "system",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func (fakeIssuer) Issue(context.Context, token.IssueParams) (*token.Issued, erro
 func (fakeIssuer) Refresh(context.Context, string) (*token.Issued, error) {
 	return &token.Issued{AccessToken: "at-2", RefreshToken: "rt-2", ExpiresIn: 7200}, nil
 }
-func (fakeIssuer) Revoke(context.Context, string) error                   { return nil }
+func (fakeIssuer) Revoke(context.Context, string) error                    { return nil }
 func (fakeIssuer) RevokeAll(context.Context, token.UserType, uint64) error { return nil }
 
 type fullEnv struct {

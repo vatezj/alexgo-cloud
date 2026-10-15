@@ -89,15 +89,15 @@ type Config struct {
 
 	// System：system 模块配置（示例：JWT secret、默认角色等）。
 	System struct {
-		JWTSecret        string `mapstructure:"jwt_secret"`
-		DefaultAdminRole string `mapstructure:"default_admin_role"`
+		JWTSecret            string `mapstructure:"jwt_secret"`
+		DefaultAdminRole     string `mapstructure:"default_admin_role"`
 		DefaultAdminUsername string `mapstructure:"default_admin_username"`
 		DefaultAdminPassword string `mapstructure:"default_admin_password"`
 	} `mapstructure:"system"`
 
 	// Auth：OAuth2 令牌与认证模式。
 	Auth struct {
-		Mode            string `mapstructure:"mode"` // token | jwt（回滚开关）
+		Mode             string `mapstructure:"mode"` // token | jwt（回滚开关）
 		AccessExpireHour int    `mapstructure:"access_expire_hour"`
 		RefreshExpireDay int    `mapstructure:"refresh_expire_day"`
 		// Captcha 图形验证码开关（spec §9 D5）：false 时登录跳过校验。

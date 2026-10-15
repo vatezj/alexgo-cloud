@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/model"
 )
 
 // AuthorizeCodeRepository 授权码访问层（D4：OwnerTenantID → tenant_id 列）。

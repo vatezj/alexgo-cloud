@@ -5,5 +5,5 @@ func NewMigrationSource() *MigrationSource { return &MigrationSource{} }
 
 type MigrationSource struct{}
 
-func (s *MigrationSource) GetMigrationPath() string { return "modules/oauth2/migrations" }
+func (s *MigrationSource) GetMigrationPath() string { return "modules/system/oauth2/migrations" }
 func (s *MigrationSource) GetModuleName() string    { return "oauth2" }

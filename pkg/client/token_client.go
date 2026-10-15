@@ -62,7 +62,7 @@ func (c *tokenGRPCClient) Revoke(ctx context.Context, accessToken string) error 
 }
 
 // RevokeAll 显式不支持：踢人接口仅 system-server 本地使用
-//（member 会员管理"禁用+踢人"一期不做联动——Task 5 注释已声明）。
+// （member 会员管理"禁用+踢人"一期不做联动——Task 5 注释已声明）。
 func (c *tokenGRPCClient) RevokeAll(_ context.Context, _ token.UserType, _ uint64) error {
 	return fmt.Errorf("token: RevokeAll not supported over grpc（踢人接口仅 system-server 本地使用）")
 }

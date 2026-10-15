@@ -9,7 +9,7 @@ import (
 	"alexGo-cloud/modules/member/controller/app"
 	"alexGo-cloud/modules/member/repository"
 	"alexGo-cloud/modules/member/service"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
 

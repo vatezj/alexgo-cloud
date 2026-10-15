@@ -317,7 +317,7 @@ func oauth2SeedMenuCount(t *testing.T, raw *sql.DB) int64 {
 }
 
 // 直跑 up.sql 原文两遍：对 NOT EXISTS 守卫的真断言——守卫被删时本测试必须失败
-//（runner 双跑测不出，评审 Important#3 的既定模式，抄 TestInfraSeedMenus_SQLFileExecutedTwiceStable）。
+// （runner 双跑测不出，评审 Important#3 的既定模式，抄 TestInfraSeedMenus_SQLFileExecutedTwiceStable）。
 func TestOauth2MenuSeed_SQLFileExecutedTwiceStable(t *testing.T) {
 	raw := openMultiStmtDB(t)
 	_, runner := runSystem(t)

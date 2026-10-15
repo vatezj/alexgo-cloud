@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
 
 // stubUnified 本包独立夹具（member/controller/app 独立命名空间）。

@@ -15,7 +15,7 @@ import (
 )
 
 // TestGRPCMain_GraphValidates 正向干跑：入口装配清单依赖图完整
-//（dig dry-run：不执行构造器/Invoke，不需要配置文件与 DB）。
+// （dig dry-run：不执行构造器/Invoke，不需要配置文件与 DB）。
 func TestGRPCMain_GraphValidates(t *testing.T) {
 	if err := fx.ValidateApp(append(options(), fx.NopLogger)...); err != nil {
 		t.Fatalf("fx.ValidateApp = %v", err)

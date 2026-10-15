@@ -131,7 +131,7 @@ func (s *Service) Issue(ctx context.Context, p IssueParams) (*Issued, error) {
 }
 
 // Validate 查库校验（DB 为权威，无进程内缓存）。username/dept_id 从对应用户表加载
-//（raw SQL 避免 pkg 依赖 modules 层），用户不存在视为无效。
+// （raw SQL 避免 pkg 依赖 modules 层），用户不存在视为无效。
 func (s *Service) Validate(ctx context.Context, accessTokenStr string) (*Claims, error) {
 	if accessTokenStr == "" {
 		return nil, errors.New("token: empty")

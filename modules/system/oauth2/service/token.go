@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/fx"
 
-	"alexGo-cloud/modules/oauth2/model"
+	"alexGo-cloud/modules/system/oauth2/model"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )

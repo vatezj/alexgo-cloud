@@ -17,9 +17,9 @@ import (
 // 3) 模块配置以“命名空间”合并：例如 system/config.yaml 中的 jwt_secret 会合并到 key "system.jwt_secret"
 //
 // 环境变量覆盖：
-// - viper.AutomaticEnv() + BindEnv：HTTP_ADDR / GRPC_ADDR / NATS_URL / REDIS_ADDR
-// - applyEnvOverrides（Unmarshal 之后）：DB_DSN / JWT_SECRET / REDIS_PASSWORD / DEPLOYMENT_MODE / SYSTEM_GRPC_ADDR
-//   （密钥类与部署形态类，保证压过模块 yaml——viper Unmarshal 不读隐式 env，必须显式覆盖）
+//   - viper.AutomaticEnv() + BindEnv：HTTP_ADDR / GRPC_ADDR / NATS_URL / REDIS_ADDR
+//   - applyEnvOverrides（Unmarshal 之后）：DB_DSN / JWT_SECRET / REDIS_PASSWORD / DEPLOYMENT_MODE / SYSTEM_GRPC_ADDR
+//     （密钥类与部署形态类，保证压过模块 yaml——viper Unmarshal 不读隐式 env，必须显式覆盖）
 //
 // 容器友好：
 // - 当 config 文件不存在时不会报错（ConfigFileNotFoundError 直接忽略），便于仅靠 env 启动。

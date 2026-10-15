@@ -36,4 +36,3 @@ func (c *AuditController) ListOperate(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, gin.H{"data": list})
 }
-

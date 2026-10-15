@@ -5,15 +5,15 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/oauth2/controller"
-	"alexGo-cloud/modules/oauth2/controller/admin"
-	"alexGo-cloud/modules/oauth2/repository"
-	oauth2svc "alexGo-cloud/modules/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/controller"
+	"alexGo-cloud/modules/system/oauth2/controller/admin"
+	"alexGo-cloud/modules/system/oauth2/repository"
+	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/pkg/migrate"
 )
 
 // FxModule oauth2 模块装配（D7：硬编码进两个 main.go）。
-// 照抄 modules/infra/module.go：迁移源注解进 group:"migration_sources"，
+// 照抄 modules/system/infra/module.go：迁移源注解进 group:"migration_sources"，
 // NewModule 注解进 group:"modules"（ResultTags 不是 ParamTags）。
 var FxModule = fx.Module("oauth2",
 	fx.Provide(

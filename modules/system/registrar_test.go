@@ -12,7 +12,7 @@ import (
 )
 
 // registrarParams 与 StartGRPCServer 消费 group:"grpc_registrars" 的形态一致
-//（dig 值组禁用 optional——空组即空切片）。
+// （dig 值组禁用 optional——空组即空切片）。
 type registrarParams struct {
 	fx.In
 	Registrars []grpcserver.Registrar `group:"grpc_registrars"`
@@ -20,7 +20,7 @@ type registrarParams struct {
 
 // TestTokenServiceRegistrar_InGroup 正向干跑：tokenServiceRegistrar 必须把
 // *TokenServiceImpl 放进 group，且 Register 后 gRPC server 上出现 TokenService 服务。
-//（fx.New 内执行 Invoke——构造器真实运行，仅不启生命周期。）
+// （fx.New 内执行 Invoke——构造器真实运行，仅不启生命周期。）
 func TestTokenServiceRegistrar_InGroup(t *testing.T) {
 	var regs []grpcserver.Registrar
 	app := fx.New(

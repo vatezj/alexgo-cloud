@@ -521,7 +521,7 @@ func TestAuthMiddleware_AdminOnAdminPath_EnforcerAllows(t *testing.T) {
 
 // 复刻 http.go 顺序：TenantMiddleware 在 AuthMiddleware 之前。
 // header X-Tenant-ID: 2 + token claims tenant 1 → handler 里 TenantID 必须为 1
-//（判别：AuthMiddleware 未按 token 回写 ctx 则为 2 → 头伪造跨租户成功）。
+// （判别：AuthMiddleware 未按 token 回写 ctx 则为 2 → 头伪造跨租户成功）。
 func TestAuthMiddleware_TokenTenantOverridesHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := testCfg()
@@ -647,7 +647,7 @@ func TestVbenSelfRead_ValidToken_200InjectsClaims(t *testing.T) {
 }
 
 // 空策略 enforcer + 合法 token 打自读 → 200：判别 Casbin 被跳过
-//（若走到 Enforce，空策略必 403）。
+// （若走到 Enforce，空策略必 403）。
 func TestVbenSelfRead_SkipsCasbin(t *testing.T) {
 	cfg := testCfg()
 	tok, err := auth.GenerateToken(9, "alice", 1, cfg)

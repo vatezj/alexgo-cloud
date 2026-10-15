@@ -67,8 +67,8 @@ func TestNewBind_FrontTypes(t *testing.T) {
 		ts   string
 		comp string
 	}{
-		{0, "id", "number", "Input"},           // HTMLType 空 → Input
-		{1, "price", "string", "Input"},        // decimal：InputNumber→Input 防 ShouldBindJSON 拒 number
+		{0, "id", "number", "Input"},    // HTMLType 空 → Input
+		{1, "price", "string", "Input"}, // decimal：InputNumber→Input 防 ShouldBindJSON 拒 number
 		{2, "status", "number", "Switch"},
 		{3, "created_at", "string", "DatePicker"}, // *time.Time 剥指针 → string
 		{4, "payload", "any", "Textarea"},

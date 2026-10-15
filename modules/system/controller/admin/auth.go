@@ -20,10 +20,10 @@ func NewAuthController(permSvc service.PermissionService, authSvc service.AuthSe
 }
 
 type profileResponse struct {
-	User  *auth.Claims  `json:"user"`
-	Roles []string      `json:"roles"`
-	Perms []string      `json:"perms"`
-	Menus any           `json:"menus"`
+	User   *auth.Claims `json:"user"`
+	Roles  []string     `json:"roles"`
+	Perms  []string     `json:"perms"`
+	Menus  any          `json:"menus"`
 	Routes any          `json:"routes"`
 }
 
@@ -68,10 +68,10 @@ func (c *AuthController) Profile(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, profileResponse{
-		User:  claims,
-		Roles: roleCodes,
-		Perms: perms,
-		Menus: menus,
+		User:   claims,
+		Roles:  roleCodes,
+		Perms:  perms,
+		Menus:  menus,
 		Routes: routes,
 	})
 }

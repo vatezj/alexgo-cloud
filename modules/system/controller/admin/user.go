@@ -103,4 +103,3 @@ func (c *UserController) SetRoles(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
-

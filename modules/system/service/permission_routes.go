@@ -15,7 +15,7 @@ import (
 // 键必须与菜单 permission 字段的前两段一致；新增 admin 路由时同步维护本表。
 //
 // 每条“集合路由”额外带一条 `/*` 变体：中间件取的是 gin 的 FullPath()
-//（如 "/api/admin/system/users/:id"），而 keyMatch2 的模式在 key2（p.obj）侧，
+// （如 "/api/admin/system/users/:id"），而 keyMatch2 的模式在 key2（p.obj）侧，
 // 集合路径 "users" 无法匹配 item 路径 "users/:id"——若只留集合精确路径，
 // 种子通配策略（"/api/admin/*"）被移除后所有 UPDATE/DELETE/POST :id 路由会 403。
 // `/*` 经 keyMatch2 转为 "/.*"，同时覆盖集合与其全部子路径。
@@ -75,7 +75,7 @@ func loadPolicy(e *casbin.Enforcer) error {
 
 // clearPPolicies 清空全部 p 策略（保留 g 绑定）。
 // casbin v2.135.0 的 RemoveFilteredPolicy(0) 因 fieldValues 为空被拒
-//（internal_api.go removeFilteredPolicyWithoutNotify: "fieldValues requires at
+// （internal_api.go removeFilteredPolicyWithoutNotify: "fieldValues requires at
 // least one parameter"），故改用 GetPolicy + RemovePolicy 循环：
 // GetPolicy/RemovePolicy 仅触及 p 段，g（用户→角色绑定）不受影响。
 func clearPPolicies(e *casbin.Enforcer) error {

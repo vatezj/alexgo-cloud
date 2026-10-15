@@ -46,8 +46,8 @@ type menuRepo struct{ db *gorm.DB }
 type userRoleRepo struct{ db *gorm.DB }
 type roleMenuRepo struct{ db *gorm.DB }
 
-func NewRoleRepository(db *gorm.DB) RoleRepository { return &roleRepo{db: db} }
-func NewMenuRepository(db *gorm.DB) MenuRepository { return &menuRepo{db: db} }
+func NewRoleRepository(db *gorm.DB) RoleRepository         { return &roleRepo{db: db} }
+func NewMenuRepository(db *gorm.DB) MenuRepository         { return &menuRepo{db: db} }
 func NewUserRoleRepository(db *gorm.DB) UserRoleRepository { return &userRoleRepo{db: db} }
 func NewRoleMenuRepository(db *gorm.DB) RoleMenuRepository { return &roleMenuRepo{db: db} }
 
@@ -197,4 +197,3 @@ func (r *roleMenuRepo) ListMenuIDsByRoleIDs(ctx context.Context, tenantID uint64
 	}
 	return out, nil
 }
-

@@ -13,7 +13,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	"alexGo-cloud/modules/oauth2"
+	"alexGo-cloud/modules/system/oauth2"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 )
@@ -27,7 +27,10 @@ func chdirRepoRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
 		return
 	}
-	root := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
+	root := filepath.Clean(filepath.Join(wd, "..", "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("chdirRepoRoot 上跳后不在仓库根（缺 go.mod）：%s", root)
+	}
 	if err := os.Chdir(root); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +88,7 @@ func TestOAuth2Migrations_UpTwiceStable(t *testing.T) {
 }
 
 // 种子 SQL 直跑双次幂等（绕开 golang-migrate 只跑 pending 的真空坑）。
-const seedClientsPath = "modules/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql"
+const seedClientsPath = "modules/system/oauth2/migrations/20261011000002_oauth2_seed_clients.up.sql"
 
 func openMultiStmtDB(t *testing.T) *sql.DB {
 	t.Helper()
