@@ -4,7 +4,6 @@ package vben
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -13,9 +12,9 @@ import (
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
-
-var errInvalidCredentials = errors.New("invalid username or password")
 
 type Controller struct {
 	unified oauth2svc.UnifiedLogin
@@ -47,18 +46,15 @@ func (ctrl *Controller) Register(r *gin.RouterGroup) {
 	r.GET("/menu/all", ctrl.MenuAll)
 }
 
-// ok vben 成功信封。
-func ok(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": data, "error": nil, "message": "ok"})
-}
-
-// fail vben 失败信封：HTTP 状态码与 code 同值，error/message 同文案。
-func fail(c *gin.Context, status int, msg string) {
-	c.JSON(status, gin.H{"code": status, "data": nil, "error": msg, "message": msg})
+// loginData vben 登录成功载荷（camelCase 字段与旧版逐字一致，前端读 accessToken）。
+type loginData struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int64  `json:"expiresIn"`
 }
 
 // Login POST /api/auth/login —— vben 登录页契约（内部走统一登录；D13 审计在服务层恰一次）。
-// 映射：captcha 拒绝 → 400；其余错误 → 401 固定文案（契约不变，防枚举）。
+// 映射：captcha 拒绝 → 400（30005）；其余错误 → 401（20001 固定文案，防枚举）。
 func (ctrl *Controller) Login(c *gin.Context) {
 	var req struct {
 		Username    string `json:"username"`
@@ -67,7 +63,7 @@ func (ctrl *Controller) Login(c *gin.Context) {
 		CaptchaCode string `json:"captcha_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "invalid request body")
+		resp.Fail(c, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	res, _, err := ctrl.unified.Login(c.Request.Context(), oauth2svc.LoginParams{
@@ -82,16 +78,16 @@ func (ctrl *Controller) Login(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, oauth2svc.ErrCaptchaInvalid) {
-			fail(c, http.StatusBadRequest, "captcha invalid")
+			resp.Fail(c, errs.New(errs.CodeCaptchaInvalid, nil))
 			return
 		}
-		fail(c, http.StatusUnauthorized, errInvalidCredentials.Error())
+		resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
-	ok(c, gin.H{
-		"accessToken":  res.AccessToken,
-		"refreshToken": res.RefreshToken,
-		"expiresIn":    res.ExpiresIn,
+	resp.OK(c, loginData{
+		AccessToken:  res.AccessToken,
+		RefreshToken: res.RefreshToken,
+		ExpiresIn:    res.ExpiresIn,
 	})
 }
 
@@ -114,33 +110,45 @@ func (ctrl *Controller) Logout(c *gin.Context) {
 			_ = ctrl.authSvc.Logout(c.Request.Context(), tok)
 		}
 	}
-	ok(c, gin.H{})
+	resp.OK(c, nil)
 }
 
 // Codes GET /api/auth/codes —— 返回原始 perm 字符串数组（v-access 逐字匹配，含 `*` 形态）。
 func (ctrl *Controller) Codes(c *gin.Context) {
 	cl, found := claimsOf(c)
 	if !found {
-		fail(c, http.StatusUnauthorized, "unauthorized")
+		resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	codes, err := ctrl.permSvc.UserPermCodes(c.Request.Context(), cl.UserID)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, err.Error())
+		resp.Fail(c, err)
 		return
 	}
 	if codes == nil {
 		codes = []string{}
 	}
-	ok(c, codes)
+	resp.OK(c, codes)
 }
 
-// UserInfo GET /api/user/info —— 对齐 vben BasicUserInfo + UserInfo：
+// userInfoData 对齐 vben BasicUserInfo + UserInfo：
 // userId 必须字符串；desc/homePath/token 三个必填字段恒在。
+type userInfoData struct {
+	UserID   string   `json:"userId"`
+	Username string   `json:"username"`
+	RealName string   `json:"realName"`
+	Avatar   string   `json:"avatar"`
+	Roles    []string `json:"roles"`
+	Desc     string   `json:"desc"`
+	HomePath string   `json:"homePath"`
+	Token    string   `json:"token"`
+}
+
+// UserInfo GET /api/user/info —— 字段形状见 userInfoData。
 func (ctrl *Controller) UserInfo(c *gin.Context) {
 	cl, found := claimsOf(c)
 	if !found {
-		fail(c, http.StatusUnauthorized, "unauthorized")
+		resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	realName := cl.Username
@@ -159,15 +167,15 @@ func (ctrl *Controller) UserInfo(c *gin.Context) {
 			}
 		}
 	}
-	ok(c, gin.H{
-		"userId":   strconv.FormatUint(cl.UserID, 10),
-		"username": cl.Username,
-		"realName": realName,
-		"avatar":   avatar,
-		"roles":    roles,
-		"desc":     "",
-		"homePath": "",
-		"token":    strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")),
+	resp.OK(c, userInfoData{
+		UserID:   strconv.FormatUint(cl.UserID, 10),
+		Username: cl.Username,
+		RealName: realName,
+		Avatar:   avatar,
+		Roles:    roles,
+		Desc:     "",
+		HomePath: "",
+		Token:    strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")),
 	})
 }
 
@@ -178,19 +186,19 @@ func (ctrl *Controller) UserInfo(c *gin.Context) {
 func (ctrl *Controller) MenuAll(c *gin.Context) {
 	cl, found := claimsOf(c)
 	if !found {
-		fail(c, http.StatusUnauthorized, "unauthorized")
+		resp.Fail(c, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	routes, err := ctrl.permSvc.UserRoutes(c.Request.Context(), cl.UserID)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, err.Error())
+		resp.Fail(c, err)
 		return
 	}
 	if routes == nil {
 		routes = []*service.VbenRoute{}
 	}
 	blankLayout(routes)
-	ok(c, routes)
+	resp.OK(c, routes)
 }
 
 // blankLayout 递归把 component=="LAYOUT" 置空（UserRoutes 每次请求新建树，原地改安全）。

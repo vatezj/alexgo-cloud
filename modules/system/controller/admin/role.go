@@ -1,12 +1,14 @@
 package admin
 
 import (
-	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/system/service"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 type RoleController struct {
@@ -33,16 +35,16 @@ type assignMenusRequest struct {
 func (c *RoleController) List(ctx *gin.Context) {
 	items, err := c.roleSvc.List(ctx.Request.Context())
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
+	resp.OK(ctx, items)
 }
 
 func (c *RoleController) Create(ctx *gin.Context) {
 	var req createRoleRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	item, err := c.roleSvc.Create(ctx.Request.Context(), service.RoleCreateParams{
@@ -50,39 +52,44 @@ func (c *RoleController) Create(ctx *gin.Context) {
 		DataScope: req.DataScope, DataScopeDeptIDs: req.DataScopeDeptIDs,
 	})
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// 同租户 code 查重在 service 内（返回裸错误串），按语义映射「已存在」→ 30003。
+		if strings.Contains(err.Error(), "already exists") {
+			resp.Fail(ctx, errs.New(errs.CodeRoleTaken, nil))
+			return
+		}
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": item})
+	resp.OK(ctx, item)
 }
 
 func (c *RoleController) Delete(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	if err := c.roleSvc.Delete(ctx.Request.Context(), id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }
 
 func (c *RoleController) AssignMenus(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
 		return
 	}
 	var req assignMenusRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.roleSvc.AssignMenus(ctx.Request.Context(), id, req.MenuIDs); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }

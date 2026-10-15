@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,19 @@ import (
 
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 )
+
+// codeOf 解析统一信封的 code 字段（resp.OK/Fail 出站；旧 gin.H{"error":...} 断言
+// 迁移为查 code——0 成功、10001 参数、30005 验证码、50000 裸错误兜底）。
+func codeOf(t *testing.T, w *httptest.ResponseRecorder) int {
+	t.Helper()
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal envelope: %v, body=%s", err, w.Body.String())
+	}
+	return body.Code
+}
 
 // stubUnified 本包独立夹具（system/controller/app 与 vben 是不同包，不能共用）。
 type stubUnified struct {
@@ -68,12 +82,19 @@ func TestAppLogin_Quirks(t *testing.T) {
 			t.Errorf("logins = %+v", u.logins)
 		}
 	})
+	// 信封适配（不弱化）：HTTP 500 怪癖保持；body 从旧 {"error":"invalid credentials"}
+	// 变统一信封——code 必须精确 50000，且原始错误串禁止外泄（Task 3 无泄漏规则）。
 	t.Run("bad credentials 500 quirk", func(t *testing.T) {
 		u := &stubUnified{err: oauth2svc.ErrInvalidCredentials}
 		w := appLogin(t, u, `{"username":"a","password":"b"}`)
-		if w.Code != http.StatusInternalServerError ||
-			!strings.Contains(w.Body.String(), "invalid credentials") {
+		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("code=%d body=%s（怪癖：凭据错也 500）", w.Code, w.Body.String())
+		}
+		if got := codeOf(t, w); got != 50000 {
+			t.Errorf("code = %d, want 50000; body=%s", got, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "invalid credentials") {
+			t.Errorf("原始错误泄漏到客户端: %s", w.Body.String())
 		}
 	})
 	t.Run("captcha rejected 400", func(t *testing.T) {
@@ -81,6 +102,10 @@ func TestAppLogin_Quirks(t *testing.T) {
 		w := appLogin(t, u, `{"username":"a","password":"b","captcha_uuid":"u","captcha_code":"y"}`)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+		}
+		// 信封适配：captcha 显式分支 → 30005（验证码错误）。
+		if got := codeOf(t, w); got != 30005 {
+			t.Errorf("code = %d, want 30005; body=%s", got, w.Body.String())
 		}
 	})
 	t.Run("bad body 400", func(t *testing.T) {

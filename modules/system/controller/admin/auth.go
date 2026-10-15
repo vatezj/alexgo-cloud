@@ -1,13 +1,14 @@
 package admin
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/auth"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 type AuthController struct {
@@ -30,18 +31,18 @@ type profileResponse struct {
 func (c *AuthController) Profile(ctx *gin.Context) {
 	claimsAny, ok := ctx.Get("claims")
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 	claims, ok := claimsAny.(*auth.Claims)
 	if !ok || claims == nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
 
 	roles, err := c.permSvc.UserRoles(ctx.Request.Context(), claims.UserID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
 	roleCodes := make([]string, 0, len(roles))
@@ -51,23 +52,23 @@ func (c *AuthController) Profile(ctx *gin.Context) {
 
 	perms, err := c.permSvc.UserPermCodes(ctx.Request.Context(), claims.UserID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
 
 	menus, err := c.permSvc.UserMenus(ctx.Request.Context(), claims.UserID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
 
 	routes, err := c.permSvc.UserRoutes(ctx.Request.Context(), claims.UserID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, profileResponse{
+	resp.OK(ctx, profileResponse{
 		User:   claims,
 		Roles:  roleCodes,
 		Perms:  perms,
@@ -84,29 +85,27 @@ type refreshRequest struct {
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var req refreshRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token required"})
+		resp.Fail(ctx, errs.New(errs.CodeParamMissing, nil))
 		return
 	}
 	res, err := c.authSvc.Refresh(ctx.Request.Context(), req.RefreshToken)
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{
-		"token": res.AccessToken, "refresh_token": res.RefreshToken, "expires_in": res.ExpiresIn,
-	})
+	resp.OK(ctx, res)
 }
 
 // Logout 注销当前 access token（从 Authorization 头取）。
 func (c *AuthController) Logout(ctx *gin.Context) {
 	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
 	if raw == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "token required"})
+		resp.Fail(ctx, errs.New(errs.CodeParamMissing, nil))
 		return
 	}
 	if err := c.authSvc.Logout(ctx.Request.Context(), raw); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }

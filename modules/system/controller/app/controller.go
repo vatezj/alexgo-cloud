@@ -2,11 +2,12 @@ package app
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/resp"
 )
 
 type AppController struct {
@@ -29,7 +30,7 @@ type loginRequest struct {
 func (ctrl *AppController) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp.Fail(c, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	res, _, err := ctrl.unified.Login(c.Request.Context(), oauth2svc.LoginParams{
@@ -44,14 +45,14 @@ func (ctrl *AppController) Login(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, oauth2svc.ErrCaptchaInvalid) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			resp.Fail(c, errs.New(errs.CodeCaptchaInvalid, nil))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// 怪癖保留：凭据错等裸错误透传 → 50000（HTTP 500 与旧契约一致，原始错误只进日志）。
+		resp.Fail(c, err)
 		return
 	}
-	// 响应字段与旧版逐字一致：前端读 res.token 不变。
-	c.JSON(http.StatusOK, gin.H{
-		"token": res.AccessToken, "refresh_token": res.RefreshToken, "expires_in": res.ExpiresIn,
-	})
+	// 响应字段与旧版逐字一致：LoginResult json 标签即 token/refresh_token/expires_in，
+	// 前端读 res.token 不变（拦截器解 data 后拿到同一形状）。
+	resp.OK(c, res)
 }

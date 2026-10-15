@@ -1,11 +1,10 @@
 package admin
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/system/service"
+	"alexGo-cloud/pkg/resp"
 )
 
 type AdminController struct {
@@ -19,8 +18,8 @@ func NewAdminController(userSvc service.UserService) *AdminController {
 func (ctrl *AdminController) ListUsers(c *gin.Context) {
 	users, err := ctrl.userSvc.ListUsers(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": users})
+	resp.OK(c, users)
 }

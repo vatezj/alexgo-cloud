@@ -72,16 +72,18 @@ func TestLogin_WrongPassword_401Envelope(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401; body=%s", w.Code, w.Body.String())
 	}
+	// 信封适配：vben 旧自定义信封 {code:401,error:...} → 统一信封 {code,msg,data}；
+	// HTTP 401 不变，code 精确 20001（未登录或登录已失效），文案走注册表。
 	var resp struct {
-		Code  int    `json:"code"`
-		Data  any    `json:"data"`
-		Error string `json:"error"`
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data any    `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Code != 401 || resp.Error == "" || resp.Data != nil {
-		t.Errorf("envelope = %+v, want {code:401, data:null, error:非空}", resp)
+	if resp.Code != 20001 || resp.Msg == "" || resp.Data != nil {
+		t.Errorf("envelope = %+v, want {code:20001, msg:非空, data:null}", resp)
 	}
 }
 
@@ -92,7 +94,8 @@ func TestLogin_CaptchaInvalid_400(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"code":400`) {
+	// 信封适配：captcha 显式分支 → 30005（验证码错误），HTTP 400 不变。
+	if !strings.Contains(w.Body.String(), `"code":30005`) {
 		t.Errorf("body = %s", w.Body.String())
 	}
 }

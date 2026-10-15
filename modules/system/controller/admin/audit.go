@@ -1,12 +1,12 @@
 package admin
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/system/service"
+	"alexGo-cloud/pkg/resp"
 )
 
 type AuditController struct {
@@ -21,18 +21,18 @@ func (c *AuditController) ListLogin(ctx *gin.Context) {
 	limit, _ := strconv.Atoi(ctx.Query("limit"))
 	list, err := c.auditSvc.ListLogin(ctx.Request.Context(), limit)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
 
 func (c *AuditController) ListOperate(ctx *gin.Context) {
 	limit, _ := strconv.Atoi(ctx.Query("limit"))
 	list, err := c.auditSvc.ListOperate(ctx.Request.Context(), limit)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		resp.Fail(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"data": list})
+	resp.OK(ctx, list)
 }
