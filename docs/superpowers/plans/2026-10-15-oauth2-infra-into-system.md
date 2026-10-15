@@ -508,8 +508,11 @@ grep -c FAIL /tmp/final_test.txt        # 必须 0；skip 逐条目视环境如�
 ```bash
 # ① 旧 import 前缀：0
 grep -rn 'alexGo-cloud/modules/oauth2\|alexGo-cloud/modules/infra' --include='*.go' . | wc -l        # 0
-# ② go 裸路径：恰 5 行（codeg 产物清单）
-grep -rn 'modules/oauth2\|modules/infra' --include='*.go' . | grep -v 'modules/system/' | wc -l       # 5
+# ② go 裸路径：恰 5 行（codegen 产物清单）
+#    注意：不要加 grep -v 'modules/system/' —— grep -rn 输出行含文件路径前缀，
+#    产物文件本身位于 modules/system/infra/ 下会被误吞（Task 2 实测教训）。
+#    新路径 modules/system/* 不含裸子串 modules/infra|modules/oauth2，plain grep 即内容精确匹配：
+grep -rn 'modules/oauth2\|modules/infra' --include='*.go' . | wc -l                               # 5
 # ③ md 裸路径：恰 4 行（m3 产物引用）且不含 2026-10-15 两个文件
 grep -rn 'modules/oauth2\|modules/infra' README.md docs --include='*.md' | grep -v 'modules/system/' | grep -v '2026-10-15-oauth2-infra' | wc -l   # 4
 # ④ spec/计划文件未被 sed 污染：仍含原始路径表述
