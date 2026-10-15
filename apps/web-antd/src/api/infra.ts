@@ -3,8 +3,8 @@ import { downloadFileFromBlob } from '@vben/utils';
 import { requestClient } from './request';
 
 // ---- 代码生成（infra codegen，/admin/infra/codegen/*）----
-// 信封 {data,total} 被 requestClient 拦截器解包后 total 丢失：
-// 对齐 admin.ts listClients，一次拉满上限 200，页面用 localPage 本地切页。
+// 列表走统一分页信封 data:{list,total,page,size}（resp.Page，size 上限 100），
+// 由 requestClient 拦截器解包——到这里是 {list,total} 裸对象。
 
 export interface CodegenTable {
   id: number;
@@ -53,19 +53,25 @@ export interface SyncResult {
   unchanged: number;
 }
 
-// 服务端单页上限 200（codegen_service.go clamp）——循环分页拉全，
-// 杜绝 >200 张已导入表时「全部表」预览静默截断。判停：末批 < 200；
-// 安全上限 50 页（1 万张），防后端异常时死循环。
-export async function listCodegenTables(): Promise<CodegenTable[]> {
-  const pageSize = 200;
-  const maxPages = 50;
+// 列表页服务端真分页（resp.Page 信封，PageReq size 上限 100）。
+export function listCodegenTablesPage(params: { page: number; size: number }) {
+  return requestClient.get<{ list: CodegenTable[]; total: number }>(
+    '/admin/infra/codegen/tables',
+    { params },
+  );
+}
+
+// 「全部表」预览拉全：按服务端上限 100/页循环分页，杜绝大批量表时
+// 「生成代码」静默截断。判停：末批 < 100；安全上限 100 页（1 万张），
+// 防后端异常时死循环。
+export async function listAllCodegenTables(): Promise<CodegenTable[]> {
+  const pageSize = 100;
+  const maxPages = 100;
   const all: CodegenTable[] = [];
   for (let page = 1; page <= maxPages; page += 1) {
-    const batch = await requestClient.get<CodegenTable[]>(
-      `/admin/infra/codegen/tables?page=${page}&size=${pageSize}`,
-    );
-    all.push(...batch);
-    if (batch.length < pageSize) {
+    const { list } = await listCodegenTablesPage({ page, size: pageSize });
+    all.push(...list);
+    if (list.length < pageSize) {
       break;
     }
     if (page === maxPages) {
@@ -94,17 +100,15 @@ export function getCodegenTable(id: number) {
   return requestClient.get<CodegenTable>(`/admin/infra/codegen/tables/${id}`);
 }
 
-export function updateCodegenTable(id: number, payload: Partial<CodegenTable>) {
-  return requestClient.put<{ status: string }>(
-    `/admin/infra/codegen/tables/${id}`,
-    payload,
-  );
+export function updateCodegenTable(
+  id: number,
+  payload: Partial<CodegenTable>,
+): Promise<void> {
+  return requestClient.put(`/admin/infra/codegen/tables/${id}`, payload);
 }
 
-export function deleteCodegenTable(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/infra/codegen/tables/${id}`,
-  );
+export function deleteCodegenTable(id: number): Promise<void> {
+  return requestClient.delete(`/admin/infra/codegen/tables/${id}`);
 }
 
 export function listCodegenColumns(id: number) {
@@ -114,8 +118,11 @@ export function listCodegenColumns(id: number) {
 }
 
 // 全量保存：后端按提交数组整体替换该表配置。
-export function saveCodegenColumns(id: number, columns: CodegenColumn[]) {
-  return requestClient.put<{ status: string }>(
+export function saveCodegenColumns(
+  id: number,
+  columns: CodegenColumn[],
+): Promise<void> {
+  return requestClient.put(
     `/admin/infra/codegen/tables/${id}/columns`,
     columns,
   );

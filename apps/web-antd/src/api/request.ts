@@ -75,12 +75,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   client.addResponseInterceptor(
     defaultResponseInterceptor({
       codeField: 'code',
-      // alexGo：兼容三形态——
-      //   ① 新信封 {code:0,data,...}      → successCode 0，解 data
-      //   ② 旧业务 {data:[...]}           → 无 code → undefined 视为成功，解 data
-      //   ③ 旧动作 {"status":"ok"}        → 无 code、无 data 键 → 返回原 body
-      // 非 2xx 走 rejected 链（successCode 不参与）→ authenticate → errorMessage
-      //（优先弹后端 error 文案）。
+      // alexGo：统一信封 {code,msg,data}（pkg/resp 唯一出站出口，code 恒在）——
+      //   code===0 成功 → 解出 data（动作类 data:null → null）
+      //   非 2xx 或 2xx 但 code!==0 走 rejected（successCode 不参与）
+      //   → authenticate → errorMessage（优先弹后端 msg 文案）。
       dataField: (response: any) =>
         response &&
         typeof response === 'object' &&
@@ -88,7 +86,7 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
         response.data !== undefined
           ? response.data
           : response,
-      successCode: (code: any) => code === undefined || code === 0,
+      successCode: (code: any) => code === 0,
     }),
   );
 
@@ -107,10 +105,11 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   client.addResponseInterceptor(
     errorMessageResponseInterceptor((msg: string, error) => {
       // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
-      // 当前mock接口返回的错误字段是 error 或者 message
+      // 统一信封失败体 {code:<5位>,msg:<中文>,data:null}——文案在 msg 字段
+      // （message/error 为旧形态兼容兜底）。
       const responseData = error?.response?.data ?? {};
       // download 的 responseType='blob'，400 错误体也是 Blob——先转文本
-      // 再取 error 字段，否则只显状态码通用文案（M3 终审跟进票③）。
+      // 再取 msg 字段，否则只显状态码通用文案（M3 终审跟进票③）。
       // 拦截器回调不被 await（preset-interceptors 同步调用），这里 fire-and-forget。
       if (responseData instanceof Blob) {
         void responseData
@@ -118,7 +117,8 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
           .then((text: string) => {
             let detail = '';
             try {
-              detail = JSON.parse(text)?.error ?? '';
+              const body = JSON.parse(text);
+              detail = body?.msg ?? body?.message ?? body?.error ?? '';
             } catch {
               // 非 JSON 错误体，回退通用文案
             }
@@ -127,7 +127,8 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
           .catch(() => message.error(msg));
         return;
       }
-      const errorMessage = responseData?.error ?? responseData?.message ?? '';
+      const errorMessage =
+        responseData?.msg ?? responseData?.message ?? responseData?.error ?? '';
       // 如果没有错误信息，则会根据状态码进行提示
       message.error(errorMessage || msg);
     }),

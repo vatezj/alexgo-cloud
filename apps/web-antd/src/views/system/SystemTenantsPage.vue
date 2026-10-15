@@ -10,7 +10,12 @@ import { ref } from 'vue';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { createTenant, deleteTenant, listTenants, updateTenant } from '#/api/admin';
+import {
+  createTenant,
+  deleteTenant,
+  listTenants,
+  updateTenant,
+} from '#/api/admin';
 import { localPage } from '#/utils/local-page';
 
 defineOptions({ name: 'SystemTenantsPage' });
@@ -27,8 +32,7 @@ const gridOptions: VxeGridProps<Tenant> = {
     },
     {
       field: 'status',
-      formatter: ({ cellValue }) =>
-        Number(cellValue) === 1 ? '启用' : '停用',
+      formatter: ({ cellValue }) => (Number(cellValue) === 1 ? '启用' : '停用'),
       title: '状态',
       width: 80,
     },
@@ -50,9 +54,7 @@ const gridOptions: VxeGridProps<Tenant> = {
     {
       field: 'created_at',
       formatter: ({ cellValue }) =>
-        cellValue
-          ? String(cellValue).replace('T', ' ').slice(0, 19)
-          : '-',
+        cellValue ? String(cellValue).replace('T', ' ').slice(0, 19) : '-',
       title: '创建时间',
       width: 165,
     },
@@ -70,8 +72,8 @@ const gridOptions: VxeGridProps<Tenant> = {
   proxyConfig: {
     ajax: {
       query: async ({ page }) => {
-        // controller 一次性返回全量（{data} 解包后无 total）：
-        // 拉全量 + localPage 本地切页，对齐 Oauth2ClientsPage。
+        // controller 一次性返回全量（无 page/size 入参、无 total）：
+        // 拉全量 + localPage 本地切页。
         const rows = await listTenants();
         return {
           items: localPage(rows, page.currentPage, page.pageSize),

@@ -24,8 +24,9 @@ import {
   deleteCodegenTable,
   downloadCodegen,
   importCodegenTable,
+  listAllCodegenTables,
   listCodegenColumns,
-  listCodegenTables,
+  listCodegenTablesPage,
   listDBTables,
   previewCodegen,
   saveBlob,
@@ -33,7 +34,6 @@ import {
   syncCodegenTable,
   updateCodegenTable,
 } from '#/api/infra';
-import { localPage } from '#/utils/local-page';
 
 defineOptions({ name: 'InfraCodegenPage' });
 
@@ -88,13 +88,12 @@ const gridOptions: VxeGridProps<CodegenTable> = {
   proxyConfig: {
     ajax: {
       query: async ({ page }) => {
-        // {data,total} 被 requestClient 解包后 total 丢失：拉全量（size 上限
-        // 200）+ 本地切页，对齐 Oauth2ClientsPage/SystemPostsPage。
-        const rows = await listCodegenTables();
-        return {
-          items: localPage(rows, page.currentPage, page.pageSize),
-          total: rows.length,
-        };
+        // 服务端真分页：resp.Page 信封 data:{list,total,page,size}（size≤100）
+        const { list, total } = await listCodegenTablesPage({
+          page: page.currentPage,
+          size: page.pageSize,
+        });
+        return { items: list, total };
       },
     },
   },
@@ -388,11 +387,11 @@ function onPreview(row: CodegenTable) {
 }
 
 // 工具栏「生成代码」= 全部已导入表一起预览（spec §8 验收入口；
-// listCodegenTables 已分页拉全，「全部表」为真全量）
+// listAllCodegenTables 按 100/页循环拉全，「全部表」为真全量）
 async function onPreviewAll() {
   previewLoading.value = true;
   try {
-    const rows = await listCodegenTables();
+    const rows = await listAllCodegenTables();
     await openPreview(
       rows.map((r) => r.id),
       '全部表',

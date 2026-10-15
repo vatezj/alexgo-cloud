@@ -1,7 +1,7 @@
 /**
  * alexGo-cloud 管理端接口：承接旧 admin-web 的全部调用（路径去掉 /api 前缀——
- * baseURL = VITE_GLOB_API_URL = /api）。响应三形态由 src/api/request.ts 的
- * 拦截器解包：{"code":0,...}/{"data":...}/{"status":"ok"} 到这里都是裸数据。
+ * baseURL = VITE_GLOB_API_URL = /api）。统一信封 {code,msg,data} 由
+ * src/api/request.ts 拦截器解包——到这里都是裸数据（data 字段）。
  */
 import { requestClient } from '#/api/request';
 
@@ -132,11 +132,13 @@ export function createUser(payload: {
   return requestClient.post<User>('/admin/system/users', payload);
 }
 
-export function resetUserPassword(userId: number, password: string) {
-  return requestClient.post<{ status: string }>(
-    `/admin/system/users/${userId}/reset-password`,
-    { password },
-  );
+export function resetUserPassword(
+  userId: number,
+  password: string,
+): Promise<void> {
+  return requestClient.post(`/admin/system/users/${userId}/reset-password`, {
+    password,
+  });
 }
 
 // ---- 角色 ----
@@ -148,8 +150,8 @@ export function createRole(payload: { code: string; name: string }) {
   return requestClient.post<Role>('/admin/system/roles', payload);
 }
 
-export function deleteRole(id: number) {
-  return requestClient.delete<{ status: string }>(`/admin/system/roles/${id}`);
+export function deleteRole(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/roles/${id}`);
 }
 
 // ---- 菜单 ----
@@ -178,8 +180,8 @@ export function updateMenu(id: number, payload: MenuPayload) {
   return requestClient.put<Menu>(`/admin/system/menus/${id}`, payload);
 }
 
-export function deleteMenu(id: number) {
-  return requestClient.delete<{ status: string }>(`/admin/system/menus/${id}`);
+export function deleteMenu(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/menus/${id}`);
 }
 
 // ---- 部门 ----
@@ -196,8 +198,8 @@ export function createDept(payload: {
   return requestClient.post<Dept>('/admin/system/depts', payload);
 }
 
-export function deleteDept(id: number) {
-  return requestClient.delete<{ status: string }>(`/admin/system/depts/${id}`);
+export function deleteDept(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/depts/${id}`);
 }
 
 // ---- 岗位 ----
@@ -214,8 +216,8 @@ export function createPost(payload: {
   return requestClient.post<Post>('/admin/system/posts', payload);
 }
 
-export function deletePost(id: number) {
-  return requestClient.delete<{ status: string }>(`/admin/system/posts/${id}`);
+export function deletePost(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/posts/${id}`);
 }
 
 // ---- 字典 ----
@@ -231,10 +233,8 @@ export function createDictType(payload: {
   return requestClient.post<DictType>('/admin/system/dict/types', payload);
 }
 
-export function deleteDictType(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/system/dict/types/${id}`,
-  );
+export function deleteDictType(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/dict/types/${id}`);
 }
 
 export function listDictDatas(typeId: number) {
@@ -253,10 +253,8 @@ export function createDictData(payload: {
   return requestClient.post<DictData>('/admin/system/dict/datas', payload);
 }
 
-export function deleteDictData(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/system/dict/datas/${id}`,
-  );
+export function deleteDictData(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/dict/datas/${id}`);
 }
 
 // ---- 系统参数 ----
@@ -273,10 +271,8 @@ export function createConfig(payload: {
   return requestClient.post<SystemConfig>('/admin/system/configs', payload);
 }
 
-export function deleteConfig(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/system/configs/${id}`,
-  );
+export function deleteConfig(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/configs/${id}`);
 }
 
 // ---- 通知公告 ----
@@ -292,10 +288,8 @@ export function createNotice(payload: {
   return requestClient.post<Notice>('/admin/system/notices', payload);
 }
 
-export function deleteNotice(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/system/notices/${id}`,
-  );
+export function deleteNotice(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/notices/${id}`);
 }
 
 // ---- 我的通知（已读回执） ----
@@ -303,16 +297,12 @@ export function listMyNotices() {
   return requestClient.get<NoticeItem[]>('/admin/system/notices/mine');
 }
 
-export function markNoticeRead(id: number) {
-  return requestClient.post<{ status: string }>(
-    `/admin/system/notices/${id}/read`,
-  );
+export function markNoticeRead(id: number): Promise<void> {
+  return requestClient.post(`/admin/system/notices/${id}/read`);
 }
 
-export function markAllNoticesRead() {
-  return requestClient.post<{ status: string }>(
-    '/admin/system/notices/read-all',
-  );
+export function markAllNoticesRead(): Promise<void> {
+  return requestClient.post('/admin/system/notices/read-all');
 }
 
 // ---- 日志 ----
@@ -370,11 +360,11 @@ export interface Oauth2ClientPayload {
   activity: number;
 }
 
-// page/size 走 URL 内联 query（对齐 listOperateLogs 风格）；
-// 响应 {data,total} 被拦截器解出 data 后 total 丢失 → 页面本地切页，这里一次拉满上限 200。
-export function listClients() {
-  return requestClient.get<Oauth2Client[]>(
-    '/admin/oauth2/clients?page=1&size=200',
+// 服务端真分页（resp.Page 信封 data:{list,total,page,size}，size 上限 100）。
+export function listOauth2ClientsPage(params: { page: number; size: number }) {
+  return requestClient.get<{ list: Oauth2Client[]; total: number }>(
+    '/admin/oauth2/clients',
+    { params },
   );
 }
 
@@ -387,13 +377,14 @@ export function createClient(payload: Oauth2ClientPayload) {
 }
 
 export function updateClient(id: number, payload: Oauth2ClientPayload) {
-  return requestClient.put<Oauth2Client>(`/admin/oauth2/clients/${id}`, payload);
+  return requestClient.put<Oauth2Client>(
+    `/admin/oauth2/clients/${id}`,
+    payload,
+  );
 }
 
-export function deleteClient(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/oauth2/clients/${id}`,
-  );
+export function deleteClient(id: number): Promise<void> {
+  return requestClient.delete(`/admin/oauth2/clients/${id}`);
 }
 
 // ---- 租户 ----
@@ -426,15 +417,13 @@ export function createTenant(payload: TenantPayload) {
   return requestClient.post<Tenant>('/admin/system/tenants', payload);
 }
 
-export function updateTenant(id: number, payload: TenantPayload) {
-  return requestClient.put<{ status: string }>(
-    `/admin/system/tenants/${id}`,
-    payload,
-  );
+export function updateTenant(
+  id: number,
+  payload: TenantPayload,
+): Promise<void> {
+  return requestClient.put(`/admin/system/tenants/${id}`, payload);
 }
 
-export function deleteTenant(id: number) {
-  return requestClient.delete<{ status: string }>(
-    `/admin/system/tenants/${id}`,
-  );
+export function deleteTenant(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/tenants/${id}`);
 }

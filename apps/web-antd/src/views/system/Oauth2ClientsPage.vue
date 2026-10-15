@@ -13,10 +13,9 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createClient,
   deleteClient,
-  listClients,
+  listOauth2ClientsPage,
   updateClient,
 } from '#/api/admin';
-import { localPage } from '#/utils/local-page';
 
 defineOptions({ name: 'Oauth2ClientsPage' });
 
@@ -29,8 +28,7 @@ const gridOptions: VxeGridProps<Oauth2Client> = {
     { field: 'account_types', title: '账号类型', width: 130 },
     {
       field: 'activity',
-      formatter: ({ cellValue }) =>
-        Number(cellValue) === 1 ? '启用' : '停用',
+      formatter: ({ cellValue }) => (Number(cellValue) === 1 ? '启用' : '停用'),
       title: '状态',
       width: 80,
     },
@@ -48,13 +46,12 @@ const gridOptions: VxeGridProps<Oauth2Client> = {
   proxyConfig: {
     ajax: {
       query: async ({ page }) => {
-        // {data,total} 被 requestClient 拦截器解包后 total 丢失：
-        // 一次拉全量（controller size 上限 200）+ 本地切页，对齐 SystemPostsPage。
-        const rows = await listClients();
-        return {
-          items: localPage(rows, page.currentPage, page.pageSize),
-          total: rows.length,
-        };
+        // 服务端真分页：resp.Page 信封 data:{list,total,page,size}（size≤100）
+        const { list, total } = await listOauth2ClientsPage({
+          page: page.currentPage,
+          size: page.pageSize,
+        });
+        return { items: list, total };
       },
     },
   },
