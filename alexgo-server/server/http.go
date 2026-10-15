@@ -73,8 +73,6 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		// Tenant：解析租户并注入 context（X-Tenant-ID 头优先，其次 Host 域名 → tenant_id），
 		// 供 SaaS 多租户隔离（gorm 插件）/审计/限流维度使用。
 		middleware.NewTenantMiddleware(p.TenantDomainLookup),
-		// Logger：结构化日志（可在这里对接 trace id / request id）。
-		middleware.Logger(),
 		// PrometheusMiddleware：记录 http_requests_total（method/path/status），用于错误率/流量监控。
 		monitor.PrometheusMiddleware(),
 		// RateLimitAndBreaker：入口防护，避免高并发/故障导致雪崩。
@@ -87,6 +85,8 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		middleware.OperateLogMiddleware(p.OperateRecorder),
 		// OTELMiddleware：OpenTelemetry trace，支持把链路导出到 Jaeger/Tempo/OTLP Collector。
 		trace.OTELMiddleware(),
+		// AccessLog：结构化访问日志（状态码/耗时/trace_id），排除健康检查端点。
+		middleware.AccessLog(),
 		// Trace：占位，用于未来对接更完整的 trace/span 属性补全。
 		middleware.Trace(),
 	)
