@@ -371,6 +371,30 @@ func seed(ctx context.Context, p SeederParams) error {
 			allMenus = append(allMenus, btn)
 		}
 	}
+	// 文件存储按钮（子项目 B / P1-1）：三条同属 infra:file 前缀，绑一次幂等判——
+	// 逐条判会因组内首条 append 后跳过余下两条。fresh 库与老库统一走本路径，
+	// append 进 allMenus → 尾部 SetRoleMenus 全量绑 admin。
+	if rootID != 0 && !hasPermPrefix(allMenus, "infra:file") {
+		for _, b := range fileStorageButtons {
+			btn := &model.Menu{
+				ParentID:   rootID,
+				Type:       "button",
+				Name:       b.name,
+				Path:       "",
+				Component:  "",
+				Icon:       b.icon,
+				Permission: b.perm,
+				Sort:       b.sort,
+				Status:     1,
+				TenantID:   tid,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			if err := p.Menus.Create(ctx, btn); err == nil {
+				allMenus = append(allMenus, btn)
+			}
+		}
+	}
 
 	menuIDs := make([]uint64, 0, len(allMenus))
 	for _, m := range allMenus {
@@ -405,6 +429,21 @@ func seed(ctx context.Context, p SeederParams) error {
 	}
 
 	return nil
+}
+
+// fileStorageButtons 文件存储三按钮（子项目 B / P1-1）：三条同属 infra:file 前缀。
+// 必须整组绑一次 hasPermPrefix 判据——前缀粒度下逐条判会因组内首条 append 后
+// 跳过余下两条（只插 1/3 = 死权限 403，Review Focus ④）。seed_test 钉与
+// permissionRoutes["infra:file"] 同源。
+var fileStorageButtons = []struct {
+	perm string
+	name string
+	icon string
+	sort int
+}{
+	{perm: "infra:file:upload", name: "文件上传", icon: "upload", sort: 14},
+	{perm: "infra:file:download", name: "文件下载", icon: "download", sort: 15},
+	{perm: "infra:file:delete", name: "文件删除", icon: "trash-2", sort: 16},
 }
 
 // hasPermPrefix 判断菜单集中是否已有任一菜单的 permission 前缀命中给定前缀
