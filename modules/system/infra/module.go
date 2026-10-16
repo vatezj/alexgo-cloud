@@ -17,6 +17,7 @@ import (
 	cgmodel "alexGo-cloud/pkg/codegen/model"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
+	"alexGo-cloud/pkg/storage"
 )
 
 // FxModule infra 模块装配：迁移源 + 三层 + admin 路由。系统级：不做租户隔离。
@@ -32,6 +33,10 @@ var FxModule = fx.Module("infra",
 		newMetadataReader,
 		newCodegenService,
 		admin.NewCodegenController,
+		newStorageDriver,
+		repository.NewFileRepository,
+		newFileService,
+		admin.NewFileController,
 		fx.Annotate(
 			NewModule,
 			fx.As(new(server.Module)),
@@ -79,18 +84,39 @@ func newMetadataReader(lc fx.Lifecycle, cfg *config.Config) (metadata.MetadataRe
 	return metadata.NewMySQLReader(db, dsn.DBName), nil
 }
 
+// newStorageDriver 本地盘驱动：构造即 Abs+MkdirAll。不做 Enabled 开关——
+// 本地盘无外部依赖（spec §1，与 Redis/MQ 可选依赖不同），YAGNI。
+func newStorageDriver(cfg *config.Config) (storage.Driver, error) {
+	root := "./data/uploads"
+	if cfg != nil && cfg.Storage.Root != "" {
+		root = cfg.Storage.Root
+	}
+	return storage.NewLocalDriver(root)
+}
+
+// newFileService 组装文件服务（配置注入大小上限与白名单覆盖）。
+func newFileService(
+	repo repository.FileRepository,
+	driver storage.Driver,
+	cfg *config.Config,
+) service.FileService {
+	return service.NewFileService(repo, driver, cfg)
+}
+
 type infraModule struct {
 	codegenCtrl *admin.CodegenController
+	fileCtrl    *admin.FileController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
-func NewModule(codegenCtrl *admin.CodegenController) server.Module {
-	return &infraModule{codegenCtrl: codegenCtrl}
+func NewModule(codegenCtrl *admin.CodegenController, fileCtrl *admin.FileController) server.Module {
+	return &infraModule{codegenCtrl: codegenCtrl, fileCtrl: fileCtrl}
 }
 
 // RegisterRoutes 挂载 infra 路由。入参是 /api group（见 server/http.go），
-// 故这里用相对前缀 /admin/infra/codegen。
+// 故这里用相对前缀：admin 受控组 + public 免鉴权组。
 func (m *infraModule) RegisterRoutes(r *gin.RouterGroup) {
-	g := r.Group("/admin/infra/codegen")
-	m.codegenCtrl.RegisterRoutes(g)
+	m.codegenCtrl.RegisterRoutes(r.Group("/admin/infra/codegen"))
+	m.fileCtrl.RegisterAdminRoutes(r.Group("/admin/infra/file"))
+	m.fileCtrl.RegisterPublicRoutes(r.Group("/public/infra/file"))
 }

@@ -112,6 +112,9 @@ func newRouter(cfg *config.Config, enf *casbin.Enforcer) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	r.GET("/api/public/infra/file/:key", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 	return r
 }
 
@@ -164,6 +167,7 @@ func TestAuthMiddleware_NonAdminPaths_WithoutToken_200(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{"POST", "/api/app/system/auth/login"},
 		{"GET", "/health"},
+		{"GET", "/api/public/infra/file/abc123"},
 	} {
 		if w := do(r, tc.method, tc.path, ""); w.Code != http.StatusOK {
 			t.Errorf("%s %s: status = %d, want 200 (public path)", tc.method, tc.path, w.Code)
