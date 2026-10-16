@@ -37,14 +37,14 @@
 | P1-4 | **API 文档** | swagger 注解 + 聚合页（或从 gin routes 生成）；减少 `docs/usage.md` 手维护漂移 | 无 |
 | P1-5 | **HTTP 基座规范化** | 统一信封 {code,msg,data} + 五位错误码 + Paginate[T] + DateTime + AccessLog/Recovery（spec：`docs/superpowers/specs/2026-10-15-http-foundation-design.md`） | ✅ |
 
-> **P1-5 遗留项**：codegen 模板/golden（`pkg/codegen/template/templates/**`、`pkg/codegen/testdata/golden/**`）仍旧使用旧信封（`gin.H{"error":...}`），须在 M6 动 codegen 前迁移 resp 信封并重生成 golden。
+> **P1-5 遗留项**：✅ 已清（`9a5377e`）——codegen 模板/golden 迁统一信封（`resp.OK/Fail` + id/bind 走 `errs.CodeParamInvalid`，动作端点 `resp.OK(ctx,nil)` + 前端 `Promise<void>`），生成产物过 go build/vet + service 测试 + vue-tsc + vitest 门禁。**M6 前置门禁解除**。
 
 ## P2 — 深水区（可缓，按需启动）
 
 | # | 项 | 内容 | 状态 |
 | --- | --- | --- | --- |
 | P2-1 | codegen M4→M5→M6 | 前端列表模板 → 树表 → 主子表（spec：`docs/superpowers/specs/2026-10-10-codegen-redesign-design.md`） | M4 ✅ `a932b56..20330df`（7 模板 + E2E + 终审），M5 ✅ `c016a1f..3465434`（树表族 overlay 5 模板 + 约定校验 + 冒烟 42），当前 M6 |
-| P2-1-F | **codegen M4 跟进票**（M4 终审挂出，7 minor） | ① form.vue `editingId` 在 async resetForm 后赋值，极快点确定可能走 create（竞态）；② list/form/drawer 模板 `.Comment` 未转义撇号（注释含 `'` 则 JS 语法错）；③ generate_test 残留正则漏 `{{fn}}`/`{{ $x }}` 形态；④ smoke cleanup 不删空目录（遗留 `codegen_smoke_*` 空目录）；⑤ create/update 返回类型声明 `Promise<Entity>` 实返 `{status:ok}`（类型说谎）；⑥ `int/uint64→number` >2^53 雪花 ID 精度丢失（与有符号主键局限同票，`docs/usage.md` §2.8「局限票」指此）；⑦ preview 验收不断言 front 产物存在（golden 别处兜底） | ⬜ 不阻塞 |
+| P2-1-F | **codegen M4 跟进票**（M4 终审挂出，7 minor；⑤ 已随信封迁移修） | ① form.vue `editingId` 在 async resetForm 后赋值，极快点确定可能走 create（竞态）；② list/form/drawer 模板 `.Comment` 未转义撇号（注释含 `'` 则 JS 语法错）；③ generate_test 残留正则漏 `{{fn}}`/`{{ $x }}` 形态；④ smoke cleanup 不删空目录（遗留 `codegen_smoke_*` 空目录）；⑤ ~~create/update 返回类型声明 `Promise<Entity>` 实返 `{status:ok}`（类型说谎）~~ ✅ `9a5377e` 改 `Promise<void>`；⑥ `int/uint64→number` >2^53 雪花 ID 精度丢失（与有符号主键局限同票，`docs/usage.md` §2.8「局限票」指此）；⑦ preview 验收不断言 front 产物存在（golden 别处兜底） | ⬜ 不阻塞 |
 | P2-2 | member 深化 | 实名认证、会员等级、积分、签到 |
 | P2-3 | 社交登录 | 微信/QQ OAuth 联邦到统一登录（account_type 扩展） |
 | P2-4 | 定时任务可视化 | 任务表 + 触发器 + 执行日志页（对照 yudao Job） |
