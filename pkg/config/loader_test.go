@@ -97,6 +97,11 @@ func TestLoadGlobalConfig_EnvOverridesDeploymentAndGRPC(t *testing.T) {
 // storage 段必须从 config.yaml 正确解码（mapstructure tag 与 yaml 键对齐，Task 2）。
 func TestLoadGlobalConfig_StorageSection(t *testing.T) {
 	chdirRepoRoot(t)
+	// AutomaticEnv 下 storage.* 键会被 STORAGE_* 环境变量压过（K8s/Compose 注入形态）；
+	// 测试断言的是 config.yaml 值，必须先把这三个 env 压成空（viper 视空串为未设置）。
+	t.Setenv("STORAGE_ROOT", "")
+	t.Setenv("STORAGE_MAX_SIZE_MB", "")
+	t.Setenv("STORAGE_ALLOWED_EXTS", "")
 	cfg, err := config.LoadGlobalConfig()
 	if err != nil {
 		t.Fatalf("LoadGlobalConfig() error = %v", err)
