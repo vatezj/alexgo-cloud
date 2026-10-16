@@ -42,29 +42,20 @@ export function listCodegenDemoMenu(): Promise<CodegenDemoMenu[]> {
   return requestClient.get<CodegenDemoMenu[]>('/admin/order/codegen_demo_menus');
 }
 
+// 动作类信封 data:null → 拦截器解包后 null：返回类型 Promise<void>（勿声明实体）。
 export function createCodegenDemoMenu(
   data: Partial<CodegenDemoMenu>,
-): Promise<CodegenDemoMenu> {
-  return requestClient.post<CodegenDemoMenu>(
-    '/admin/order/codegen_demo_menus',
-    data,
-  );
+): Promise<void> {
+  return requestClient.post('/admin/order/codegen_demo_menus', data);
 }
 
 export function updateCodegenDemoMenu(
   id: number | string,
   data: Partial<CodegenDemoMenu>,
-): Promise<CodegenDemoMenu> {
-  return requestClient.put<CodegenDemoMenu>(
-    `/admin/order/codegen_demo_menus/${id}`,
-    data,
-  );
+): Promise<void> {
+  return requestClient.put(`/admin/order/codegen_demo_menus/${id}`, data);
 }
 
-export function deleteCodegenDemoMenu(
-  id: number | string,
-): Promise<{ status: string }> {
-  return requestClient.delete<{ status: string }>(
-    `/admin/order/codegen_demo_menus/${id}`,
-  );
+export function deleteCodegenDemoMenu(id: number | string): Promise<void> {
+  return requestClient.delete(`/admin/order/codegen_demo_menus/${id}`);
 }

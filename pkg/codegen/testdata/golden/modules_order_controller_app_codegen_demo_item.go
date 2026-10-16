@@ -1,9 +1,9 @@
 package app
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
+
+	"alexGo-cloud/pkg/resp"
 )
 
 type AppCodegenDemoItemController struct{}
@@ -13,5 +13,5 @@ func NewAppCodegenDemoItemController() *AppCodegenDemoItemController {
 }
 
 func (c *AppCodegenDemoItemController) Ping(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	resp.OK(ctx, nil)
 }

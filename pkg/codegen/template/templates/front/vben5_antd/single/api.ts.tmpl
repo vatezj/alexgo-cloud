@@ -40,29 +40,20 @@ export function list[[.Entity]](): Promise<[[.Entity]][]> {
   return requestClient.get<[[.Entity]][]>('/admin/[[.Module]]/[[.Plural]]');
 }
 
+// 动作类信封 data:null → 拦截器解包后 null：返回类型 Promise<void>（勿声明实体）。
 export function create[[.Entity]](
   data: Partial<[[.Entity]]>,
-): Promise<[[.Entity]]> {
-  return requestClient.post<[[.Entity]]>(
-    '/admin/[[.Module]]/[[.Plural]]',
-    data,
-  );
+): Promise<void> {
+  return requestClient.post('/admin/[[.Module]]/[[.Plural]]', data);
 }
 
 export function update[[.Entity]](
   id: number | string,
   data: Partial<[[.Entity]]>,
-): Promise<[[.Entity]]> {
-  return requestClient.put<[[.Entity]]>(
-    `/admin/[[.Module]]/[[.Plural]]/${id}`,
-    data,
-  );
+): Promise<void> {
+  return requestClient.put(`/admin/[[.Module]]/[[.Plural]]/${id}`, data);
 }
 
-export function delete[[.Entity]](
-  id: number | string,
-): Promise<{ status: string }> {
-  return requestClient.delete<{ status: string }>(
-    `/admin/[[.Module]]/[[.Plural]]/${id}`,
-  );
+export function delete[[.Entity]](id: number | string): Promise<void> {
+  return requestClient.delete(`/admin/[[.Module]]/[[.Plural]]/${id}`);
 }

@@ -94,12 +94,6 @@ export function importCodegenTable(tableName: string) {
   });
 }
 
-// 响应 {data,columns} 解包后只剩 table（columns 丢失）——列配置走
-// listCodegenColumns 单独拉，二者配合覆盖详情所需。
-export function getCodegenTable(id: number) {
-  return requestClient.get<CodegenTable>(`/admin/infra/codegen/tables/${id}`);
-}
-
 export function updateCodegenTable(
   id: number,
   payload: Partial<CodegenTable>,
