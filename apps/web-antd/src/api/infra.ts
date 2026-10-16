@@ -186,5 +186,11 @@ export function uploadFile(
   if (opts?.bizType) {
     fd.append('biz_type', opts.bizType);
   }
-  return requestClient.post<FileMeta>('/admin/infra/file/upload', fd);
+  // 显式 multipart CT：RequestClient 默认 application/json 会让 axios
+  // transformRequest 把 FormData JSON.stringify 成 {"file":{},...}（body 非
+  // multipart → 后端 ctx.FormFile 恒 4xx）；非 JSON CT 时 axios 跳过该分支、
+  // 保持 FormData，浏览器 XHR 适配层再清掉 CT 由浏览器补 boundary（同 uploader.ts）。
+  return requestClient.post<FileMeta>('/admin/infra/file/upload', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 }
