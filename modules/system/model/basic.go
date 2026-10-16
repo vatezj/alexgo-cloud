@@ -76,7 +76,11 @@ type SystemNotice struct {
 	Status    int       `json:"status"`
 	TenantID  uint64    `json:"tenant_id"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// Attachments 附件 JSON 数组文本（元素 {id,name,size,url}，url=/api/public/infra/file/<key>）。
+	// 照 DataScopeDeptIDs 的 string 惯例（spec §2）：后端原样存取不解析——
+	// 公告内容本就是 admin 受信富文本。size 4096 防 MySQL 默认 varchar(191) 截断。
+	Attachments string    `gorm:"column:attachments;size:4096" json:"attachments"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (SystemNotice) TableName() string { return "system_notices" }
