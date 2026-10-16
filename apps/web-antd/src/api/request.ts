@@ -51,7 +51,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   async function doRefreshToken() {
     const accessStore = useAccessStore();
     const resp = await refreshTokenApi();
-    const newToken = resp.data;
+    // 裸 client（responseReturn:'raw'）→ resp=AxiosResponse：resp.data 是统一
+    // 信封体 {code,msg,data}，新令牌须再下钻 .data.data.token（统一信封迁移到此
+    // 的读法修正——旧形态 resp.data 直为 token 字符串）。
+    const newToken = resp.data.data.token;
     accessStore.setAccessToken(newToken);
     return newToken;
   }
