@@ -2,7 +2,6 @@ package admin
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -52,12 +51,7 @@ func (c *RoleController) Create(ctx *gin.Context) {
 		DataScope: req.DataScope, DataScopeDeptIDs: req.DataScopeDeptIDs,
 	})
 	if err != nil {
-		// 同租户 code 查重在 service 内（返回裸错误串），按语义映射「已存在」→ 30003。
-		if strings.Contains(err.Error(), "already exists") {
-			resp.Fail(ctx, errs.New(errs.CodeRoleTaken, nil))
-			return
-		}
-		resp.Fail(ctx, err)
+		resp.Fail(ctx, err) // code 查重已在 service 哨兵化（CodeRoleTaken 经 resp.Fail 直传）
 		return
 	}
 	resp.OK(ctx, item)

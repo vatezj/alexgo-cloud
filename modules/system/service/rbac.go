@@ -12,6 +12,7 @@ import (
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/pkg/auth"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -119,7 +120,7 @@ func (s *roleService) Create(ctx context.Context, p RoleCreateParams) (*model.Ro
 	tid := tenant.TenantIDFromContext(ctx)
 	// 同租户内 code 唯一
 	if _, err := s.roleRepo.GetByCode(ctx, tid, p.Code); err == nil {
-		return nil, fmt.Errorf("role code already exists")
+		return nil, errs.New(errs.CodeRoleTaken, nil)
 	}
 	now := time.Now()
 	// type 恒 2=自定义，status 恒 1=启用

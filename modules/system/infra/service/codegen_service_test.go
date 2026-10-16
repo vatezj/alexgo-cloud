@@ -14,6 +14,7 @@ import (
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodelErr "alexGo-cloud/pkg/codegen/model"
+	errs "alexGo-cloud/pkg/errors"
 )
 
 // fakeReader 是内存 metadata.MetadataReader：支持外部 mutate 后 Sync。
@@ -273,15 +274,15 @@ func TestUpdateTable_RejectsClassConflict(t *testing.T) {
 	}
 }
 
-// 重复导入必须包哨兵（评审：当前裸 fmt.Errorf，前端无法 errors.Is 归类）。
+// 重复导入必须携带语义码（service 哨兵化：BizError CodeCodegenTableTaken → 30008）。
 func TestImportTable_DuplicateSentinel(t *testing.T) {
 	svc, _, _ := newSvc(t)
 	ctx := context.Background()
 	if _, err := svc.ImportTable(ctx, "order_items"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ImportTable(ctx, "order_items"); !errors.Is(err, cgmodelErr.ErrTableInvalid) {
-		t.Errorf("重复导入: err = %v, want ErrTableInvalid", err)
+	if _, err := svc.ImportTable(ctx, "order_items"); !errs.Is(err, errs.CodeCodegenTableTaken) {
+		t.Errorf("重复导入: err = %v, want CodeCodegenTableTaken", err)
 	}
 }
 

@@ -3,7 +3,6 @@ package admin
 import (
 	"errors"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -52,19 +51,14 @@ func idParam(c *gin.Context) (uint64, bool) {
 	return id, true
 }
 
-// svcFail 统一落 service 层错误（映射表）：不存在 → 30007、重复导入 → 30008、
-// 校验类（sentinel / 显式字面量）→ 10001；其余裸透传 resp.Fail（非 BizError → 50000 + zap 日志）。
-// service 层错误多为裸 error（service 不在本任务改动清单），语义按 errors.Is sentinel
-// 与错误字面量判别——对齐 user/role 控制器「already exists」映射先例（Task 8）。
+// svcFail 落 service 层错误：语义码 BizError（查重 30008 / 校验 10001）由 resp.Fail
+// 直传，此处只映射库层裸哨兵——不存在 → 30007、构建校验哨兵 → 10001；
+// 其余裸透传 resp.Fail（非 BizError → 50000 + zap 日志）。
 func svcFail(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, cgmodel.ErrTableNotFound):
 		resp.Fail(c, errs.New(errs.CodeCodegenTableNotFound, nil))
-	case strings.Contains(err.Error(), "already imported"):
-		resp.Fail(c, errs.New(errs.CodeCodegenTableTaken, nil))
-	case errors.Is(err, cgmodel.ErrTableInvalid), errors.Is(err, cgmodel.ErrColumnInvalid),
-		strings.Contains(err.Error(), "invalid table name"),
-		strings.Contains(err.Error(), "not in table"):
+	case errors.Is(err, cgmodel.ErrTableInvalid), errors.Is(err, cgmodel.ErrColumnInvalid):
 		resp.Fail(c, errs.New(errs.CodeParamInvalid, err))
 	default:
 		resp.Fail(c, err)

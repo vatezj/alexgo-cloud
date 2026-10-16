@@ -2,7 +2,6 @@ package admin
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -46,12 +45,7 @@ func (c *UserController) Create(ctx *gin.Context) {
 	}
 	u, err := c.userSvc.CreateUser(ctx.Request.Context(), req.Username, req.Nickname, req.Password)
 	if err != nil {
-		// 查重在 service 内（返回裸错误串），此处按语义映射「已存在」→ 30001。
-		if strings.Contains(err.Error(), "already exists") {
-			resp.Fail(ctx, errs.New(errs.CodeUsernameTaken, nil))
-			return
-		}
-		resp.Fail(ctx, err)
+		resp.Fail(ctx, err) // 查重已在 service 哨兵化（CodeUsernameTaken 经 resp.Fail 直传）
 		return
 	}
 	resp.OK(ctx, u)

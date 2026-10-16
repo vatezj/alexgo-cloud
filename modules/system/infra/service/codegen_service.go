@@ -14,6 +14,7 @@ import (
 	"alexGo-cloud/pkg/codegen/builder"
 	"alexGo-cloud/pkg/codegen/metadata"
 	cgmodel "alexGo-cloud/pkg/codegen/model"
+	errs "alexGo-cloud/pkg/errors"
 )
 
 // CodegenService admin 业务层（spec §4）。
@@ -86,7 +87,7 @@ func (s *codegenService) ImportTable(ctx context.Context, tableName string) (*mo
 	}
 	for _, n := range names {
 		if n == tableName {
-			return nil, fmt.Errorf("%w: table %q already imported", cgmodel.ErrTableInvalid, tableName)
+			return nil, errs.New(errs.CodeCodegenTableTaken, nil)
 		}
 	}
 	// 2) 读元数据（不存在 → ErrTableNotFound，原样上抛给 400）
@@ -393,7 +394,7 @@ var goExportedRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
 // validateIdent 表名只允许小写 snake——它是拼进 SQL/文件名的输入面。
 func validateIdent(name string) error {
 	if !identRe.MatchString(name) || len(name) > 128 {
-		return fmt.Errorf("invalid table name %q", name)
+		return errs.New(errs.CodeParamInvalid, fmt.Errorf("invalid table name %q", name))
 	}
 	return nil
 }

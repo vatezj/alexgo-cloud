@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/infra/model"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/repo"
 )
 
@@ -108,7 +109,7 @@ func (r *codegenRepo) SaveColumns(ctx context.Context, tableID uint64, cols []*m
 				return res.Error
 			}
 			if res.RowsAffected == 0 {
-				return fmt.Errorf("column %d not in table %d", c.ID, tableID)
+				return errs.New(errs.CodeParamInvalid, fmt.Errorf("column %d not in table %d", c.ID, tableID))
 			}
 		}
 		return nil

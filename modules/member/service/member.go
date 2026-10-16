@@ -13,6 +13,7 @@ import (
 	"alexGo-cloud/modules/member/model"
 	"alexGo-cloud/modules/member/repository"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -67,20 +68,20 @@ func toResult(i *token.Issued) *LoginResult {
 // Register 校验手机号/密码 → 查重 → 账号额度 → bcrypt 落库；昵称缺省用手机号尾 4 位占位。
 func (s *memberService) Register(ctx context.Context, mobile, password, nickname, ip string) (*model.MemberUser, error) {
 	if !mobileRe.MatchString(mobile) {
-		return nil, fmt.Errorf("invalid mobile")
+		return nil, errs.New(errs.CodeParamInvalid, fmt.Errorf("invalid mobile"))
 	}
 	if len(password) < 8 {
-		return nil, fmt.Errorf("password too short (min 8)")
+		return nil, errs.New(errs.CodeParamInvalid, fmt.Errorf("password too short (min 8)"))
 	}
 	// 昵称禁止含 ':'：角色 sub 命名空间为 "{tid}:role:{code}"，用户 sub 为
 	// "{tid}:{ut}:{nickname}"。若昵称可含 ':'，注册昵称 "role:admin" 会得到
 	// "{tid}:role:admin"，与管理员角色 sub 撞车 → casbin g(x,x) 恒等 → 提权。
 	if strings.Contains(nickname, ":") {
-		return nil, fmt.Errorf("username/nickname must not contain ':'")
+		return nil, errs.New(errs.CodeParamInvalid, fmt.Errorf("username/nickname must not contain ':'"))
 	}
 	tid := tenant.TenantIDFromContext(ctx)
 	if _, err := s.repo.GetByMobile(ctx, tid, mobile); err == nil {
-		return nil, fmt.Errorf("mobile already registered")
+		return nil, errs.New(errs.CodeMobileTaken, nil)
 	}
 	// 账号额度闸门（system 建用户同款检查），触额原样返回 error、不落库；limit 未装配时跳过。
 	if s.limit != nil {

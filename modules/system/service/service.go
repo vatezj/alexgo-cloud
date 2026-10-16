@@ -12,6 +12,7 @@ import (
 
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 )
 
@@ -70,7 +71,7 @@ func (s *userService) CreateUser(ctx context.Context, username, nickname, passwo
 	tid := tenant.TenantIDFromContext(ctx)
 
 	if _, err := s.repo.GetByUsername(ctx, tid, username); err == nil {
-		return nil, fmt.Errorf("username already exists")
+		return nil, errs.New(errs.CodeUsernameTaken, nil)
 	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}

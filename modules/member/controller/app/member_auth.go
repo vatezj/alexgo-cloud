@@ -56,20 +56,9 @@ func (c *AuthController) Register(ctx *gin.Context) {
 	}
 	u, err := c.svc.Register(ctx.Request.Context(), req.Mobile, req.Password, req.Nickname, ctx.ClientIP())
 	if err != nil {
-		// service 层为裸 fmt.Errorf（service 不在本任务改动清单）→ 按错误字面量桥语义码
-		// （Task 8 user.go「already exists」先例，fail-safe 兜底 50000）：
-		// 查重「already registered」→ 30009 手机号已存在；字段校验 → 10001 参数校验失败；
-		// 其余（额度/bcrypt/落库）裸透传 resp.Fail → 50000（原始错误只进日志不外泄）。
-		switch {
-		case strings.Contains(err.Error(), "already registered"):
-			resp.Fail(ctx, errs.New(errs.CodeMobileTaken, nil))
-		case strings.Contains(err.Error(), "invalid mobile"),
-			strings.Contains(err.Error(), "password too short"),
-			strings.Contains(err.Error(), "must not contain ':'"):
-			resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
-		default:
-			resp.Fail(ctx, err)
-		}
+		// service 已哨兵化：查重 → 30009、字段校验 → 10001（BizError 语义码经 resp.Fail 直传）；
+		// 其余（额度/bcrypt/落库）裸 error → 兜底 50000（原始错误只进日志不外泄）。
+		resp.Fail(ctx, err)
 		return
 	}
 	resp.OK(ctx, u)
