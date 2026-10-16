@@ -11,6 +11,12 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { createNotice, deleteNotice, listNotices } from '#/api/admin';
 import { formatDateTime } from '#/utils/format';
 import { localPage } from '#/utils/local-page';
+import {
+  attachmentsFromUploadList,
+  parseAttachments,
+  stringifyAttachments,
+  uploadNoticeAttachment,
+} from '#/utils/notice-attachments';
 
 defineOptions({ name: 'SystemNoticesPage' });
 
@@ -24,6 +30,7 @@ const gridOptions: VxeGridProps<Notice> = {
       title: '状态',
       width: 80,
     },
+    { field: 'attachments', slots: { default: 'attachments' }, title: '附件', width: 180 },
     {
       field: 'created_at',
       formatter: ({ cellValue }) => formatDateTime(cellValue),
@@ -74,9 +81,17 @@ const [Modal, modalApi] = useVbenModal({
 
 const [Form, formApi] = useVbenForm({
   handleSubmit: async (values) => {
-    await createNotice(
-      values as { content: string; status: number; title: string },
-    );
+    await createNotice({
+      ...(values as { content: string; status: number; title: string }),
+      // fileList（Upload modelValue）→ 已上传成功项 → 后端原样存的 JSON 文本
+      attachments: stringifyAttachments(
+        attachmentsFromUploadList(
+          (values as { attachments?: unknown }).attachments as Parameters<
+            typeof attachmentsFromUploadList
+          >[0],
+        ),
+      ),
+    });
     message.success('创建成功');
     modalApi.close();
     gridApi.reload();
@@ -94,6 +109,34 @@ const [Form, formApi] = useVbenForm({
       componentProps: { placeholder: '请输入公告内容', rows: 4 },
       fieldName: 'content',
       label: '内容',
+    },
+    {
+      component: 'Upload',
+      componentProps: {
+        // customRequest 接管上传（antd 有 customRequest 则不发默认请求）：
+        // 每个文件走统一上传接口，onSuccess(response) 会让 antd 把 response
+        // 挂到 file.response（attachmentsFromUploadList 消费）。
+        customRequest: async ({
+          file,
+          onError,
+          onSuccess,
+        }: {
+          file: File;
+          onError: (e: Error) => void;
+          onSuccess: (data: unknown) => void;
+        }) => {
+          try {
+            onSuccess(await uploadNoticeAttachment(file));
+          } catch (e) {
+            onError(e instanceof Error ? e : new Error(String(e)));
+          }
+        },
+        fileList: [],
+        maxCount: 5,
+        multiple: true,
+      },
+      fieldName: 'attachments',
+      label: '附件',
     },
     {
       component: 'RadioGroup',
@@ -140,6 +183,17 @@ function onDelete(row: Notice) {
         >
           新建公告
         </Button>
+      </template>
+      <template #attachments="{ row }">
+        <a
+          v-for="a in parseAttachments(row.attachments)"
+          :key="a.id"
+          class="mr-2"
+          :href="a.url"
+          target="_blank"
+        >
+          {{ a.name }}
+        </a>
       </template>
       <template #actions="{ row }">
         <Button

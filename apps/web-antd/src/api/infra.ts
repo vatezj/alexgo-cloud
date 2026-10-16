@@ -158,3 +158,33 @@ export function downloadCodegen(tableIds: number[]): Promise<Blob> {
 export function saveBlob(blob: Blob, filename: string) {
   downloadFileFromBlob({ fileName: filename, source: blob });
 }
+
+// ---- 文件存储（infra file，/admin/infra/file/*；子项目 B / P1-1）----
+// 上传走 requestClient——信封拦截器 code===0 解包后即本裸对象。
+// public 行带 public_url（/api/public/infra/file/<key>，免鉴权随机键）；
+// private 行 public_url 恒空串。
+export interface FileMeta {
+  id: number;
+  name: string;
+  size: number;
+  mime: string;
+  public_url: string;
+}
+
+/**
+ * 统一上传（multipart：字段 file + 表单域 public/biz_type）。
+ * 管理端受控下载用既有 requestClient.download('/admin/infra/file/' + id)；
+ * public URL 无需 API 函数，<a href>/<img src> 直连。
+ */
+export function uploadFile(
+  file: File,
+  opts?: { bizType?: string; public?: boolean },
+) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('public', String(opts?.public ?? false));
+  if (opts?.bizType) {
+    fd.append('biz_type', opts.bizType);
+  }
+  return requestClient.post<FileMeta>('/admin/infra/file/upload', fd);
+}

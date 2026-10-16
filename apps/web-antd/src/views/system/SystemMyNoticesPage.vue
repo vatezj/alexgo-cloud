@@ -15,6 +15,7 @@ import {
 } from '#/api/admin';
 import { formatDateTime } from '#/utils/format';
 import { localPage } from '#/utils/local-page';
+import { parseAttachments } from '#/utils/notice-attachments';
 
 defineOptions({ name: 'SystemMyNoticesPage' });
 
@@ -139,6 +140,13 @@ async function onReadAll() {
         {{ current ? formatDateTime(current.created_at) : '' }}
       </div>
       <div class="whitespace-pre-wrap">{{ current?.content }}</div>
+      <div
+        v-for="a in parseAttachments(current?.attachments)"
+        :key="a.id"
+        class="mt-1"
+      >
+        <a :href="a.url" target="_blank">附件：{{ a.name }}</a>
+      </div>
     </Modal>
   </Page>
 </template>

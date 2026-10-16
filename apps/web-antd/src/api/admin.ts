@@ -75,11 +75,12 @@ export interface SystemConfig {
 }
 
 export interface Notice {
-  id: number;
-  title: string;
+  attachments: string; // 附件 JSON 数组文本（可为 ''——老数据无附件）
   content: string;
-  status: number;
   created_at: string;
+  id: number;
+  status: number;
+  title: string;
 }
 
 export interface NoticeItem extends Notice {
@@ -281,6 +282,7 @@ export function listNotices() {
 }
 
 export function createNotice(payload: {
+  attachments: string;
   content: string;
   status: number;
   title: string;
