@@ -121,4 +121,15 @@ type Config struct {
 		// UnitTestEnable：生成代码时是否附带单元测试骨架（默认开启）。
 		UnitTestEnable bool `mapstructure:"unit_test_enable"`
 	} `mapstructure:"codegen"`
+
+	// Storage：文件存储（pkg/storage 本地盘驱动，子项目 B / P1-1）。
+	// 不做 Enabled 开关：本地盘无外部依赖（与 Redis/MQ 的可选依赖不同），YAGNI。
+	Storage struct {
+		// Root：盘根目录（相对路径按进程 cwd 解析），驱动构造时 MkdirAll。
+		Root string `mapstructure:"root"`
+		// MaxSizeMB：单文件大小上限（MB）；<=0 时 service 落默认 10。
+		MaxSizeMB int `mapstructure:"max_size_mb"`
+		// AllowedExts：扩展名白名单（小写、无点）；空则用 service 内置白名单。
+		AllowedExts []string `mapstructure:"allowed_exts"`
+	} `mapstructure:"storage"`
 }

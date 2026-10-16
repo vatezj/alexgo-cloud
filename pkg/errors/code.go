@@ -31,6 +31,12 @@ const (
 	CodeCodegenTableTaken Code = 30008
 	// CodeMobileTaken member：手机号已注册（注册查重拒绝）。
 	CodeMobileTaken Code = 30009
+	// CodeFileNotFound file：按 id/key 查无；public 读 private 行也归此（不泄露存在性）。
+	CodeFileNotFound Code = 30010
+	// CodeFileTypeNotAllowed file：扩展名不在白名单或探测 mime 与扩展名不符。
+	CodeFileTypeNotAllowed Code = 30011
+	// CodeFileTooLarge file：超过 storage.max_size_mb 上限。
+	CodeFileTooLarge Code = 30012
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -53,6 +59,10 @@ var registry = map[Code]string{
 	CodeCodegenTableNotFound: "数据表不存在",
 	CodeCodegenTableTaken:    "数据表已导入",
 	CodeMobileTaken:          "手机号已存在",
+
+	CodeFileNotFound:       "文件不存在",
+	CodeFileTypeNotAllowed: "文件类型不允许",
+	CodeFileTooLarge:       "文件超过大小限制",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 }

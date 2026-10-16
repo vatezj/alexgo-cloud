@@ -44,3 +44,8 @@ breaker:
 modules:
   system: true
   order: true
+
+storage:
+  root: ./data/uploads        # 盘根，驱动构造时 MkdirAll
+  max_size_mb: 10             # 单文件上限
+  # allowed_exts: [jpg, jpeg, png, gif, webp, pdf, zip, xlsx]  # 省略则用内置白名单

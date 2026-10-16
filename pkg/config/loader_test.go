@@ -94,6 +94,24 @@ func TestLoadGlobalConfig_EnvOverridesDeploymentAndGRPC(t *testing.T) {
 	}
 }
 
+// storage 段必须从 config.yaml 正确解码（mapstructure tag 与 yaml 键对齐，Task 2）。
+func TestLoadGlobalConfig_StorageSection(t *testing.T) {
+	chdirRepoRoot(t)
+	cfg, err := config.LoadGlobalConfig()
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig() error = %v", err)
+	}
+	if cfg.Storage.Root != "./data/uploads" {
+		t.Errorf("storage.root = %q, want %q", cfg.Storage.Root, "./data/uploads")
+	}
+	if cfg.Storage.MaxSizeMB != 10 {
+		t.Errorf("storage.max_size_mb = %d, want 10", cfg.Storage.MaxSizeMB)
+	}
+	if len(cfg.Storage.AllowedExts) != 0 {
+		t.Errorf("storage.allowed_exts = %v, want empty (config.yaml 中已注释)", cfg.Storage.AllowedExts)
+	}
+}
+
 func TestLoad_AuthCaptchaAndLoginPageDefaults(t *testing.T) {
 	chdirRepoRoot(t)
 	t.Setenv("DB_DSN", "")
