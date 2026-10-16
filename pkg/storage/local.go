@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -50,7 +51,7 @@ func (d *LocalDriver) resolve(relPath string) (string, error) {
 	return full, nil
 }
 
-// Save 独占创建写入；写入中途失败删除半截文件。
+// Save 独占创建写入；写入中途失败删除半截文件，删除失败并入返回错误。
 func (d *LocalDriver) Save(ctx context.Context, relPath string, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -68,8 +69,12 @@ func (d *LocalDriver) Save(ctx context.Context, relPath string, r io.Reader) err
 	}
 	if _, err := io.Copy(f, r); err != nil {
 		_ = f.Close()
-		_ = os.Remove(full)
-		return fmt.Errorf("storage: write %q: %w", relPath, err)
+		writeErr := fmt.Errorf("storage: write %q: %w", relPath, err)
+		if rmErr := os.Remove(full); rmErr != nil {
+			// 删除半截失败必须可见：否则残留半截文件会让同 relPath 重试永久撞 O_EXCL。
+			return errors.Join(writeErr, fmt.Errorf("storage: remove partial %q: %w", relPath, rmErr))
+		}
+		return writeErr
 	}
 	return f.Close()
 }
