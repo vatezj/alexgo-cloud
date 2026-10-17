@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/infra/model"
+	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
 // FileRepository 元数据 CRUD。未命中一律 gorm.ErrRecordNotFound（service 层转 30010）。
@@ -15,6 +16,8 @@ type FileRepository interface {
 	GetByID(ctx context.Context, tenantID, id uint64) (*model.SystemFile, error)
 	// GetByKey public 读：**唯一不带租户过滤的查询**——公告附件跨端可见是产品语义
 	// （spec §2），单租户测试全绿不代表这里可以加 tenant 条件。
+	// 生产装配下 *gorm.DB 挂了 gormplugin（ctx 带租户即注入 tenant_id 条件），
+	// 必须 IgnoreTenant 放行，否则 /api/public 下跨租户读恒 30010。
 	GetByKey(ctx context.Context, key string) (*model.SystemFile, error)
 	// Delete 按租户隔离硬删行；0 行影响返回 ErrRecordNotFound。
 	Delete(ctx context.Context, tenantID, id uint64) error
@@ -41,7 +44,10 @@ func (r *fileRepo) GetByID(ctx context.Context, tenantID, id uint64) (*model.Sys
 
 func (r *fileRepo) GetByKey(ctx context.Context, key string) (*model.SystemFile, error) {
 	var f model.SystemFile
-	err := r.db.WithContext(ctx).Where("public_key = ?", key).First(&f).Error
+	// IgnoreTenant：跳过 gormplugin 的 tenant_id 注入（与 rbac.go ListAll 同一先例），
+	// 保证插件注册后 ctx 带租户也不过滤。其余方法保持租户过滤。
+	err := r.db.WithContext(gormplugin.IgnoreTenant(ctx)).
+		Where("public_key = ?", key).First(&f).Error
 	if err != nil {
 		return nil, err
 	}
