@@ -8,9 +8,20 @@ export interface NoticeAttachment {
   url: string; // /api/public/infra/file/<key>
 }
 
-/** antd UploadFile 的最小鸭子形状（customRequest onSuccess 后 response=FileMeta）。 */
+/**
+ * antd UploadFile 的最小鸭子形状。实际喂入形状是 `customRequest` 里
+ * `onSuccess(await uploadNoticeAttachment(file))` 的产物——即
+ * `NoticeAttachment`（`{id,name,size,url}`，url 为 public URL）；
+ * 同时兼容直接喂 FileMeta（`public_url`）的用法。
+ */
 interface UploadItemLike {
-  response?: { id?: number; name?: string; size?: number; public_url?: string };
+  response?: {
+    id?: number;
+    name?: string;
+    size?: number;
+    url?: string;
+    public_url?: string;
+  };
   status?: string;
 }
 
@@ -38,7 +49,11 @@ export function stringifyAttachments(list: NoticeAttachment[]): string {
   return JSON.stringify(list ?? []);
 }
 
-/** Upload fileList → 附件数组：只收 done 且携带 response（= 上传成功回包）的项。 */
+/**
+ * Upload fileList → 附件数组：只收 done 且携带 response（= 上传成功回包）的项。
+ * url 取 `response.url`（NoticeAttachment，页面 customRequest 的真实产物），
+ * 缺省回退 `public_url`（FileMeta 直喂用法的兼容）。
+ */
 export function attachmentsFromUploadList(
   list?: null | UploadItemLike[],
 ): NoticeAttachment[] {
@@ -46,12 +61,13 @@ export function attachmentsFromUploadList(
   const out: NoticeAttachment[] = [];
   for (const f of list) {
     const r = f?.response;
-    if (f?.status !== 'done' || !r?.public_url) continue;
+    const url = r?.url || r?.public_url;
+    if (f?.status !== 'done' || !url) continue;
     out.push({
-      id: r.id ?? 0,
-      name: r.name ?? '',
-      size: r.size ?? 0,
-      url: r.public_url,
+      id: r?.id ?? 0,
+      name: r?.name ?? '',
+      size: r?.size ?? 0,
+      url,
     });
   }
   return out;

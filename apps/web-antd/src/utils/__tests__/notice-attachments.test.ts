@@ -44,7 +44,8 @@ describe('notice-attachments', () => {
     expect(stringifyAttachments([])).toBe('[]');
   });
 
-  it('attachmentsFromUploadList 只收 done 且有 response 的项', () => {
+  // public_url 直喂 = FileMeta 形状兼容路径（真实主路径见下方组合回归测试）。
+  it('attachmentsFromUploadList 只收 done 且有 response 的项（public_url 兼容）', () => {
     const list = [
       { status: 'done', response: { id: 1, name: 'a.jpg', size: 4, public_url: '/api/public/infra/file/k1' } },
       { status: 'uploading' },
@@ -59,6 +60,26 @@ describe('notice-attachments', () => {
 
   // Review Focus ⑤：公告附件必须恒 public:true——private 行的 public_url
   // 在 /api/public 下恒 404（30010），公告一发附件即死。
+  // 组合回归（终审 Critical 1 的 pin）：uploadNoticeAttachment 的真实产物
+  // 由 customRequest onSuccess 原样挂到 item.response（antd Upload 行为），
+  // attachmentsFromUploadList 必须能读出非空附件数组——此前只读 public_url
+  // 导致整条管道静默丢弃全部附件（公告恒存 attachments:"[]"）。
+  it('组合：uploadNoticeAttachment 真实产物挂 response → attachmentsFromUploadList 非空', async () => {
+    vi.mocked(uploadFile).mockResolvedValue({
+      id: 7,
+      name: 'c.jpg',
+      size: 5,
+      mime: 'image/jpeg',
+      public_url: '/api/public/infra/file/kk7',
+    });
+    const file = new File(['x'], 'c.jpg', { type: 'image/jpeg' });
+    // SystemNoticesPage customRequest：onSuccess(await uploadNoticeAttachment(file))
+    const item = { status: 'done', response: await uploadNoticeAttachment(file) };
+    expect(attachmentsFromUploadList([item])).toEqual([
+      { id: 7, name: 'c.jpg', size: 5, url: '/api/public/infra/file/kk7' },
+    ]);
+  });
+
   it('uploadNoticeAttachment 以 public:true + bizType:notice 上传并映射 url', async () => {
     vi.mocked(uploadFile).mockResolvedValue({
       id: 7,
