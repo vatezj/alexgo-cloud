@@ -11,7 +11,7 @@
 | 层 | 主题 | 完成度 |
 | --- | --- | --- |
 | P0 | 基座开箱短板（收尾欠账） | 4/4 ✅ 全清（codegen M3/M7、通知已读、M4 跟进票） |
-| P1 | 常用管理能力 | 1/5 |
+| P1 | 常用管理能力 | 2/5 |
 | P2 | 深水区（可缓） | 0/5 |
 | 工程收尾 | 零散隐患 | 2/3 ✅ |
 
@@ -31,7 +31,7 @@
 
 | # | 项 | 内容 | 依赖 |
 | --- | --- | --- | --- |
-| P1-1 | **文件存储** | `pkg/storage`：本地盘驱动 + 统一上传 API（`/api/admin/infra/file` 或独立 file 模块）。解锁：公告附件、头像、codegen 导入产物、Excel 导出落地 | 无 |
+| P1-1 | **文件存储** | `pkg/storage`：本地盘驱动 + 统一上传 API（`/api/admin/infra/file`）。解锁：公告附件、头像、codegen 导入产物、Excel 导出落地 | ✅ |
 | P1-2 | **Excel 导入导出** | 用户/会员/订单列表导出；用 excelize；导出文件走 P1-1 落盘或直接流 | P1-1（可流式绕开） |
 | P1-3 | **在线用户 + 代登录** | 在线会话列表（查 `system_oauth2_access_token`）、踢人（Revoke）、impersonate 端点；对照 yudao 在线用户页 | 无 |
 | P1-4 | **API 文档** | swagger 注解 + 聚合页（或从 gin routes 生成）；减少 `docs/usage.md` 手维护漂移 | 无 |
