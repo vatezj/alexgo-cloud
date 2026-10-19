@@ -28,7 +28,7 @@ func TestBuildReport(t *testing.T) {
 		"菜单名为英文占位", // 中文化提醒
 	} {
 		if !strings.Contains(rep, want) {
-			t.Errorf("report missing %q\n%s", want, rep)
+			t.Errorf("报告缺少 %q\n%s", want, rep)
 		}
 	}
 }
