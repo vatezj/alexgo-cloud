@@ -71,6 +71,86 @@ func TestEditMainGo(t *testing.T) {
 	}
 }
 
+// TestEditMainGo_LongName 长名（≥5 字符）字节级保真：输出必须 = 原文恰好插入
+// 2 行（import + opts 装配行），删掉这两行后与原字节逐字节相等。
+// demo 短名看不出的注释错位（go/printer 整文件重打印把 opts 上方注释冲进
+// <name>.FxModule 中间）在这里必须被抓红。
+func TestEditMainGo_LongName(t *testing.T) {
+	root := repoRoot(t)
+	src, err := os.ReadFile(filepath.Join(root, "alexgo-server/cmd/main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := editMainGo(src, "product")
+	if err != nil {
+		t.Fatalf("editMainGo(product) = %v", err)
+	}
+	got := string(out)
+
+	const impLine = `"alexGo-cloud/modules/product"`
+	const fxLine = "product.FxModule,"
+	if strings.Count(got, impLine) != 1 {
+		t.Fatalf("import 行出现 %d 次，应为 1 次", strings.Count(got, impLine))
+	}
+	if strings.Count(got, fxLine) != 1 {
+		t.Fatalf("装配行出现 %d 次，应为 1 次", strings.Count(got, fxLine))
+	}
+	// import 字典序：product 落在 system 之前、order 之后
+	if strings.Index(got, impLine) > strings.Index(got, `"alexGo-cloud/modules/system"`) {
+		t.Error("product import 应排在 system 之前")
+	}
+	if strings.Index(got, impLine) < strings.Index(got, `"alexGo-cloud/modules/order"`) {
+		t.Error("product import 应排在 order 之后")
+	}
+	// 字节级：删掉恰好这 2 行后必须与原文全等（任何注释错位/重排/拆行都会红）
+	outLines := strings.Split(got, "\n")
+	srcLines := strings.Split(string(src), "\n")
+	if len(outLines) != len(srcLines)+2 {
+		t.Errorf("行数应为原行数+2: got %d want %d", len(outLines), len(srcLines)+2)
+	}
+	kept := make([]string, 0, len(outLines))
+	for _, line := range outLines {
+		if strings.TrimSpace(line) == impLine || strings.TrimSpace(line) == fxLine {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if strings.Join(kept, "\n") != string(src) {
+		t.Error("输出不是原文件恰好插入 2 行（发生了重排/注释错位）")
+	}
+	// 缩进锚定：跟随各自既有锚行（既有本地 import 行 / order.FxModule, 行）的缩进
+	wantIndent := map[string]string{}
+	for _, l := range srcLines {
+		switch strings.TrimSpace(l) {
+		case `"alexGo-cloud/modules/order"`:
+			wantIndent[impLine] = leadingWS(l)
+		case "order.FxModule,":
+			wantIndent[fxLine] = leadingWS(l)
+		}
+	}
+	if len(wantIndent) != 2 {
+		t.Fatalf("原文未找到缩进锚行（本地 import 行 / order.FxModule, 行）")
+	}
+	for _, line := range outLines {
+		trim := strings.TrimSpace(line)
+		want, ok := wantIndent[trim]
+		if !ok {
+			continue
+		}
+		if got := leadingWS(line); got != want {
+			t.Errorf("%s 行缩进 = %q, 应为 %q", trim, got, want)
+		}
+	}
+	// 合法 Go
+	if _, err := parser.ParseFile(token.NewFileSet(), "main.go", out, parser.AllErrors); err != nil {
+		t.Fatalf("输出不是合法 Go：%v", err)
+	}
+	// 幂等拒绝
+	if _, err := editMainGo(out, "product"); err == nil {
+		t.Error("重复插入应报错")
+	}
+}
+
 func TestEditMainGo_AnchorMissing(t *testing.T) {
 	if _, err := editMainGo([]byte("package main\n"), "demo"); err == nil {
 		t.Error("锚点缺失应报错")

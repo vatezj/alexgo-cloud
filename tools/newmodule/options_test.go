@@ -54,6 +54,9 @@ func TestOptionsValidate_Rejects(t *testing.T) {
 		{"reserved module", func(o *Options) { o.Name = "system" }, "保留"},
 		{"go keyword", func(o *Options) { o.Name = "type" }, "保留"},
 		{"existing module dir", func(o *Options) { o.Name = "order" }, "已存在"},
+		// MenuPrefix 全链路零消费（menu/路由/权限码写死 /{{.Module}}），
+		// 自定义前缀属静默忽略 → 必须显式拒绝（终审 I3）
+		{"custom menu prefix", func(o *Options) { o.MenuPrefix = "other" }, "菜单前缀"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

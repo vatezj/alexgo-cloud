@@ -29,8 +29,11 @@ func editConfigYAML(src []byte, moduleName string) ([]byte, error) {
 	if modulesVal == nil {
 		return nil, fmt.Errorf("config.yaml 未找到 modules: 节点（锚点失效）")
 	}
-	if modulesVal.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("config.yaml modules: 不是映射")
+	// 形态校验（终审 I4）：只支持既有 config 底稿形态。块标量 value / 空映射 {} /
+	// flow 映射 {a: true} 时锚行定位照样给出 err=nil，但插入产出的是语义损坏 YAML
+	// （插入行被塞进标量中间或缩进错位）——宁可拒绝，绝不落盘坏文件。
+	if err := validateModulesShape(modulesVal); err != nil {
+		return nil, err
 	}
 	// 重名检查
 	for i := 0; i+1 < len(modulesVal.Content); i += 2 {
@@ -65,6 +68,34 @@ func editConfigYAML(src []byte, moduleName string) ([]byte, error) {
 	out = append(out, newLine)
 	out = append(out, lines[anchor:]...)
 	return []byte(strings.Join(out, "\n")), nil
+}
+
+// validateModulesShape 校验 modules 必须是「非空块映射，且每个 value 为非空单行纯量」
+// （既有 config 形态：system: true / order: true 这类单行 bool）。
+// 不满足 → 返回中文错误，调用方不得落盘。
+func validateModulesShape(n *yaml.Node) error {
+	const hint = "仅支持既有 config 形态：modules 为块映射，且每个模块名的值是单行纯量（如 system: true）"
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("config.yaml modules: 不是映射（块标量等形态不支持）；%s", hint)
+	}
+	if n.Style&yaml.FlowStyle != 0 {
+		return fmt.Errorf("config.yaml modules 是 flow 映射 {...}，无法行定位插入点；%s", hint)
+	}
+	if len(n.Content) == 0 {
+		return fmt.Errorf("config.yaml modules 是空映射 {}，没有可定位的末条目；%s", hint)
+	}
+	for i := 1; i < len(n.Content); i += 2 { // Content 是 [k, v, k, v...]，取 value
+		key, v := n.Content[i-1].Value, n.Content[i]
+		// 本 yaml 版本的 Node 只有起始 Line/Column（无 EndLine），单行判定据此：
+		// 非纯量、空值、值内含换行（含块标量正文）、Literal/Folded 样式一律拒绝。
+		if v.Kind != yaml.ScalarNode ||
+			v.Value == "" ||
+			strings.Contains(v.Value, "\n") ||
+			v.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
+			return fmt.Errorf("config.yaml modules.%s 的值不是单行纯量（块标量/空值/集合均不支持）；%s", key, hint)
+		}
+	}
+	return nil
 }
 
 // findYAMLValue 在映射节点里找 key 对应的 value 节点。

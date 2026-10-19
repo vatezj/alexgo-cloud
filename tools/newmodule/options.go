@@ -71,9 +71,13 @@ func (o *Options) Validate() error {
 	if o.MenuPrefix == "" {
 		o.MenuPrefix = o.Name
 	}
-	if !identRe.MatchString(o.MenuPrefix) {
-		return fmt.Errorf("菜单前缀 %q 必须是小写下蛇标识符", o.MenuPrefix)
+	// -menu-prefix 校验后全链路零消费（menu/路由/权限码模板一律写死 /{{.Module}}）：
+	// 自定义前缀会被静默忽略，属「设置与产物不一致」——最小诚实修 = 显式拒绝，
+	// 仅允许留空（默认 = name）或显式等于 -name（终审 I3）。
+	if o.MenuPrefix != o.Name {
+		return fmt.Errorf("暂不支持自定义菜单前缀（-menu-prefix 必须等于 -name 或留空）")
 	}
+	// MenuPrefix 与 Name 相等，而 Name 已过 identRe/保留名校验——此处无需重复校验。
 	return nil
 }
 

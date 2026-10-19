@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -23,6 +24,8 @@ import (
 // 实现为原字节行插入（parser 只做校验与定位，插入行之外的原文件字节一字不动）：
 // 不用 format.Node 整文件重打印——go/printer 对插入的无位置节点不产生换行，
 // 会把新条目挤进 var 首行，产出超长行排版破坏（R1 裁定方案 B）。
+// 唯一的例外是 I1 的局部重对齐：新宽 key 计入目标值列宽后，map 字面量内每条
+// 条目行的冒号后空格按目标宽重排（纯空白，值文本一字不动），否则产物 gofmt 不干净。
 func editPermissionRoutes(src []byte, module string, entities []string) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "permission_routes.go", src, parser.ParseComments)
@@ -83,6 +86,16 @@ func editPermissionRoutes(src []byte, module string, entities []string) ([]byte,
 	}
 	sort.Slice(news, func(i, j int) bool { return news[i].key < news[j].key })
 
+	// 目标值列宽 = max(既有条目, 新条目) 的 key+冒号列宽——新宽 key（如
+	// product:category 18 列 > 既有最大 16 列）必须一并计入：只把新行单独加宽，
+	// 产物 gofmt -l 会按新最大宽把整个 map 块重对齐，带出十几行无关 diff（终审 I1）。
+	targetWidth := keyColonWidth
+	for _, n := range news {
+		if w := len(`"`+n.key+`"`) + 1; w > targetWidth {
+			targetWidth = w
+		}
+	}
+
 	// 位置插入：每条新 key 的锚 = 文件顺序中第一条字典序更大的既有条目行；
 	// 都小则锚 = map 闭合 `}` 行。news 已按 key 升序，锚行号单调不减，
 	// 同锚组内天然保持 key 升序。
@@ -102,18 +115,25 @@ func editPermissionRoutes(src []byte, module string, entities []string) ([]byte,
 			}
 		}
 		keyQ := `"` + n.key + `"`
-		spaces := keyColonWidth + 1 - (len(keyQ) + 1)
-		if spaces < 1 {
-			spaces = 1
-		}
-		anchors[anchor] = append(anchors[anchor], insRow{keyQ: keyQ, spaces: spaces, value: n.value})
+		anchors[anchor] = append(anchors[anchor], insRow{keyQ: keyQ, spaces: spacesAfterColon(targetWidth, len(keyQ)), value: n.value})
 	}
 
-	// 原字节行拼接：仅在锚行前插入生成行，其余行原样保留。
+	// 原字节行拼接：仅在锚行前插入生成行；map 块内既有条目行按 targetWidth
+	// 做纯空白重对齐（只动冒号后空格数，值文本/其它行一字不动），范围严格限于
+	// map 字面量内的条目行——这是局部对齐，不是整文档重打印。
+	entryLines := map[int]bool{}
+	for _, en := range entries {
+		entryLines[en.line] = true
+	}
 	lines := strings.Split(string(src), "\n")
 	for line := range anchors {
 		if line < 1 || line > len(lines) {
 			return nil, fmt.Errorf("插入行号 %d 越界（文件 %d 行）", line, len(lines))
+		}
+	}
+	for l := range entryLines {
+		if l < 1 || l > len(lines) {
+			return nil, fmt.Errorf("条目行号 %d 越界（文件 %d 行）", l, len(lines))
 		}
 	}
 	out := make([]string, 0, len(lines)+len(news))
@@ -124,9 +144,36 @@ func editPermissionRoutes(src []byte, module string, entities []string) ([]byte,
 				out = append(out, indent+r.keyQ+":"+strings.Repeat(" ", r.spaces)+r.value+",")
 			}
 		}
+		if entryLines[i+1] {
+			line = realignEntryLine(line, targetWidth)
+		}
 		out = append(out, line)
 	}
 	return []byte(strings.Join(out, "\n")), nil
+}
+
+// spacesAfterColon 值列对齐后的冒号后空格数：indent + key + ":" + spaces + value，
+// value 起始列 = indent + width + 1。至少留 1 格。
+func spacesAfterColon(width, keyQLen int) int {
+	s := width + 1 - (keyQLen + 1)
+	if s < 1 {
+		s = 1
+	}
+	return s
+}
+
+// entryLineRe 识别条目行：缩进 + 带引号 key + 冒号（值文本里的 ':' 不会被误判，
+// 因为 key 段从行首缩进后立刻起引号）。
+var entryLineRe = regexp.MustCompile(`^(\s*)("[^"]*"):( *)`)
+
+// realignEntryLine 把条目行的冒号后空格重排到目标值列；除这串空白外一字不动。
+func realignEntryLine(line string, targetWidth int) string {
+	m := entryLineRe.FindStringSubmatchIndex(line)
+	if m == nil {
+		return line
+	}
+	indent, keyQ := line[m[2]:m[3]], line[m[4]:m[5]]
+	return indent + keyQ + ":" + strings.Repeat(" ", spacesAfterColon(targetWidth, len(keyQ))) + line[m[7]:]
 }
 
 // findPermissionRoutesLit 定位 var permissionRoutes = map[string][]string{...}。

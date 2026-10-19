@@ -59,3 +59,32 @@ func TestEditConfigYAML_MissingModules(t *testing.T) {
 		t.Error("缺少 modules 键时应报错")
 	}
 }
+
+// TestEditConfigYAML_UnsupportedShape 底稿外形态必须显式报错，绝不落盘损坏 YAML
+// （终审 I4）：modules 为块标量 value、空映射 {}、flow 映射 {a: true} 时，
+// 锚行定位会给出 err=nil 却产出语义损坏的结果。
+func TestEditConfigYAML_UnsupportedShape(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"block scalar value", "modules:\n  b: |\n    some value\n    more value\n"},
+		{"empty mapping", "modules: {}\n"},
+		{"flow mapping", "modules: {a: true}\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := editConfigYAML([]byte(tc.src), "product")
+			if err == nil {
+				t.Fatalf("应报错（不受支持的 modules 形态），却返回输出:\n%s", out)
+			}
+			if !strings.Contains(err.Error(), "modules") {
+				t.Errorf("错误信息应说明 modules 形态不受支持: %v", err)
+			}
+			// 失败路径：不得返回任何可落盘内容
+			if out != nil {
+				t.Errorf("报错时输出必须为 nil，实际: %q", out)
+			}
+		})
+	}
+}

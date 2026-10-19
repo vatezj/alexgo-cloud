@@ -1,20 +1,24 @@
 package newmodule
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
-	"go/format"
 	"go/parser"
 	"go/token"
+	"regexp"
+	"sort"
 	"strings"
 )
 
-// editMainGo AST 级插入：
-//  1. import 块按字母序插入 "alexGo-cloud/modules/<name>"（重复则报错）；
-//  2. opts := []fx.Option{...} 里最后一个 <pkg>.FxModule 之后插入 <name>.FxModule,。
+// editMainGo 解析定位 + 原字节行插入（T6/T7 同款契约）：
+//  1. import 块按字典序插入 "alexGo-cloud/modules/<name>"（已存在则报错）；
+//  2. opts := []fx.Option{...} 里最后一个 <pkg>.FxModule, 行之后插入 <name>.FxModule,（已有则报错）。
 //
-// 用 format.Node 整文件输出（main.go 本身 gofmt 干净，重排无损）。
+// parser 只做校验与锚点定位；落盘一律「原始字节 + 单行文本插入」，
+// 除这 2 个插入行外原文件字节一字不动。
+// 绝不 format.Node 整文件重打印：go/printer 对 ≥5 字符模块名会把 opts 上方
+// 注释块冲进 <name>.FxModule 中间（注释错位 + 装配行被拆成 "product." / "FxModule,"
+// 两截，forceFxModuleOwnLine 也找不到连续 marker），行插入才是字节级保真（终审 C1）。
 func editMainGo(src []byte, moduleName string) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
@@ -24,110 +28,150 @@ func editMainGo(src []byte, moduleName string) ([]byte, error) {
 
 	impPath := `"alexGo-cloud/modules/` + moduleName + `"`
 
-	// ① import
-	hasImport := false
+	// ① import：已存在 → 幂等拒绝
 	for _, imp := range f.Imports {
 		if imp.Path.Value == impPath {
-			hasImport = true
+			return nil, fmt.Errorf("main.go 已 import %s", impPath)
 		}
-	}
-	if hasImport {
-		return nil, fmt.Errorf("main.go 已 import %s", impPath)
 	}
 	impDecl := findImportDecl(f)
 	if impDecl == nil {
 		return nil, fmt.Errorf("main.go 未找到 import 块（锚点失效）")
 	}
-	// 在 alexGo-cloud 本地 import 段内按字典序找插入点：第一个 Value > impPath 的
-	// alexGo-cloud/* spec 之前；都小则插到该段末尾。注意真实文件的 modules 段里
-	// 混有 modules/system/grpcserver、modules/system/service——比较用完整路径字面量，
-	// "modules/demo" < "modules/member" → 落在 member 前（字典序正确）。
-	newImp := &ast.ImportSpec{Path: &ast.BasicLit{Kind: token.STRING, Value: impPath}}
-	var localIdx []int // alexGo-cloud/* 在 impDecl.Specs 里的下标
-	for i, spec := range impDecl.Specs {
-		if imp, ok := spec.(*ast.ImportSpec); ok && strings.HasPrefix(imp.Path.Value, `"alexGo-cloud/`) {
-			localIdx = append(localIdx, i)
+	// alexGo-cloud 本地段：真实文件的 modules 段里混有 modules/system/grpcserver、
+	// modules/system/service——比较用完整路径字典序（"modules/order" < "modules/product"
+	// < "modules/system"）。锚行 = 段内第一条路径字典序更大的行；都小则插在段末之后。
+	var locals []localImp
+	for _, spec := range impDecl.Specs {
+		imp, ok := spec.(*ast.ImportSpec)
+		if !ok || !strings.HasPrefix(imp.Path.Value, `"alexGo-cloud/`) {
+			continue
 		}
+		locals = append(locals, localImp{path: imp.Path.Value, line: fset.Position(imp.Pos()).Line})
 	}
-	if len(localIdx) == 0 {
+	if len(locals) == 0 {
 		return nil, fmt.Errorf("main.go 未找到 alexGo-cloud 本地 import 段（锚点失效）")
 	}
-	insertAt := -1
-	for _, i := range localIdx {
-		if imp, ok := impDecl.Specs[i].(*ast.ImportSpec); ok && imp.Path.Value > impPath {
-			insertAt = i
+	impLine, impBefore := -1, true
+	for _, l := range locals {
+		if l.path > impPath {
+			impLine, impBefore = l.line, true
 			break
 		}
 	}
-	if insertAt < 0 {
-		insertAt = localIdx[len(localIdx)-1] + 1 // 段末尾之后
+	if impLine < 0 { // 段末之后
+		impLine, impBefore = locals[len(locals)-1].line, false
 	}
-	specs := impDecl.Specs
-	specs = append(specs[:insertAt], append([]ast.Spec{newImp}, specs[insertAt:]...)...)
-	impDecl.Specs = specs
+	srcLines := splitLines(src)
+	if impLine < 1 || impLine > len(srcLines) {
+		return nil, fmt.Errorf("main.go import 锚行 %d 越界（文件 %d 行）", impLine, len(srcLines))
+	}
+	// 锚行必须独占一条 import（一行多 import 时无法按行定位插入点 → 报错而非猜位置）
+	anchorLine := srcLines[impLine-1]
+	if n := len(quotedPathRe.FindAllString(anchorLine, -1)); n != 1 {
+		return nil, fmt.Errorf("main.go import 锚行 %d 含 %d 条 import，无法行定位（锚点失效）", impLine, n)
+	}
+	impIndent := leadingWS(anchorLine)
 
-	// ② opts 列表
+	// ② opts 字面量：仅校验 + 定位
 	lit := findOptsCompositeLit(f)
 	if lit == nil {
 		return nil, fmt.Errorf("main.go 未找到 opts := []fx.Option{...}（锚点失效）")
 	}
-	// 已有 <name>.FxModule？（幂等拒绝）
-	pkgIdent := moduleName
 	for _, elt := range lit.Elts {
-		if sel, ok := elt.(*ast.SelectorExpr); ok {
-			if id, ok := sel.X.(*ast.Ident); ok && id.Name == pkgIdent && sel.Sel.Name == "FxModule" {
-				return nil, fmt.Errorf("main.go opts 已含 %s.FxModule", pkgIdent)
-			}
-		}
-	}
-	// 定位最后一个 X.FxModule 元素，插到它后面
-	last := -1
-	for i, elt := range lit.Elts {
-		if sel, ok := elt.(*ast.SelectorExpr); ok && sel.Sel.Name == "FxModule" {
-			last = i
-		}
-	}
-	if last < 0 {
-		return nil, fmt.Errorf("main.go opts 里没有 xxx.FxModule 元素（锚点失效）")
-	}
-	newElt := &ast.SelectorExpr{
-		X:   ast.NewIdent(pkgIdent),
-		Sel: ast.NewIdent("FxModule"),
-	}
-	// SelectorExpr 没有 End 位置信息用于 Doc，构造带假位置的 ExprStmt 不行——
-	// CompositeLit.Elts 是 []Expr，直接插元素即可；逗号由 format 输出。
-	elts := lit.Elts
-	lit.Elts = append(elts[:last+1], append([]ast.Expr{newElt}, elts[last+1:]...)...)
-
-	var buf bytes.Buffer
-	if err := format.Node(&buf, fset, f); err != nil {
-		return nil, fmt.Errorf("输出 main.go: %w", err)
-	}
-	return forceFxModuleOwnLine(buf.Bytes(), pkgIdent), nil
-}
-
-// forceFxModuleOwnLine 保证刚插入的 <pkg>.FxModule 独占一行。
-// 根因：新元素是 NoPos，format.Node 会把它接在前一元素同行
-// （如 "order.FxModule, demo.FxModule,"），且 gofmt 对已打包的行不会自动拆。
-// 故打印后按行拆分：前缀（右 trim 后）以逗号结尾说明被同行打包，按该行缩进拆成两行；
-// gofmt 会保留复合字面量元素的既有换行，拆分结果 gofmt 稳定。
-func forceFxModuleOwnLine(out []byte, pkgIdent string) []byte {
-	marker := pkgIdent + ".FxModule"
-	lines := strings.Split(string(out), "\n")
-	for i, line := range lines {
-		idx := strings.Index(line, marker)
-		if idx < 0 {
+		sel, ok := elt.(*ast.SelectorExpr)
+		if !ok {
 			continue
 		}
-		prefix := strings.TrimRight(line[:idx], " \t")
-		if !strings.HasSuffix(prefix, ",") {
-			continue // 已独占一行（前面只有缩进），或不是装配行
+		if id, ok := sel.X.(*ast.Ident); ok && id.Name == moduleName && sel.Sel.Name == "FxModule" {
+			return nil, fmt.Errorf("main.go opts 已含 %s.FxModule", moduleName)
 		}
-		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-		lines[i] = prefix + "\n" + indent + line[idx:]
-		return []byte(strings.Join(lines, "\n"))
 	}
-	return out
+	// opts 锚行 = 文件序中最后一条 `^\s*\w+\.FxModule,\s*$`
+	// （真实文件是 174 行 order.FxModule,；member 是条件 append，不在字面量里）。
+	optsLine := -1
+	for i, line := range srcLines {
+		if fxModuleLineRe.MatchString(line) {
+			optsLine = i + 1
+		}
+	}
+	if optsLine < 1 {
+		return nil, fmt.Errorf("main.go opts 里没有 xxx.FxModule, 装配行（锚点失效）")
+	}
+	optsIndent := leadingWS(srcLines[optsLine-1])
+
+	// 原字节单行插入：恰好 2 行，其余行原样保留（按行号降序插，避免先行插入挪动锚行）
+	ins := []lineIns{
+		{line: impLine, before: impBefore, text: impIndent + impPath},
+		{line: optsLine, before: false, text: optsIndent + moduleName + ".FxModule,"},
+	}
+	out, err := insertLines(srcLines, ins)
+	if err != nil {
+		return nil, err
+	}
+	res := []byte(strings.Join(out, "\n"))
+
+	// 自检：结果必须仍是合法 Go，且新 import 恰好出现一次
+	f2, err := parser.ParseFile(token.NewFileSet(), "main.go", res, parser.AllErrors)
+	if err != nil {
+		return nil, fmt.Errorf("插入后 main.go 不可解析（锚点错位）: %w", err)
+	}
+	n := 0
+	for _, imp := range f2.Imports {
+		if imp.Path.Value == impPath {
+			n++
+		}
+	}
+	if n != 1 {
+		return nil, fmt.Errorf("插入后 %s 出现 %d 次，应为 1 次", impPath, n)
+	}
+	return res, nil
+}
+
+// localImp 一条 alexGo-cloud 本地 import 的路径与所在行（1-based）。
+type localImp struct {
+	path string
+	line int
+}
+
+// fxModuleLineRe 装配行：独占一行的 `\w+.FxModule,`。
+var fxModuleLineRe = regexp.MustCompile(`^\s*\w+\.FxModule,\s*$`)
+
+// quotedPathRe import 行上的路径字面量（用于判定锚行是否独占一条 import）。
+var quotedPathRe = regexp.MustCompile(`"[^"]*"`)
+
+// lineIns 一次单行插入：插在第 line 行之前（before）或之后。
+type lineIns struct {
+	line   int
+	before bool
+	text   string
+}
+
+// insertLines 在行切片上做原字节级插入；除插入行外既有行一字不动。
+func insertLines(lines []string, ins []lineIns) ([]string, error) {
+	sorted := append([]lineIns(nil), ins...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].line != sorted[j].line {
+			return sorted[i].line > sorted[j].line // 行号降序：先插后面的行
+		}
+		return sorted[i].before // 同行号：before 先插（落在 after 之前）
+	})
+	out := append([]string(nil), lines...)
+	for _, in := range sorted {
+		if in.line < 1 || in.line > len(out) {
+			return nil, fmt.Errorf("main.go 插入行号 %d 越界（当前 %d 行）", in.line, len(out))
+		}
+		pos := in.line // 1-based 行号 → after 该行 = 下标 in.line
+		if in.before {
+			pos = in.line - 1
+		}
+		out = append(out[:pos], append([]string{in.text}, out[pos:]...)...)
+	}
+	return out, nil
+}
+
+func splitLines(src []byte) []string {
+	return strings.Split(string(src), "\n")
 }
 
 // findImportDecl 找第一个 import GenDecl。

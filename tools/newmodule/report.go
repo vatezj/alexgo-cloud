@@ -36,7 +36,7 @@ func BuildReport(cs *ChangeSet, o Options, verified bool) string {
 		o.Name, o.Name, o.Name, o.Name)
 	fmt.Fprintf(&b, "  - 菜单名为英文占位（%s 等），可在管理后台「菜单管理」改中文\n", strings.ToUpper(o.Name[:1])+o.Name[1:])
 	fmt.Fprintf(&b, "  - 如需独立部署: 参照 modules/member/cmd/main.go 加 micro 入口\n")
-	fmt.Fprintf(&b, "  - 回滚本模块: 删 modules/%s + git checkout 三个修改文件 + 删 modules/system/migrations/*_%s_menus.*\n", o.Name, o.Name)
+	fmt.Fprintf(&b, "  - 如需回滚本模块: 删 modules/%s + 删 apps/web-antd/src/api/%s + 删 apps/web-antd/src/views/%s + git checkout 三个修改文件 + 删 modules/system/migrations/*_%s_menus.*\n", o.Name, o.Name, o.Name, o.Name)
 
 	if o.DryRun {
 		b.WriteString("\n（-dry-run：以上仅为计划，未落盘）\n")
