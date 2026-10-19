@@ -103,7 +103,31 @@ func editMainGo(src []byte, moduleName string) ([]byte, error) {
 	if err := format.Node(&buf, fset, f); err != nil {
 		return nil, fmt.Errorf("输出 main.go: %w", err)
 	}
-	return buf.Bytes(), nil
+	return forceFxModuleOwnLine(buf.Bytes(), pkgIdent), nil
+}
+
+// forceFxModuleOwnLine 保证刚插入的 <pkg>.FxModule 独占一行。
+// 根因：新元素是 NoPos，format.Node 会把它接在前一元素同行
+// （如 "order.FxModule, demo.FxModule,"），且 gofmt 对已打包的行不会自动拆。
+// 故打印后按行拆分：前缀（右 trim 后）以逗号结尾说明被同行打包，按该行缩进拆成两行；
+// gofmt 会保留复合字面量元素的既有换行，拆分结果 gofmt 稳定。
+func forceFxModuleOwnLine(out []byte, pkgIdent string) []byte {
+	marker := pkgIdent + ".FxModule"
+	lines := strings.Split(string(out), "\n")
+	for i, line := range lines {
+		idx := strings.Index(line, marker)
+		if idx < 0 {
+			continue
+		}
+		prefix := strings.TrimRight(line[:idx], " \t")
+		if !strings.HasSuffix(prefix, ",") {
+			continue // 已独占一行（前面只有缩进），或不是装配行
+		}
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		lines[i] = prefix + "\n" + indent + line[idx:]
+		return []byte(strings.Join(lines, "\n"))
+	}
+	return out
 }
 
 // findImportDecl 找第一个 import GenDecl。
