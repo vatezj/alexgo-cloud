@@ -8,7 +8,13 @@ import { Button, message } from 'ant-design-vue';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { createUser, listUsers, resetUserPassword } from '#/api/admin';
+import {
+  createUser,
+  exportUsers,
+  listUsers,
+  resetUserPassword,
+  saveExportBlob,
+} from '#/api/admin';
 import { formatDateTime } from '#/utils/format';
 import { localPage } from '#/utils/local-page';
 
@@ -123,6 +129,15 @@ function onResetPassword(row: User) {
       // 拦截器已 toast
     });
 }
+
+async function onExport() {
+  try {
+    const blob = await exportUsers();
+    saveExportBlob(blob, 'users');
+  } catch {
+    // 拦截器已 toast（含 download 400 的 Blob 特判）
+  }
+}
 </script>
 
 <template>
@@ -136,6 +151,13 @@ function onResetPassword(row: User) {
           @click="() => modalApi.open()"
         >
           新建用户
+        </Button>
+        <Button
+          class="mr-2"
+          v-access:code="['system:user:list']"
+          @click="onExport"
+        >
+          导出
         </Button>
       </template>
       <template #actions="{ row }">

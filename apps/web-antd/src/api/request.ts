@@ -17,6 +17,7 @@ import { message } from 'ant-design-vue';
 
 import { useAuthStore } from '#/store';
 
+import { blobErrorDetail } from './blob-error';
 import { refreshTokenApi } from './core';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
@@ -115,16 +116,8 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       // 再取 msg 字段，否则只显状态码通用文案（M3 终审跟进票③）。
       // 拦截器回调不被 await（preset-interceptors 同步调用），这里 fire-and-forget。
       if (responseData instanceof Blob) {
-        void responseData
-          .text()
-          .then((text: string) => {
-            let detail = '';
-            try {
-              const body = JSON.parse(text);
-              detail = body?.msg ?? body?.message ?? body?.error ?? '';
-            } catch {
-              // 非 JSON 错误体，回退通用文案
-            }
+        void blobErrorDetail(responseData)
+          .then((detail: string) => {
             message.error(detail || msg);
           })
           .catch(() => message.error(msg));

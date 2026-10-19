@@ -3,6 +3,7 @@
  * baseURL = VITE_GLOB_API_URL = /api）。统一信封 {code,msg,data} 由
  * src/api/request.ts 拦截器解包——到这里都是裸数据（data 字段）。
  */
+import { saveBlob } from '#/api/infra';
 import { requestClient } from '#/api/request';
 
 export interface User {
@@ -428,4 +429,27 @@ export function updateTenant(
 
 export function deleteTenant(id: number): Promise<void> {
   return requestClient.delete(`/admin/system/tenants/${id}`);
+}
+
+// ---- Excel 导出（P1-2）----
+// download 默认 GET + responseType blob（@vben FileDownloader）；60s 放宽同 codegen。
+export function exportUsers(): Promise<Blob> {
+  return requestClient.download<Blob>('/admin/system/users/export', {
+    timeout: 60_000,
+  });
+}
+
+export function exportOrders(): Promise<Blob> {
+  return requestClient.download<Blob>('/admin/order/orders/export', {
+    timeout: 60_000,
+  });
+}
+
+// saveExportBlob 统一落盘文件名 <base>_<yyyyMMdd_HHmmss>.xlsx（与服务端
+// Content-Disposition 同构；浏览器实际保存名以客户端为准）。
+export function saveExportBlob(blob: Blob, base: string) {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  saveBlob(blob, `${base}_${stamp}.xlsx`);
 }

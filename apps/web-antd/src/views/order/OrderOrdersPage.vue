@@ -8,11 +8,20 @@ import { Button, message } from 'ant-design-vue';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import { createOrder, listOrders } from '#/api/admin';
+import { createOrder, exportOrders, listOrders, saveExportBlob } from '#/api/admin';
 import { formatDateTime } from '#/utils/format';
 import { localPage } from '#/utils/local-page';
 
 defineOptions({ name: 'OrderOrdersPage' });
+
+async function onExport() {
+  try {
+    const blob = await exportOrders();
+    saveExportBlob(blob, 'orders');
+  } catch {
+    // 拦截器已 toast（含 download 400 的 Blob 特判）
+  }
+}
 
 const gridOptions: VxeGridProps<Order> = {
   columns: [
@@ -145,6 +154,13 @@ const [Form, formApi] = useVbenForm({
           @click="() => modalApi.open()"
         >
           新建订单
+        </Button>
+        <Button
+          class="mr-2"
+          v-access:code="['order:order:*']"
+          @click="onExport"
+        >
+          导出
         </Button>
       </template>
     </Grid>
