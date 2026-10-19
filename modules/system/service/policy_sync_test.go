@@ -254,3 +254,34 @@ func TestRebuild_OrderRoutes(t *testing.T) {
 		t.Error("unassigned route must be denied")
 	}
 }
+
+// RF①（P1-2）：export 子路由必须被既有 permissionRoutes 通配覆盖——三域导出零
+// 新权限码，靠 /users/*、/orders/* 模板（keyMatch2）。不靠「模板应该匹配」的信念，
+// 直接 Enforce 三条 export 路径 + 对照拒绝未授权路径。
+func TestRebuild_ExportRoutesCoveredByWildcard(t *testing.T) {
+	e := newMemEnforcer(t)
+	role := &model.Role{ID: 1, Code: "admin", TenantID: 1}
+	menus := []*model.Menu{
+		{ID: 1, Permission: "system:user:list", Type: "menu"},
+		{ID: 2, Permission: "member:user:manage", Type: "button"},
+		{ID: 3, Permission: "order:order:*", Type: "menu"},
+	}
+	if err := rebuildRolePolicies(context.Background(), e, role, menus); err != nil {
+		t.Fatalf("rebuild error = %v", err)
+	}
+	if _, err := e.AddRoleForUser("1:1:admin", "1:role:admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, obj := range []string{
+		"/api/admin/system/users/export",
+		"/api/admin/member/users/export",
+		"/api/admin/order/orders/export",
+	} {
+		if ok, _ := e.Enforce("1:1:admin", obj, "GET"); !ok {
+			t.Errorf("export route %s must be covered by wildcard template", obj)
+		}
+	}
+	if ok, _ := e.Enforce("1:1:admin", "/api/admin/infra/files", "GET"); ok {
+		t.Error("unassigned route must be denied")
+	}
+}

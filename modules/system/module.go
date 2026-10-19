@@ -179,6 +179,7 @@ func NewSystemModule(
 func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup := r.Group("/admin/system")
 	adminGroup.GET("/users", m.adminCtrl.ListUsers)
+	adminGroup.GET("/users/export", m.userCtrl.ExportUsers)
 	adminGroup.POST("/users", m.userCtrl.Create)
 	adminGroup.PUT("/users/:id", m.userCtrl.Update)
 	adminGroup.POST("/users/:id/reset-password", m.userCtrl.ResetPassword)

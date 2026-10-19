@@ -106,6 +106,9 @@ func newRouter(cfg *config.Config, enf *casbin.Enforcer) *gin.Engine {
 		}
 		c.JSON(http.StatusOK, gin.H{"username": name})
 	})
+	r.GET("/api/admin/system/users/export", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 	r.POST("/api/app/system/auth/login", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -757,5 +760,17 @@ func TestVbenSelfRead_AdminPathStillGated(t *testing.T) {
 	r := newSelfReadRouter(cfg, newEnforcer(t)) // 零策略
 	if w := do(r, "GET", "/api/admin/system/users", "Bearer "+tok); w.Code != http.StatusForbidden {
 		t.Errorf("admin 路径 status = %d, want 403（空策略照常 Enforce）; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// P1-2 RF⑤：export 子路径同样被 JWT 中间件拦截（middleware 按 /api/admin/** 前缀，
+// 不依赖具体路由注册；此处注册路由以证「有路由无 token 仍 401」）。
+func TestAuthMiddleware_AdminExportWithoutToken_401(t *testing.T) {
+	w := do(newRouter(testCfg(), nil), "GET", "/api/admin/system/users/export", "")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+	if code, msg, _ := envelopeOf(t, w); code != 20001 || msg != "未登录或登录已失效" {
+		t.Errorf("code/msg = %d/%q, want 20001/未登录或登录已失效", code, msg)
 	}
 }
