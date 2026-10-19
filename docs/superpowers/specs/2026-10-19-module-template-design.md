@@ -144,7 +144,7 @@ order 的 api 挤在 `api/admin.ts`（455 行）是历史产物；新模块按 c
 
 ### 3.2 `alexgo-server/configs/config.yaml` — yaml.Node 保注释插入
 
-用 `goccy/go-yaml`（indirect 升 direct）解析为 `yaml.Node`：
+用 `go.yaml.in/yaml/v3`（indirect 升 direct）解析为 `yaml.Node`：
 
 - 定位 `modules:` mapping 节点，追加 entry key=`<name>` value=`true`；
 - 序列化保留原有注释与排版。
