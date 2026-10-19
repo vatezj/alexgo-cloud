@@ -1,0 +1,92 @@
+package {{.Module}}
+
+import (
+	"github.com/gin-gonic/gin"
+	"go.uber.org/fx"
+
+	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/{{.Module}}/controller/admin"
+	"alexGo-cloud/modules/{{.Module}}/controller/app"
+	"alexGo-cloud/modules/{{.Module}}/repository"
+	"alexGo-cloud/modules/{{.Module}}/service"
+	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/migrate"
+)
+
+// FxModule {{.Module}} 模块的 fx 装配（newmodule 生成，业务逻辑请手工扩展）。
+var FxModule = fx.Module("{{.Module}}",
+	fx.Provide(
+{{- range .Entities}}
+		repository.New{{.Entity}}Repository,
+		service.New{{.Entity}}Service,
+		admin.NewAdmin{{.Entity}}Controller,
+		app.NewApp{{.Entity}}Controller,
+{{- end}}
+	),
+	fx.Provide(
+		fx.Annotate(
+			NewModule,
+			fx.As(new(server.Module)),
+			fx.ResultTags(`group:"modules"`),
+		),
+	),
+	fx.Provide(
+		fx.Annotate(
+			NewMigrationSource,
+			fx.As(new(migrate.Source)),
+			fx.ResultTags(`group:"migration_sources"`),
+		),
+	),
+)
+
+// ModuleParams 聚合依赖（fx.In）。
+type ModuleParams struct {
+	fx.In
+
+	Cfg *config.Config
+{{- range .Entities}}
+	{{.Entity}}AdminCtrl *admin.Admin{{.Entity}}Controller
+	{{.Entity}}AppCtrl   *app.App{{.Entity}}Controller
+{{- end}}
+}
+
+type {{.Module}}Module struct {
+	cfg *config.Config
+{{- range .Entities}}
+	{{.Entity}}AdminCtrl *admin.Admin{{.Entity}}Controller
+	{{.Entity}}AppCtrl   *app.App{{.Entity}}Controller
+{{- end}}
+}
+
+// NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
+func NewModule(p ModuleParams) server.Module {
+	return &{{.Module}}Module{
+		cfg: p.Cfg,
+{{- range .Entities}}
+		{{.Entity}}AdminCtrl: p.{{.Entity}}AdminCtrl,
+		{{.Entity}}AppCtrl:   p.{{.Entity}}AppCtrl,
+{{- end}}
+	}
+}
+
+// RegisterRoutes 挂载 {{.Module}} 路由。入参是 /api group（见 server/http.go），
+// 故 admin 用 /admin/{{.Module}}、app 用 /app/{{.Module}}（member 基准双前缀）。
+// config 开关：modules.{{.Module}}: false 时跳过注册。
+func (m *{{.Module}}Module) RegisterRoutes(r *gin.RouterGroup) {
+	if m.cfg != nil {
+		if on, ok := m.cfg.Modules["{{.Module}}"]; ok && !on {
+			return
+		}
+	}
+{{- range .Entities}}
+	// {{.Entity}} 的 CRUD 路由由 codegen 生成的 module_register_{{.Snake}}.go 声明，这里接线。
+	Register{{.Entity}}DBRoutes(r, m.{{.Entity}}AdminCtrl)
+{{- end}}
+
+	appGroup := r.Group("/app/{{.Module}}")
+{{- range .Entities}}
+	appGroup.GET("/{{.Plural}}/ping", m.{{.Entity}}AppCtrl.Ping)
+{{- end}}
+	// 跨模块接口映射（如 token.Issuer）归入口 main.go，模块内不重复 Provide——
+	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
+}
