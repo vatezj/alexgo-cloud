@@ -132,11 +132,13 @@ func Apply(cs *ChangeSet) (func(), error) {
 	}
 	for _, p := range cs.Patches {
 		dst := filepath.Join(root, p.Path)
+		// 写前先记账：WriteFile 中途失败（如 ENOSPC 半截写）时 rollback 仍回写原文，
+		// 回滚语义闭合；完全没写成功的情形回写原文是幂等无害的。
+		writtenPatches = append(writtenPatches, FileChange{Path: dst, Before: p.Before, After: p.After})
 		if err := os.WriteFile(dst, p.After, 0o644); err != nil {
 			rollback()
 			return nil, fmt.Errorf("写 %s: %w", p.Path, err)
 		}
-		writtenPatches = append(writtenPatches, FileChange{Path: dst, Before: p.Before, After: p.After})
 	}
 
 	undo := func() {
