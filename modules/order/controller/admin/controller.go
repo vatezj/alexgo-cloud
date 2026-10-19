@@ -67,7 +67,8 @@ func (c *AdminOrderController) ListOrders(ctx *gin.Context) {
 }
 
 // ExportOrders 导出当前租户全量订单 xlsx（GET /orders/export）。
-// 复用既有全量 List（租户插件经 ctx 生效）；Build 失败字节未写，信封安全（RF②）。
+// 复用既有 List：租户隔离在 repo 层显式做（user_id → system_users.tenant_id；
+// Order 模型无 TenantID 字段，gormplugin 不接管）；Build 失败字节未写，信封安全（RF②）。
 func (c *AdminOrderController) ExportOrders(ctx *gin.Context) {
 	orders, err := c.orderSvc.List(ctx.Request.Context())
 	if err != nil {

@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"alexGo-cloud/modules/order/model"
 	"alexGo-cloud/modules/order/service"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/excel"
 )
 
@@ -26,6 +28,17 @@ type stubOrderSvc struct {
 
 func (s *stubOrderSvc) List(context.Context) ([]*model.Order, error) {
 	return s.orders, s.err
+}
+
+func doExportOrders(t *testing.T, svc service.OrderService) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	c := NewAdminOrderController(svc)
+	r.GET("/api/admin/order/orders/export", c.ExportOrders)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/admin/order/orders/export", nil))
+	return w
 }
 
 func TestExportOrders_XlsxRoundTrip(t *testing.T) {
@@ -90,5 +103,39 @@ func TestExportOrders_Empty_HeaderOnly200(t *testing.T) {
 	rows, _ := f.GetRows("订单")
 	if len(rows) != 1 {
 		t.Errorf("rows = %d, want header only", len(rows))
+	}
+}
+
+// 超限：Build 在写字节前拒 → 信封 400/30013（照 system
+// TestExportUsers_TooManyRows_Envelope400；体非 PK zip 头）。
+func TestExportOrders_TooManyRows_Envelope400(t *testing.T) {
+	orders := make([]*model.Order, excel.MaxExportRows+1)
+	for i := range orders {
+		orders[i] = &model.Order{ID: uint64(i + 1)}
+	}
+	w := doExportOrders(t, &stubOrderSvc{orders: orders})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%.80s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("body must be JSON envelope: %v", err)
+	}
+	if env.Code != int(errs.CodeExportTooManyRows) || env.Msg != "导出行数超过上限" {
+		t.Errorf("envelope = %d/%q, want 30013/导出行数超过上限", env.Code, env.Msg)
+	}
+	if bytes.HasPrefix(w.Body.Bytes(), []byte("PK")) {
+		t.Error("30013 response must not start with xlsx zip magic")
+	}
+}
+
+// 取行 DB 错 → 50000 信封（照 system TestExportUsers_ListError_Envelope；写流前，安全）。
+func TestExportOrders_ListError_Envelope(t *testing.T) {
+	w := doExportOrders(t, &stubOrderSvc{err: errs.New(errs.CodeInternal, nil)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }

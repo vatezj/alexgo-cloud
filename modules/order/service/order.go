@@ -93,11 +93,13 @@ func (s *orderService) Create(ctx context.Context, entity *model.Order) error {
 	})
 }
 
-// List 返回订单列表（简单示例：全量查询）。
+// List 返回订单列表（租户内全量）。
+//
+// 租户过滤在 repo 层显式做：user_id IN (SELECT id FROM system_users WHERE
+// tenant_id = ?)——Order 模型无 TenantID 字段，gormplugin 跳过不接管。
 //
 // 生产建议：
 // - 增加分页（limit/offset 或游标）
-// - 增加租户过滤（WHERE tenant_id = ?）
 // - 增加权限过滤（基于 claims 的角色/数据范围）
 func (s *orderService) List(ctx context.Context) ([]*model.Order, error) {
 	return s.repo.List(ctx)
