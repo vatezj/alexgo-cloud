@@ -1,5 +1,5 @@
 -- {{.Table}}：{{.Entity}} 示例表（newmodule 生成；列与 model/{{.Snake}}.go 严格同构）。
-CREATE TABLE `{{.Table}}` (
+CREATE TABLE IF NOT EXISTS `{{.Table}}` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `name` varchar(64) NOT NULL DEFAULT '' COMMENT '名称',
