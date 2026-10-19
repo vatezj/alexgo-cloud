@@ -103,15 +103,11 @@ modules/product/
 
 ```
 apps/web-antd/src/
-├── api/product/                 # 按 codegen 风格分目录
-│   ├── product/types.ts + api.ts + index.ts
-│   └── category/types.ts + api.ts + index.ts
-└── views/product/
-    ├── ProductListPage.vue      # 菜单 component: views/product/ProductListPage
-    └── CategoryListPage.vue
+├── api/{module}/{snake(entity)}/     # codegen 输出（types.ts + api.ts + index.ts + __tests__）
+└── views/{module}/{snake(entity)}/   # codegen 输出（list.vue + form.vue + drawer.vue）
 ```
 
-菜单种子 SQL 落在 **system 模块**的 `modules/system/migrations/`（新文件，不改既有文件），1 条 dir + N 条 menu，component 路径与 views 文件严格一致。
+菜单种子 SQL 落在 **system 模块**的 `modules/system/migrations/`（新文件，不改既有文件），1 条 dir + N 条 menu，component 路径与 views 文件严格一致。菜单 component = `views/{module}/{snake(entity)}/list`（与 codegen 视图路径同源）。
 
 ### 2.2 子决策 A：示例实体复用 codegen 引擎（已确认）
 
