@@ -113,7 +113,7 @@ apps/web-antd/src/
 
 菜单种子 SQL 落在 **system 模块**的 `modules/system/migrations/`（新文件，不改既有文件），1 条 dir + N 条 menu，component 路径与 views 文件严格一致。
 
-### 2.3 子决策 A：示例实体复用 codegen 引擎（已确认）
+### 2.2 子决策 A：示例实体复用 codegen 引擎（已确认）
 
 生成的 model/repository/service/controller **不手写模板**：在内存里构造 `model.Table`（借 `pkg/codegen/builder` 的 typing 规则：`MySQLTypeToGo` / `MySQLTypeToHTML` / `BuildGormTag`），调 `codegen.Generate` 产出。
 
