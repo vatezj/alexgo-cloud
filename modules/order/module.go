@@ -59,4 +59,5 @@ func (m *orderModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup := r.Group("/admin/order")
 	adminGroup.GET("/orders", m.ctrl.ListOrders)
 	adminGroup.POST("/orders", m.ctrl.CreateOrder)
+	adminGroup.GET("/orders/export", m.ctrl.ExportOrders)
 }

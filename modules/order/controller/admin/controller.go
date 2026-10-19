@@ -1,11 +1,14 @@
 package admin
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/order/model"
 	"alexGo-cloud/modules/order/service"
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/excel"
 	"alexGo-cloud/pkg/resp"
 )
 
@@ -61,4 +64,36 @@ func (c *AdminOrderController) CreateOrder(ctx *gin.Context) {
 
 func (c *AdminOrderController) ListOrders(ctx *gin.Context) {
 	c.List(ctx)
+}
+
+// ExportOrders 导出当前租户全量订单 xlsx（GET /orders/export）。
+// 复用既有全量 List（租户插件经 ctx 生效）；Build 失败字节未写，信封安全（RF②）。
+func (c *AdminOrderController) ExportOrders(ctx *gin.Context) {
+	orders, err := c.orderSvc.List(ctx.Request.Context())
+	if err != nil {
+		resp.Fail(ctx, err)
+		return
+	}
+	spec := excel.Spec[*model.Order]{
+		Sheet:    "订单",
+		FileName: excel.FileName("orders"),
+		Columns: []excel.Column[*model.Order]{
+			{Title: "ID", Cell: func(o *model.Order) any { return o.ID }},
+			{Title: "订单号", Cell: func(o *model.Order) any { return o.OrderNo }},
+			{Title: "用户ID", Cell: func(o *model.Order) any { return o.UserID }},
+			{Title: "产品ID", Cell: func(o *model.Order) any { return o.ProductID }},
+			{Title: "金额(分)", Cell: func(o *model.Order) any { return o.Amount }},
+			{Title: "状态", Cell: func(o *model.Order) any { return o.Status }},
+			{Title: "创建时间", Cell: func(o *model.Order) any { return excel.TimeRFC3339(&o.CreatedAt) }},
+			{Title: "更新时间", Cell: func(o *model.Order) any { return excel.TimeRFC3339(&o.UpdatedAt) }},
+		},
+		Rows: orders,
+	}
+	data, err := excel.Build(spec)
+	if err != nil {
+		resp.Fail(ctx, err)
+		return
+	}
+	ctx.Header("Content-Disposition", excel.Disposition(spec.FileName))
+	ctx.Data(http.StatusOK, excel.MIME, data)
 }
