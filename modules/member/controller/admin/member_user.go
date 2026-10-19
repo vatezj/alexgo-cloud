@@ -2,12 +2,15 @@ package admin
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"alexGo-cloud/modules/member/model"
 	"alexGo-cloud/modules/member/service"
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/excel"
 	"alexGo-cloud/pkg/resp"
 )
 
@@ -69,4 +72,37 @@ func (c *UserController) UpdateStatus(ctx *gin.Context) {
 		return
 	}
 	resp.OK(ctx, nil)
+}
+
+// ExportMemberUsers 导出当前租户全量会员 xlsx（GET /users/export）。
+// 租户隔离双层：svc.Export 取 ctx 租户 + repo.ListAll Where + gormplugin 经 ctx
+// 照常作用；Build 失败字节未写，信封安全（RF②）。
+func (c *UserController) ExportMemberUsers(ctx *gin.Context) {
+	members, err := c.svc.Export(ctx.Request.Context())
+	if err != nil {
+		resp.Fail(ctx, err)
+		return
+	}
+	spec := excel.Spec[*model.MemberUser]{
+		Sheet:    "会员",
+		FileName: excel.FileName("member_users"),
+		Columns: []excel.Column[*model.MemberUser]{
+			{Title: "ID", Cell: func(u *model.MemberUser) any { return u.ID }},
+			{Title: "昵称", Cell: func(u *model.MemberUser) any { return u.Nickname }},
+			{Title: "手机", Cell: func(u *model.MemberUser) any { return u.Mobile }},
+			{Title: "状态", Cell: func(u *model.MemberUser) any { return u.Status }},
+			{Title: "注册IP", Cell: func(u *model.MemberUser) any { return u.RegisterIP }},
+			{Title: "登录IP", Cell: func(u *model.MemberUser) any { return u.LoginIP }},
+			{Title: "登录时间", Cell: func(u *model.MemberUser) any { return excel.TimeRFC3339(u.LoginDate) }},
+			{Title: "创建时间", Cell: func(u *model.MemberUser) any { return excel.TimeRFC3339(&u.CreatedAt) }},
+		},
+		Rows: members,
+	}
+	data, err := excel.Build(spec)
+	if err != nil {
+		resp.Fail(ctx, err)
+		return
+	}
+	ctx.Header("Content-Disposition", excel.Disposition(spec.FileName))
+	ctx.Data(http.StatusOK, excel.MIME, data)
 }

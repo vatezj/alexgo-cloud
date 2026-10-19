@@ -64,5 +64,6 @@ func (m *memberModule) RegisterRoutes(r *gin.RouterGroup) {
 
 	adminGroup := r.Group("/admin/member")
 	adminGroup.GET("/users", m.userCtrl.List)
+	adminGroup.GET("/users/export", m.userCtrl.ExportMemberUsers)
 	adminGroup.PUT("/users/:id/status", m.userCtrl.UpdateStatus)
 }

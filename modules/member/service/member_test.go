@@ -83,6 +83,18 @@ func (m *memRepo) List(_ context.Context, tid uint64, page, size int) ([]*model.
 	}
 	return all[start:end], total, nil
 }
+func (m *memRepo) ListAll(_ context.Context, tid uint64) ([]*model.MemberUser, error) {
+	var list []*model.MemberUser
+	for _, u := range m.byMobile {
+		if u.TenantID == tid && !u.Deleted {
+			list = append(list, u)
+		}
+	}
+	// 与真实仓储同形：id desc 排序。
+	sort.Slice(list, func(i, j int) bool { return list[i].ID > list[j].ID })
+	return list, nil
+}
+
 func (m *memRepo) CountByTenant(_ context.Context, tid uint64) (int64, error) {
 	var n int64
 	for _, u := range m.byMobile {
@@ -373,5 +385,32 @@ func TestAuthenticate_Disabled(t *testing.T) {
 	_, err := svc.Authenticate(context.Background(), "13800000000", "pw123456", "")
 	if !errors.Is(err, oauth2svc.ErrUserDisabled) {
 		t.Fatalf("停用应 ErrUserDisabled, got %v", err)
+	}
+}
+
+// Export 透传 ctx 租户到 ListAll（插件层钉在 repo 测试；此处钉 service 取数路径）。
+func TestExport_FiltersByTenant(t *testing.T) {
+	repo := newMemRepo()
+	for _, u := range []*model.MemberUser{
+		{Mobile: "138", Nickname: "甲", TenantID: 1},
+		{Mobile: "139", Nickname: "乙", TenantID: 1},
+		{Mobile: "1380", Nickname: "丙", TenantID: 2},
+	} {
+		if err := repo.Create(context.Background(), u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := NewMemberService(repo, nil, nil)
+	got, err := svc.Export(tenant.WithTenantID(context.Background(), 1))
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Export count = %d, want 2", len(got))
+	}
+	for _, u := range got {
+		if u.TenantID != 1 {
+			t.Errorf("cross-tenant row: id=%d tenant=%d", u.ID, u.TenantID)
+		}
 	}
 }

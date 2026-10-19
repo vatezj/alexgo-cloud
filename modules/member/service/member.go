@@ -45,6 +45,8 @@ type MemberService interface {
 	Logout(ctx context.Context, accessToken string) error
 	List(ctx context.Context, page, size int) ([]*model.MemberUser, int64, error)
 	Disable(ctx context.Context, id uint64, status int) error
+	// Export 租户内全量会员（导出用；与 List 同查询口径、不截断不分页）。
+	Export(ctx context.Context) ([]*model.MemberUser, error)
 }
 
 type memberService struct {
@@ -187,4 +189,10 @@ func (s *memberService) Disable(ctx context.Context, id uint64, status int) erro
 	}
 	// 仓储无按 ID 直取——用 UpdateStatus 语义按 tenant+id 局部更新。
 	return s.repo.UpdateStatus(ctx, tenant.TenantIDFromContext(ctx), id, status)
+}
+
+// Export 租户内全量会员：租户 ID 取自 ctx（tenant 插件经 ctx 照常隔离），经
+// repo.ListAll 不截断返回——controller 组 excel 列映射。
+func (s *memberService) Export(ctx context.Context) ([]*model.MemberUser, error) {
+	return s.repo.ListAll(ctx, tenant.TenantIDFromContext(ctx))
 }

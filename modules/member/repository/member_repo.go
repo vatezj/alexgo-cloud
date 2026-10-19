@@ -16,6 +16,8 @@ type MemberRepository interface {
 	Update(ctx context.Context, u *model.MemberUser) error
 	List(ctx context.Context, tenantID uint64, page, size int) ([]*model.MemberUser, int64, error)
 	CountByTenant(ctx context.Context, tenantID uint64) (int64, error)
+	// ListAll 租户内全量（导出用；不截断、不走 Paginate——后者 page/size≤0 兜底 1/10）。
+	ListAll(ctx context.Context, tenantID uint64) ([]*model.MemberUser, error)
 	// UpdateStatus 按 tenant+id 局部更新启用/停用状态（Disable 用；无按 ID 直取方法）。
 	UpdateStatus(ctx context.Context, tenantID, id uint64, status int) error
 }
@@ -51,6 +53,17 @@ func (r *memberRepo) List(ctx context.Context, tid uint64, page, size int) ([]*m
 		Where("tenant_id = ? AND deleted = 0", tid).
 		Order("id desc")
 	return repo.Paginate[*model.MemberUser](ctx, q, page, size)
+}
+
+// ListAll 租户内全量导出行：与 List 同 Where 口径（tenant_id + deleted=0），
+// id desc 保序；无 Offset/Limit——导出要的是全量，不是分页。
+func (r *memberRepo) ListAll(ctx context.Context, tid uint64) ([]*model.MemberUser, error) {
+	var list []*model.MemberUser
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND deleted = 0", tid).
+		Order("id desc").
+		Find(&list).Error
+	return list, err
 }
 
 func (r *memberRepo) CountByTenant(ctx context.Context, tid uint64) (int64, error) {
