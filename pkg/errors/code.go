@@ -37,6 +37,8 @@ const (
 	CodeFileTypeNotAllowed Code = 30011
 	// CodeFileTooLarge file：超过 storage.max_size_mb 上限。
 	CodeFileTooLarge Code = 30012
+	// CodeExportTooManyRows excel：导出行数超过 MaxExportRows 上限（5万保险丝）。
+	CodeExportTooManyRows Code = 30013
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -63,6 +65,8 @@ var registry = map[Code]string{
 	CodeFileNotFound:       "文件不存在",
 	CodeFileTypeNotAllowed: "文件类型不允许",
 	CodeFileTooLarge:       "文件超过大小限制",
+
+	CodeExportTooManyRows: "导出行数超过上限",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 }
