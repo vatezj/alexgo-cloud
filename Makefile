@@ -1,4 +1,4 @@
-.PHONY: run run-system run-member build clean test proto generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke
+.PHONY: run run-system run-member build clean test proto generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke new-module
 
 MODULE ?= system
 TABLES ?=
@@ -28,6 +28,9 @@ generate-all: proto generate-crud
 
 codegen-smoke: ## M1 验收：真实表生成→编译→跑生成测试→清理（需本地 MySQL）
 	go test -tags integration ./tools/codegen/ -run TestSmoke -v -count=1
+
+new-module: ## 新建模块骨架（NAME=demo ENTITIES=item[,foo]；可加 ARGS="-dry-run"）
+	go run ./tools/newmodule/cmd -name=$(NAME) -entities=$(ENTITIES) $(ARGS)
 
 migrate:
 	go run ./alexgo-server/cmd/main.go --migrate-only
