@@ -13,6 +13,7 @@ import (
 	"alexGo-cloud/modules/scorecard/model"
 	"alexGo-cloud/modules/scorecard/repository"
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/tenant"
 )
 
 // roomTTL 房间无操作超时：开房/进房/退房/配置变更刷 expire_time = now+2h（spec §4.2）。
@@ -53,6 +54,9 @@ type RoomService interface {
 	// TransferOwner 转让房主：仅进行中房可转让（已结算 30104/已关闭 30103）；
 	// 目标须在房（30113）、拉黑双向拦截（30108）；两行 is_creator 互换 + creator_id + type=9 流水。
 	TransferOwner(ctx context.Context, userID, roomID, targetUserID uint64) error
+	// SweepExpired 超时关房（系统级 ticker）：跨租户拉逾期进行中房，逐房事务关闭
+	// （status=2 + type=8 流水）；返回本轮实际关闭数。心跳（快照读）不续期。
+	SweepExpired(ctx context.Context) (int64, error)
 }
 
 type roomService struct {
@@ -417,4 +421,56 @@ func isUniqueViolation(err error) bool {
 		strings.Contains(msg, "Duplicate entry") ||
 		strings.Contains(msg, "duplicate key value") ||
 		strings.Contains(msg, "SQLSTATE 23505")
+}
+
+// SweepExpired 超时关房（spec §4.2：2h 无操作自动关；快照读不构成心跳、不续期）：
+// repo IgnoreTenant 跨全部租户拉逾期进行中房（status=0 AND expire_time < now）→
+// 逐房事务（tx 绑定 repo，T7 契约）：FOR UPDATE 复验仍进行中且仍逾期（并发下可能
+// 已被结算/关闭/进房续期）→ status=2 + type=8 状态变更流水（extra timeout_close）。
+// 每房换上自身 TenantID 的 ctx（SaveVersioned WHERE tenant_id 与流水打戳均依赖它；
+// 扫描本身跨租户、写路径必须逐租户）。单房失败即返回已关数（已关的保留），调用方
+// ticker 记 warn，下轮再扫剩余。返回本轮实际关闭数。
+func (s *roomService) SweepExpired(ctx context.Context) (int64, error) {
+	now := time.Now()
+	rooms, err := s.room.SweepExpired(ctx, now)
+	if err != nil {
+		return 0, err
+	}
+	var closed int64
+	for _, room := range rooms {
+		// 扫描跨租户；每房以自己的租户编号进事务（gormplugin 租户条件 + 流水打戳）。
+		roomCtx := tenant.WithTenantID(ctx, room.TenantID)
+		didClose := false
+		err := s.db.WithContext(roomCtx).Transaction(func(tx *gorm.DB) error {
+			roomRepo := repository.NewRoomRepository(tx)
+			logRepo := repository.NewRoomLogRepository(tx)
+			locked, err := roomRepo.GetForUpdate(roomCtx, tx, room.ID)
+			if err != nil {
+				return err
+			}
+			// 锁下复验：并发下房可能已被结算/关闭/续期（Join/Expense 等刷了 expire）。
+			if locked == nil || locked.Status != 0 || !locked.ExpireTime.Before(now) {
+				return nil // 跳过，不计数
+			}
+			locked.Status = 2
+			if err := roomRepo.SaveVersioned(roomCtx, tx, locked); err != nil {
+				return err // 失败弃用内存 room（Version 就地 +1，T5 契约）
+			}
+			if err := logRepo.Create(roomCtx, &model.RoomLog{
+				TenantID: locked.TenantID, RoomID: locked.ID,
+				Type: 8, Extra: `{"event":"timeout_close","status":2}`,
+			}); err != nil {
+				return err
+			}
+			didClose = true
+			return nil
+		})
+		if err != nil {
+			return closed, err
+		}
+		if didClose {
+			closed++
+		}
+	}
+	return closed, nil
 }

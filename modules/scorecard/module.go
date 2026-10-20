@@ -1,13 +1,19 @@
 package scorecard
 
 import (
+	"context"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/scorecard/controller/app"
 	"alexGo-cloud/modules/scorecard/repository"
+	"alexGo-cloud/modules/scorecard/service"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -25,6 +31,13 @@ var FxModule = fx.Module("scorecard",
 		repository.NewRecordRepository,
 		repository.NewFriendRepository,
 		repository.NewFriendBlackRepository,
+		// briefs（member.BriefProvider）标 optional：micro 模式（DEPLOYMENT_MODE=micro）
+		// 本进程不装 member.FxModule，图里无该接口映射——RoomService 仍须可装配
+		// （buildSnapshot 对 nil briefs 降级空昵称）。mono 模式由 member 映射注入。
+		fx.Annotate(
+			service.NewRoomService,
+			fx.ParamTags("", "", "", "", "", `optional:"true"`, ""),
+		),
 		app.NewAppRoomController,
 		app.NewAppRoomUserController,
 		app.NewAppRoomLogController,
@@ -46,6 +59,36 @@ var FxModule = fx.Module("scorecard",
 			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
+	// 超时关房 ticker（2h TTL 心跳不续期，spec §4.2）：照 modules/system/module.go
+	// token SweepExpired 的 Fx 生命周期模式——OnStart 的 ctx 在启动完成即被 cancel，
+	// goroutine 不能监听它（会秒退），改独立 runCtx 并在 OnStop cancel 保证退出。
+	// 扫描用 Background：不受请求/生命周期 ctx 影响；错误只记 warn 不致命，下轮再扫。
+	fx.Invoke(func(lc fx.Lifecycle, svc service.RoomService) {
+		runCtx, cancel := context.WithCancel(context.Background())
+		lc.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				go func() {
+					ticker := time.NewTicker(time.Minute)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-runCtx.Done():
+							return
+						case <-ticker.C:
+							if _, err := svc.SweepExpired(context.Background()); err != nil && logger.Log != nil {
+								logger.Log.Warn("scorecard sweep failed", zap.Error(err))
+							}
+						}
+					}
+				}()
+				return nil
+			},
+			OnStop: func(context.Context) error {
+				cancel()
+				return nil
+			},
+		})
+	}),
 )
 
 // ModuleParams 聚合依赖（fx.In）。

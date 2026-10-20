@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"alexGo-cloud/modules/scorecard/model"
 	errs "alexGo-cloud/pkg/errors"
@@ -109,5 +110,81 @@ func TestSnapshot_BriefsCarryTenantCtx(t *testing.T) {
 	}
 	if got.Members[0].Nickname != "u100" || got.Members[1].Nickname != "u200" {
 		t.Fatalf("昵称应由 BriefProvider 批量补齐: %+v", got.Members)
+	}
+}
+
+// TestSweepExpired_ClosesAndLogs 超时关房：把 expire_time 拨到过去后 SweepExpired
+// 关闭该房（status=2）并写 type=8 状态变更流水（系统级扫描，各房带自己的 TenantID）。
+func TestSweepExpired_ClosesAndLogs(t *testing.T) {
+	svc, _ := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	snap, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roomSvc := svc.(*roomService)
+	// 把 expire_time 拨到过去（直改列绕过 version 乐观锁，模拟超时）。
+	if err := roomSvc.db.WithContext(ctx).Model(&model.Room{}).Where("id = ?", snap.ID).
+		UpdateColumn("expire_time", time.Now().Add(-time.Minute)).Error; err != nil {
+		t.Fatal(err)
+	}
+	n, err := svc.SweepExpired(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("sweep: n=%d err=%v", n, err)
+	}
+	got, err := roomSvc.room.GetByID(ctx, snap.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.Status != 2 {
+		t.Fatalf("应关闭: %+v", got)
+	}
+	logs, _, err := roomSvc.log.ListByRoom(ctx, snap.ID, 1, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasStatusLog := false
+	for _, l := range logs {
+		if l.Type == 8 {
+			if l.TenantID != 1 {
+				t.Fatalf("type=8 流水应带房自身 TenantID=1, got %d", l.TenantID)
+			}
+			hasStatusLog = true
+		}
+	}
+	if !hasStatusLog {
+		t.Fatal("缺 type=8 状态变更日志")
+	}
+}
+
+// TestSweepExpired_SkipsActiveAndSettled 只关逾期进行中房：未到期/已结算/已关闭不被触碰。
+func TestSweepExpired_SkipsActiveAndSettled(t *testing.T) {
+	svc, _ := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	// 房 A：进行中且未到期（expire=now+2h）。
+	a, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AAAA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 房 B：已结算（不逾期也不该被动）。
+	b, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "BBBB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settle(ctx, 100, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err := svc.SweepExpired(ctx)
+	if err != nil || n != 0 {
+		t.Fatalf("无逾期房应 n=0: n=%d err=%v", n, err)
+	}
+	roomSvc := svc.(*roomService)
+	gotA, err := roomSvc.room.GetByID(ctx, a.ID)
+	if err != nil || gotA == nil || gotA.Status != 0 {
+		t.Fatalf("未到期房不应被关: %+v err=%v", gotA, err)
+	}
+	gotB, err := roomSvc.room.GetByID(ctx, b.ID)
+	if err != nil || gotB == nil || gotB.Status != 1 {
+		t.Fatalf("已结算房不应被改状态: %+v err=%v", gotB, err)
 	}
 }
