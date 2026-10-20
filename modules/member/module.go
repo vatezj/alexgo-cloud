@@ -27,6 +27,10 @@ var FxModule = fx.Module("member",
 	fx.Provide(
 		func(svc service.MemberService) oauth2svc.MemberAuthenticator { return svc },
 	),
+	// member 摘要窄只读接口映射：scorecard 等业务模块按 service.BriefProvider 消费。
+	fx.Provide(
+		func(svc service.MemberService) service.BriefProvider { return svc },
+	),
 	fx.Provide(
 		fx.Annotate(
 			NewModule,

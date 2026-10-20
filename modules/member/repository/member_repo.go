@@ -20,6 +20,9 @@ type MemberRepository interface {
 	ListAll(ctx context.Context, tenantID uint64) ([]*model.MemberUser, error)
 	// UpdateStatus 按 tenant+id 局部更新启用/停用状态（Disable 用；无按 ID 直取方法）。
 	UpdateStatus(ctx context.Context, tenantID, id uint64, status int) error
+	// GetBriefs 按 id 批量取会员摘要（跨模块窄只读，BriefProvider 消费）：
+	// 窄列 + deleted=0 口径与本包其余查询一致；租户隔离依赖 gormplugin 按 ctx 注入。
+	GetBriefs(ctx context.Context, ids []uint64) ([]*model.MemberUser, error)
 }
 
 type memberRepo struct{ db *gorm.DB }
@@ -78,4 +81,21 @@ func (r *memberRepo) UpdateStatus(ctx context.Context, tid, id uint64, status in
 		Model(&model.MemberUser{}).
 		Where("tenant_id = ? AND id = ? AND deleted = 0", tid, id).
 		Update("status", status).Error
+}
+
+// GetBriefs 按 id 批量取会员摘要行：只 SELECT 摘要列（不带 mobile/password 等敏感列），
+// deleted=0 与本包其余查询同口径（model.Deleted 是普通 bool 列、非 gorm.DeletedAt，
+// 不会自动过滤）；id asc 保证批量取数输出确定序。租户过滤不显式写——gormplugin
+// 按 ctx 自动注入（tid=0 不注入，平台侧行为同插件设计）。
+func (r *memberRepo) GetBriefs(ctx context.Context, ids []uint64) ([]*model.MemberUser, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var list []*model.MemberUser
+	err := r.db.WithContext(ctx).
+		Select([]string{"id", "nickname", "avatar", "status"}).
+		Where("id IN ? AND deleted = 0", ids).
+		Order("id").
+		Find(&list).Error
+	return list, err
 }

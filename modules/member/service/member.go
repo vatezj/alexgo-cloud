@@ -47,6 +47,8 @@ type MemberService interface {
 	Disable(ctx context.Context, id uint64, status int) error
 	// Export 租户内全量会员（导出用；与 List 同查询口径、不截断不分页）。
 	Export(ctx context.Context) ([]*model.MemberUser, error)
+	// GetBriefs 按 id 批量取会员公开摘要（跨模块窄只读；BriefProvider 消费面，见 brief.go）。
+	GetBriefs(ctx context.Context, ids []uint64) ([]UserBrief, error)
 }
 
 type memberService struct {
@@ -195,4 +197,18 @@ func (s *memberService) Disable(ctx context.Context, id uint64, status int) erro
 // repo.ListAll 不截断返回——controller 组 excel 列映射。
 func (s *memberService) Export(ctx context.Context) ([]*model.MemberUser, error) {
 	return s.repo.ListAll(ctx, tenant.TenantIDFromContext(ctx))
+}
+
+// GetBriefs 按 id 批量取会员公开摘要：repo 窄列取数后映射 UserBrief
+// （敏感列不在 SELECT 面内）；不存在/已删的 id 自然缺席，不报错。
+func (s *memberService) GetBriefs(ctx context.Context, ids []uint64) ([]UserBrief, error) {
+	rows, err := s.repo.GetBriefs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserBrief, 0, len(rows))
+	for _, u := range rows {
+		out = append(out, UserBrief{ID: u.ID, Nickname: u.Nickname, Avatar: u.Avatar, Status: u.Status})
+	}
+	return out, nil
 }
