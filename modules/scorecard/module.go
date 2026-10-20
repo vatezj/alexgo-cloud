@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/scorecard/controller/admin"
 	"alexGo-cloud/modules/scorecard/controller/app"
 	"alexGo-cloud/modules/scorecard/repository"
 	"alexGo-cloud/modules/scorecard/service"
@@ -50,8 +51,10 @@ var FxModule = fx.Module("scorecard",
 		),
 		// Task 12 合一版 app 控制器（Bearer 自鉴权）。token.Validator 的接口映射归
 		// 入口（alexgo-server/cmd/main.go ifaceOptions），模块内不重复 Provide。
-		// admin 端合一控制器 Task 13 落地后补 Provide。
 		app.NewAppController,
+		// Task 13 合一版 admin 监管控制器（只读 + 强制关房）：无 claims
+		// （casbin 中间件按 permissionRoutes 放行），依赖三个业务服务接口。
+		admin.NewAdminController,
 	),
 	fx.Provide(
 		fx.Annotate(
@@ -103,31 +106,41 @@ var FxModule = fx.Module("scorecard",
 type ModuleParams struct {
 	fx.In
 
-	Cfg     *config.Config
-	AppCtrl *app.AppController
+	Cfg       *config.Config
+	AppCtrl   *app.AppController
+	AdminCtrl *admin.AdminController
 }
 
 type scorecardModule struct {
-	cfg     *config.Config
-	appCtrl *app.AppController
+	cfg       *config.Config
+	appCtrl   *app.AppController
+	adminCtrl *admin.AdminController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
 	return &scorecardModule{
-		cfg:     p.Cfg,
-		appCtrl: p.AppCtrl,
+		cfg:       p.Cfg,
+		appCtrl:   p.AppCtrl,
+		adminCtrl: p.AdminCtrl,
 	}
 }
 
 // RegisterRoutes 挂载 scorecard 路由。入参是 /api group（见 server/http.go），
-// admin 路由待 Task 13 合一版控制器落地后重挂；app 端 18 业务接口 Task 12 落地。
+// admin 监管段（5 路由，Task 13）与 app 端 18 业务接口（Task 12）齐备。
 func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 	if m.cfg != nil {
 		if on, ok := m.cfg.Modules["scorecard"]; ok && !on {
 			return
 		}
 	}
+
+	admin := r.Group("/admin/scorecard")
+	admin.GET("/rooms", m.adminCtrl.ListRooms)
+	admin.GET("/rooms/:id", m.adminCtrl.RoomDetail)
+	admin.POST("/rooms/:id/close", m.adminCtrl.CloseRoom)
+	admin.GET("/records", m.adminCtrl.ListRecords)
+	admin.GET("/friends", m.adminCtrl.ListFriends)
 
 	app := r.Group("/app/scorecard")
 	app.POST("/rooms", m.appCtrl.CreateRoom)

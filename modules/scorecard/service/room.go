@@ -57,6 +57,24 @@ type RoomService interface {
 	// SweepExpired 超时关房（系统级 ticker）：跨租户拉逾期进行中房，逐房事务关闭
 	// （status=2 + type=8 流水）；返回本轮实际关闭数。心跳（快照读）不续期。
 	SweepExpired(ctx context.Context) (int64, error)
+	// AdminListRooms 监管端房间分页（Task 13）：status<0 不过滤（repo.ListAdmin，
+	// 插件在位时只看本租户）。实现见 admin.go。
+	AdminListRooms(ctx context.Context, status int, page, size int) ([]*model.Room, int64, error)
+	// AdminRoomDetail 监管端房间全量详情（Task 13）：房行 + 成员 + 最近流水；
+	// 房不存在/跨租户 → 30101。实现见 admin.go。
+	AdminRoomDetail(ctx context.Context, roomID uint64) (*AdminRoomDetail, error)
+	// AdminClose 强制关房（Task 13）：无房主校验、进行中/已结算均可关（→status=2），
+	// 已关再关 → 30103；单事务（行锁 + version 乐观锁 + type=8 流水）。实现见 admin.go。
+	AdminClose(ctx context.Context, roomID uint64) error
+}
+
+// AdminRoomDetail 监管端房间详情 DTO（Task 13 admin 控制器直出）：
+// Room 房行、Members 全量成员（房规模有界，不分页）、Logs 最近流水
+// （取最近 adminDetailLogsCap 条，完整流水走 app 端 /rooms/:id/logs 分页接口）。
+type AdminRoomDetail struct {
+	Room    *model.Room       `json:"room"`
+	Members []*model.RoomUser `json:"members"`
+	Logs    []*model.RoomLog  `json:"logs"`
 }
 
 type roomService struct {
