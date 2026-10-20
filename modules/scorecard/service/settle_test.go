@@ -115,3 +115,15 @@ func TestTransferOwner_Matrix(t *testing.T) {
 		t.Fatal("原房主应失去权限")
 	}
 }
+
+// TestTransferOwner_RejectedAfterSettle R1：spec §3.3 转让校验 status=0——
+// 已结算房（status=1）禁止转让（30104）。
+func TestTransferOwner_RejectedAfterSettle(t *testing.T) {
+	svc, ctx, roomID, _, _ := setupRoom(t, 0, false, 0, 0)
+	if err := svc.Settle(ctx, 100, roomID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TransferOwner(ctx, 100, roomID, 200); !errs.Is(err, errs.CodeScorecardRoomSettled) {
+		t.Fatalf("已结算房应拒转让 30104, got %v", err)
+	}
+}

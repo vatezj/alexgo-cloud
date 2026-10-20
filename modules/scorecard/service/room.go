@@ -50,8 +50,8 @@ type RoomService interface {
 	// Leave 退房：房主先自动结算（settle_type=2）；普通成员写 record（3/4）后硬删成员行；
 	// 最后一人离开 → status=2。重进按新会话从 session_no=1、计分清零起。
 	Leave(ctx context.Context, userID, roomID uint64) error
-	// TransferOwner 转让房主：目标须在房（30113）、拉黑双向拦截（30108）；
-	// 两行 is_creator 互换 + creator_id + type=9 流水。
+	// TransferOwner 转让房主：仅进行中房可转让（已结算 30104/已关闭 30103）；
+	// 目标须在房（30113）、拉黑双向拦截（30108）；两行 is_creator 互换 + creator_id + type=9 流水。
 	TransferOwner(ctx context.Context, userID, roomID, targetUserID uint64) error
 }
 

@@ -158,8 +158,9 @@ func (s *roomService) Leave(ctx context.Context, userID, roomID uint64) error {
 }
 
 // TransferOwner 转让房主（spec §3.5）：软查房快速失败（不存在 30101/非房主 30105/
-// 目标不在房 30113/拉黑双向 30108）→ 事务内锁房复验 → 两行 is_creator 互换、
-// creator_id=target + SaveVersioned、type=9 流水（extra from/to）。
+// 已结算 30104/已关闭 30103/目标不在房 30113/拉黑双向 30108）→ 事务内锁房复验
+// （含 status=0 门禁，spec §3.3）→ 两行 is_creator 互换、creator_id=target +
+// SaveVersioned、type=9 流水（extra from/to）。
 // 拉黑判定 black.Exists 单查即双向（(a黑b) OR (b黑a)，repository 既定口径），
 // brief 的 `Exists(a,b) || Exists(b,a)` 双调用是同一语义的冗余写法，此处单查等价。
 func (s *roomService) TransferOwner(ctx context.Context, userID, roomID, targetUserID uint64) error {
@@ -178,6 +179,13 @@ func (s *roomService) TransferOwner(ctx context.Context, userID, roomID, targetU
 	}
 	if room.CreatorID != userID {
 		return errs.New(errs.CodeScorecardNotOwner, nil)
+	}
+	// 状态门禁（spec §3.3 校验 status=0，与 Settle 同口径）：已结算/已关闭拒转让。
+	if room.Status == 1 {
+		return errs.New(errs.CodeScorecardRoomSettled, nil)
+	}
+	if room.Status != 0 {
+		return errs.New(errs.CodeScorecardRoomClosed, nil)
 	}
 	if to, err := s.member.Get(ctx, roomID, targetUserID); err != nil {
 		return err
@@ -202,9 +210,15 @@ func (s *roomService) TransferOwner(ctx context.Context, userID, roomID, targetU
 		if locked == nil {
 			return errs.New(errs.CodeScorecardRoomNotFound, nil)
 		}
-		// 锁下复验房主/目标在房（并发转让以锁下判定为准）。
+		// 锁下复验房主/状态/目标在房（并发转让以锁下判定为准；status 门禁同软查）。
 		if locked.CreatorID != userID {
 			return errs.New(errs.CodeScorecardNotOwner, nil)
+		}
+		if locked.Status == 1 {
+			return errs.New(errs.CodeScorecardRoomSettled, nil)
+		}
+		if locked.Status != 0 {
+			return errs.New(errs.CodeScorecardRoomClosed, nil)
 		}
 		if to, err := userRepo.Get(ctx, roomID, targetUserID); err != nil {
 			return err
