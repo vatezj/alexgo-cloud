@@ -2,29 +2,33 @@ package repository
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/scorecard/model"
+	"alexGo-cloud/pkg/repo"
 	"alexGo-cloud/pkg/tenant"
-	"gorm.io/gorm"
 )
 
+// RoomLogRepository 房间流水数据访问。幂等靠 GetByRequestID 软查（service 先查后插
+// 同事务）；租户隔离靠 gormplugin。
 type RoomLogRepository interface {
-	Create(ctx context.Context, entity *model.RoomLog) error
-	List(ctx context.Context, tenantID uint64) ([]*model.RoomLog, error)
-	GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.RoomLog, error)
-	Update(ctx context.Context, entity *model.RoomLog) error
-	Delete(ctx context.Context, tenantID uint64, id uint64) error
+	Create(ctx context.Context, l *model.RoomLog) error
+	GetByRequestID(ctx context.Context, roomID uint64, reqID string) (*model.RoomLog, error) // 软查：无 → (nil, nil)
+	ListByRoom(ctx context.Context, roomID uint64, page, size int) ([]*model.RoomLog, int64, error)
+	ListTypeByUser(ctx context.Context, roomID, userID, typ, limit int) ([]*model.RoomLog, error) // 上限频控：取该用户近期该类型日志，service 解码 extra.session_no 判本会话首触发
 }
 
-type roomlogRepo struct {
+type roomLogRepo struct {
 	db *gorm.DB
 }
 
 func NewRoomLogRepository(db *gorm.DB) RoomLogRepository {
-	return &roomlogRepo{db: db}
+	return &roomLogRepo{db: db}
 }
 
-func (r *roomlogRepo) Create(ctx context.Context, entity *model.RoomLog) error {
+func (r *roomLogRepo) Create(ctx context.Context, entity *model.RoomLog) error {
 	// 打戳（spec §9.2）：json:"-" 使客户端灌不进来，零值才回填、显式值保留。
 	if entity.TenantID == 0 {
 		entity.TenantID = tenant.TenantIDFromContext(ctx)
@@ -32,35 +36,32 @@ func (r *roomlogRepo) Create(ctx context.Context, entity *model.RoomLog) error {
 	return r.db.WithContext(ctx).Create(entity).Error
 }
 
-func (r *roomlogRepo) List(ctx context.Context, tenantID uint64) ([]*model.RoomLog, error) {
-	var list []*model.RoomLog
-	q := r.db.WithContext(ctx).Model(&model.RoomLog{})
-	q = q.Where("tenant_id = ?", tenantID)
-	err := q.Find(&list).Error
-	return list, err
-}
-
-func (r *roomlogRepo) GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.RoomLog, error) {
-	var entity model.RoomLog
-	q := r.db.WithContext(ctx).Model(&model.RoomLog{})
-	q = q.Where("tenant_id = ?", tenantID)
-	err := q.Where("id = ?", id).First(&entity).Error
-	if err != nil {
-		return nil, err
+// GetByRequestID 幂等键软查：type=1 支出的 ClientRequestID 房间内查重。
+func (r *roomLogRepo) GetByRequestID(ctx context.Context, roomID uint64, reqID string) (*model.RoomLog, error) {
+	var out model.RoomLog
+	err := r.db.WithContext(ctx).
+		Where("room_id = ? AND client_request_id = ?", roomID, reqID).First(&out).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return &entity, nil
+	return &out, err
 }
 
-func (r *roomlogRepo) Update(ctx context.Context, entity *model.RoomLog) error {
-	// 禁用 Save（spec §9.2）：Save 丢弃链式 WHERE，跨租户照改不误。
-	// Select("*") 保证零值也写入（全量覆盖语义），双条件把行锁在本租户内。
-	return r.db.WithContext(ctx).Model(&model.RoomLog{}).
-		Where("id = ? AND tenant_id = ?", entity.ID, tenant.TenantIDFromContext(ctx)).
-		Select("*").Updates(entity).Error
+// ListByRoom 分页流水（created_at 倒序，快照最近 20 条即 page=1 size=20）。
+func (r *roomLogRepo) ListByRoom(ctx context.Context, roomID uint64, page, size int) ([]*model.RoomLog, int64, error) {
+	q := r.db.Model(&model.RoomLog{}).
+		Where("room_id = ?", roomID).Order("created_at desc, id desc")
+	return repo.Paginate[*model.RoomLog](ctx, q, page, size)
 }
 
-func (r *roomlogRepo) Delete(ctx context.Context, tenantID uint64, id uint64) error {
-	q := r.db.WithContext(ctx).Model(&model.RoomLog{})
-	q = q.Where("tenant_id = ?", tenantID)
-	return q.Where("id = ?", id).Delete(&model.RoomLog{}).Error
+// ListTypeByUser 该用户近期某类型日志（倒序取前 limit 条），上限频控判本会话首触发用。
+func (r *roomLogRepo) ListTypeByUser(ctx context.Context, roomID, userID, typ, limit int) ([]*model.RoomLog, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	var list []*model.RoomLog
+	err := r.db.WithContext(ctx).
+		Where("room_id = ? AND from_user_id = ? AND type = ?", roomID, userID, typ).
+		Order("id desc").Limit(limit).Find(&list).Error
+	return list, err
 }

@@ -2,29 +2,34 @@ package repository
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/scorecard/model"
+	"alexGo-cloud/pkg/repo"
 	"alexGo-cloud/pkg/tenant"
-	"gorm.io/gorm"
 )
 
+// FriendBlackRepository 拉黑关系数据访问（单向行，判定时查双向）。
+// 租户隔离靠 gormplugin。
 type FriendBlackRepository interface {
-	Create(ctx context.Context, entity *model.FriendBlack) error
-	List(ctx context.Context, tenantID uint64) ([]*model.FriendBlack, error)
-	GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.FriendBlack, error)
-	Update(ctx context.Context, entity *model.FriendBlack) error
-	Delete(ctx context.Context, tenantID uint64, id uint64) error
+	Create(ctx context.Context, b *model.FriendBlack) error
+	Exists(ctx context.Context, a, b uint64) (bool, error) // 双向判定 (a黑b) 或 (b黑a)
+	Delete(ctx context.Context, userID, blockedID uint64) error
+	Get(ctx context.Context, userID, blockedID uint64) (*model.FriendBlack, error) // 软查：不存在 → (nil, nil)
+	ListAdmin(ctx context.Context, page, size int) ([]*model.FriendBlack, int64, error)
 }
 
-type friendblackRepo struct {
+type friendBlackRepo struct {
 	db *gorm.DB
 }
 
 func NewFriendBlackRepository(db *gorm.DB) FriendBlackRepository {
-	return &friendblackRepo{db: db}
+	return &friendBlackRepo{db: db}
 }
 
-func (r *friendblackRepo) Create(ctx context.Context, entity *model.FriendBlack) error {
+func (r *friendBlackRepo) Create(ctx context.Context, entity *model.FriendBlack) error {
 	// 打戳（spec §9.2）：json:"-" 使客户端灌不进来，零值才回填、显式值保留。
 	if entity.TenantID == 0 {
 		entity.TenantID = tenant.TenantIDFromContext(ctx)
@@ -32,35 +37,34 @@ func (r *friendblackRepo) Create(ctx context.Context, entity *model.FriendBlack)
 	return r.db.WithContext(ctx).Create(entity).Error
 }
 
-func (r *friendblackRepo) List(ctx context.Context, tenantID uint64) ([]*model.FriendBlack, error) {
-	var list []*model.FriendBlack
-	q := r.db.WithContext(ctx).Model(&model.FriendBlack{})
-	q = q.Where("tenant_id = ?", tenantID)
-	err := q.Find(&list).Error
-	return list, err
+// Exists 双向拉黑判定（进房/加好友/转让拦截共用）：(a黑b) 或 (b黑a) 任一命中即 true。
+func (r *friendBlackRepo) Exists(ctx context.Context, a, b uint64) (bool, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.FriendBlack{}).
+		Where("(user_id = ? AND blocked_user_id = ?) OR (user_id = ? AND blocked_user_id = ?)", a, b, b, a).
+		Count(&n).Error
+	return n > 0, err
 }
 
-func (r *friendblackRepo) GetByID(ctx context.Context, tenantID uint64, id uint64) (*model.FriendBlack, error) {
-	var entity model.FriendBlack
-	q := r.db.WithContext(ctx).Model(&model.FriendBlack{})
-	q = q.Where("tenant_id = ?", tenantID)
-	err := q.Where("id = ?", id).First(&entity).Error
-	if err != nil {
-		return nil, err
+func (r *friendBlackRepo) Delete(ctx context.Context, userID, blockedID uint64) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND blocked_user_id = ?", userID, blockedID).
+		Delete(&model.FriendBlack{}).Error
+}
+
+// Get 单向拉黑行软查。
+func (r *friendBlackRepo) Get(ctx context.Context, userID, blockedID uint64) (*model.FriendBlack, error) {
+	var out model.FriendBlack
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND blocked_user_id = ?", userID, blockedID).First(&out).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return &entity, nil
+	return &out, err
 }
 
-func (r *friendblackRepo) Update(ctx context.Context, entity *model.FriendBlack) error {
-	// 禁用 Save（spec §9.2）：Save 丢弃链式 WHERE，跨租户照改不误。
-	// Select("*") 保证零值也写入（全量覆盖语义），双条件把行锁在本租户内。
-	return r.db.WithContext(ctx).Model(&model.FriendBlack{}).
-		Where("id = ? AND tenant_id = ?", entity.ID, tenant.TenantIDFromContext(ctx)).
-		Select("*").Updates(entity).Error
-}
-
-func (r *friendblackRepo) Delete(ctx context.Context, tenantID uint64, id uint64) error {
-	q := r.db.WithContext(ctx).Model(&model.FriendBlack{})
-	q = q.Where("tenant_id = ?", tenantID)
-	return q.Where("id = ?", id).Delete(&model.FriendBlack{}).Error
+// ListAdmin 监管端拉黑关系分页。
+func (r *friendBlackRepo) ListAdmin(ctx context.Context, page, size int) ([]*model.FriendBlack, int64, error) {
+	q := r.db.Model(&model.FriendBlack{}).Order("id desc")
+	return repo.Paginate[*model.FriendBlack](ctx, q, page, size)
 }
