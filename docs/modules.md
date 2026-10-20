@@ -2,7 +2,7 @@
 
 > 覆盖后端业务子系统（顶层 3 模块：**system 含 oauth2、infra 两个子模块**，另有 member、order；功能口径仍按 system / infra / member / oauth2 / order 划分）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
 > 配套阅读：[架构说明](architecture.md)（中间件链/配置/部署）、[OAuth2 统一登录](oauth2.md)（登录与签发细节）、[使用文档](usage.md)（菜单管理与代码生成操作）、[服务通信](service-communication.md)（mono/micro 双形态）。
-> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13。
+> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13，文件存储 / Excel 导出 / 统一信封等补录条目核对于 2026-10-20。
 
 ---
 
@@ -29,11 +29,11 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 
 | 模块 | 目录 | 定位 | 端点前缀 | 端点数 | 租户隔离 |
 | --- | --- | --- | --- | --- | --- |
-| **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 57 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
-| **infra** | `modules/system/infra` | 代码生成：库表导入、字段配置、同步、预览、ZIP 下载 | `/api/admin/infra/codegen` | 11 | 无（系统级） |
-| **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 6 | `member_user.tenant_id` |
+| **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 58 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
+| **infra** | `modules/system/infra` | 代码生成（库表导入、字段配置、同步、预览、ZIP 下载）+ 统一文件上传（`infra/file`） | `/api/admin/infra/codegen`、`/api/admin/infra/file`、`/api/public/infra/file` | 15 | 无（系统级） |
+| **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 7 | `member_user.tenant_id` |
 | **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
-| **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 2 | 无（gap，见 §7.4） |
+| **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 3 | 无（gap，见 §7.4） |
 
 所有模块实现 `server.Module.RegisterRoutes`，由 `alexgo-server/server/http.go` 统一挂到 `/api` 组。
 
@@ -61,7 +61,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 `alexgo-server/server/http.go` 全局链：
 
 ```
-Recovery → Tenant → Logger → Prometheus → RateLimitAndBreaker → Auth → OperateLog → OTEL → Trace
+Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateLog → OTEL → AccessLog → Trace
 ```
 
 - **Tenant**：`X-Tenant-ID` 头 → Host 域名匹配 `tenants.domain` → 默认 `0`；登录后由 **token 内 tenant_id 覆盖**（防头伪造跨租户，`pkg/middleware/auth.go`）。
@@ -140,7 +140,7 @@ Recovery → Tenant → Logger → Prometheus → RateLimitAndBreaker → Auth �
 
 ### 3.1 功能
 
-RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权限码的唯一数据源）、部门/岗位/字典/系统参数/通知公告、登录与操作日志、租户管理、统一登录的 system 账号凭据校验、refresh/logout、vben 前端契约 5 端点。
+RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色管理、菜单管理（权限码的唯一数据源）、部门/岗位/字典/系统参数/通知公告（含附件，走 infra 文件子域见 §4.7）、登录与操作日志、租户管理、统一登录的 system 账号凭据校验、refresh/logout、vben 前端契约 5 端点。
 
 装配要点（`modules/system/module.go`）：
 
@@ -151,8 +151,8 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 
 ### 3.2 权限
 
-- 全站 casbin 前缀表 `permissionRoutes` 定义在本模块 `service/permission_routes.go`，但**保护的是所有模块**的 admin 路由（含 `infra:codegen`、`oauth2:client`、`member:user`、`order:order`）。
-- 本模块权限前缀 12 组：`system:user` / `role` / `menu` / `dept` / `post` / `dict` / `config` / `notice` / `log` / `auth` / `tenant`，各自映射 `/api/admin/system/<资源>` 及 `/*`。
+- 全站 casbin 前缀表 `permissionRoutes` 定义在本模块 `service/permission_routes.go`，但**保护的是所有模块**的 admin 路由（含 `infra:codegen`、`infra:file`、`oauth2:client`、`member:user`、`order:order`）。
+- 本模块权限前缀 11 组：`system:user` / `role` / `menu` / `dept` / `post` / `dict` / `config` / `notice` / `log` / `auth` / `tenant`，各自映射 `/api/admin/system/<资源>` 及 `/*`。
 - 菜单/按钮种子（seed.go）：
 
 | 类型 | 权限码 | 菜单 |
@@ -174,13 +174,14 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 | button | `system:tenant:manage` | 租户管理按钮（前端未用） |
 | button | `member:user:manage` | 会员管理按钮（顺带为 member 补，前端无页面） |
 
-### 3.3 后端端点（57 条）
+### 3.3 后端端点（58 条）
 
 #### 用户 / 鉴权 — `/api/admin/system`
 
 | 方法 | 路径 | handler | 说明 |
 | --- | --- | --- | --- |
 | GET | `/users` | AdminController.ListUsers | 当前租户全量用户列表 |
+| GET | `/users/export` | UserController.ExportUsers | 导出当前租户全量用户 xlsx（xlsx 下载流，5 万行保险丝，见 [usage.md §4](usage.md)） |
 | POST | `/users` | UserController.Create | 新建账号（校验租户额度、重名、**禁用户名含 `:`**） |
 | PUT | `/users/:id` | UserController.Update | 更新昵称、状态 |
 | POST | `/users/:id/reset-password` | UserController.ResetPassword | 重置密码 |
@@ -297,7 +298,7 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 
 ---
 
-## 4. infra — 基础设施模块（代码生成）
+## 4. infra — 基础设施模块（代码生成 + 文件存储）
 
 ### 4.1 功能
 
@@ -323,10 +324,10 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 
 | 方法 | 路径 | handler | 说明 |
 | --- | --- | --- | --- |
-| GET | `/tables` | listTables | 分页列出已导入表配置（`{data,total}`） |
+| GET | `/tables` | listTables | 分页列出已导入表配置（统一信封 `data:{list,total,page,size}`） |
 | GET | `/db-tables` | listDBTables | 库内可导入表名下拉（information_schema） |
 | POST | `/import` | importTable | 按 table_name 导入表并生成字段配置 |
-| GET | `/tables/:id` | getTable | 表配置详情 + 字段列表（`{data,columns}`） |
+| GET | `/tables/:id` | getTable | 表配置详情 + 字段列表（信封 `data:{data,columns}`） |
 | PUT | `/tables/:id` | updateTable | 更新表级配置（路径 id 压过 body） |
 | DELETE | `/tables/:id` | deleteTable | 删除表配置及其字段 |
 | GET | `/tables/:id/columns` | listColumns | 字段配置列表 |
@@ -335,7 +336,7 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 | POST | `/preview` | preview | 纯内存渲染（body `{"table_ids":[...]}` → `{data:[{path,content}]}`） |
 | POST | `/download` | download | 渲染结果打 ZIP 流下载（`codegen.zip`） |
 
-状态码约定：读库失败 500，校验/不存在/业务拒绝 400（无 404）。
+状态码约定（统一信封 `pkg/resp`）：读库失败 50000→500，校验 10001/不存在 30007/查重 30008 → 400（无 404）。
 
 ### 4.4 数据模型
 
@@ -351,9 +352,34 @@ RBAC 与全站权限的中枢：用户管理、角色管理、菜单管理（权
 
 | 路由 | 组件 | 功能 |
 | --- | --- | --- |
-| `/codegen/config` | `views/infra/codegen/index.vue` | 代码生成主页面：表列表（**固定 page=1&size=200**，M4 跟进截断问题）、导入表弹窗、字段配置编辑、编辑表配置、同步、预览弹窗（分组渲染）、ZIP 下载（`saveBlob` 委托 `downloadFileFromBlob`）、删除 |
+| `/codegen/config` | `views/infra/codegen/index.vue` | 代码生成主页面：表列表（**服务端真分页**，`resp.Page` 信封 size≤100，M4 跟进①已修）、导入表弹窗、字段配置编辑、编辑表配置、同步、预览弹窗（分组渲染）、ZIP 下载（`saveBlob` 委托 `downloadFileFromBlob`）、删除 |
 
 API 封装：`src/api/infra.ts`（11 个函数 + 类型），全部走 `requestClient`。
+
+### 4.7 文件存储（infra file，P1-1 补录 2026-10-20）
+
+`modules/system/infra` 除 codegen 外还挂**统一文件上传**子域（设计：
+[`superpowers/specs/2026-10-16-file-storage-design.md`](superpowers/specs/2026-10-16-file-storage-design.md)，
+操作见 [usage.md §3](usage.md)）。
+
+- **权限**：casbin 前缀 `infra:file` → `["/api/admin/infra/file", ".../file/*"]`（见 §9.1）。
+- **端点**（`file_controller.go`）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/admin/infra/file/upload` | multipart 上传（字段 `file`，可选 `public=true`、`biz_type`） |
+| GET | `/api/admin/infra/file/:id` | 受控下载（attachment） |
+| DELETE | `/api/admin/infra/file/:id` | 删除（盘 + 库） |
+| GET | `/api/public/infra/file/:key` | 公开读（免鉴权、`public_key` 随机键、inline；private/不存在统一 30010） |
+
+- **分层**：驱动 `pkg/storage`（`Driver{Save,Open,Delete}`，本地盘实现 `local.go`，纯 IO 零策略）；
+  策略（扩展名白名单 / 大小双保险 / 双 MIME / 随机名 / 落库 `system_files`）在
+  `modules/system/infra/service/file_service.go`。配置段 `storage:`（`root`、`max_size_mb`、
+  可选 `allowed_exts`）。
+- **业务闭环**：公告附件（`system_notices.attachments` 存 JSON 数组文本，前端
+  `utils/notice-attachments.ts` 恒 `public:true + bizType:notice`）；后续头像、codegen 导入产物复用同一子域。
+- **前端**：`src/api/infra.ts` 的 `uploadFile` / `requestClient.download('/admin/infra/file/' + id)`；
+  文件管理页为后续票（当前只有公告编辑器内嵌上传入口）。
 
 ---
 
@@ -381,7 +407,7 @@ C 端会员的注册/登录/刷新/登出 + 管理端会员列表与启停。**�
 
 > member 自己的 token（user_type=2）访问 `/api/admin/**` 恒 403——user_type 门槛在 casbin 之前。
 
-### 5.3 后端端点（6 条）
+### 5.3 后端端点（7 条）
 
 #### app 端 `/api/app/member`（公开）
 
@@ -397,6 +423,7 @@ C 端会员的注册/登录/刷新/登出 + 管理端会员列表与启停。**�
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/users` | 分页列会员（`page/size`） |
+| GET | `/users/export` | 导出当前租户全量会员 xlsx（下载流，见 [usage.md §4](usage.md)） |
 | PUT | `/users/:id/status` | 启停（body `status` ∈{0,1}；**停用不吊销既有 token**，一期取舍） |
 
 ### 5.4 数据模型
@@ -466,7 +493,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/oauth2/clients` | 分页列 client（size 上限 200） |
+| GET | `/api/admin/oauth2/clients` | 分页列 client（`resp.Page` 信封，size 上限 100） |
 | POST | `/api/admin/oauth2/clients` | 新建，**明文 secret 仅响应回显一次**（落库 bcrypt） |
 | PUT | `/api/admin/oauth2/clients/:id` | 更新；body secret 留空保留旧值且不回显 |
 | DELETE | `/api/admin/oauth2/clients/:id` | 硬删（表无 deleted 列） |
@@ -503,11 +530,12 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 - 全部在 `/api/admin/order/**` 下：管理员 token + casbin，前缀 **`order:order`** → `["/api/admin/order/orders", ".../orders/*"]`。
 - 菜单种子（迁移 `20261009000001_menus_vben_backfill`）：根目录「订单」`/order`（perm `order`）→ 页面「订单列表」`/order/orders`（perm **`order:order:*`**，component `views/order/OrderOrdersPage`）→ 绑 admin。
 
-### 7.3 后端端点（2 条）
+### 7.3 后端端点（3 条）
 
 | 方法 | 路径 | handler | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/admin/order/orders` | ListOrders | 订单列表（`{data:[...]}`，**无分页**，注释标注生产需补分页/租户过滤/权限过滤） |
+| GET | `/api/admin/order/orders` | ListOrders | 订单列表（信封 `data:[...]`，**无分页**，注释标注生产需补分页/租户过滤/权限过滤） |
+| GET | `/api/admin/order/orders/export` | ExportOrders | 导出当前租户全量订单 xlsx（下载流，见 [usage.md §4](usage.md)） |
 | POST | `/api/admin/order/orders` | CreateOrder | 校验用户 → 落库 → 同事务写 outbox |
 
 ### 7.4 数据模型
@@ -593,13 +621,13 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 | 文件 | 对应后端 | 主要导出 |
 | --- | --- | --- |
-| `request.ts` | 公共客户端 | `requestClient`（三形态信封解包 `{code:0,data}`/`{data}`/`{"status":"ok"}`、401 弹登录过期、错误 `message.error`）、`baseRequestClient`（refresh 用） |
+| `request.ts` | 公共客户端 | `requestClient`（统一信封解包 `code===0 → data`，非 0/非 2xx 走 rejected 弹后端 `msg`、401 弹登录过期）、`baseRequestClient`（refresh 用）、`download`（Blob 下载流） |
 | `core/auth.ts` | vben 契约 | `logoutApi`、`getAccessCodesApi`、`refreshTokenApi`（一期已关） |
 | `core/user.ts` | vben 契约 | `getUserInfoApi` |
 | `core/menu.ts` | vben 契约 | `getAllMenusApi` |
 | `core/oauth2.ts` | oauth2 协议端点 | `authorizeLoginApi`、`exchangeTokenApi`——**裸 fetch 不走拦截器**（因 RFC6749 信封/302 语义） |
 | `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户 全套函数 + TS 类型 |
-| `infra.ts` | infra | codegen 11 函数 + `saveBlob`（委托 `downloadFileFromBlob`）+ 类型 |
+| `infra.ts` | infra | codegen 11 函数 + 文件存储（`uploadFile` multipart、`getFile` 等，见 §4.7）+ `saveBlob`（委托 `downloadFileFromBlob`）+ 类型 |
 
 **已知封装缺口**：`PUT /admin/system/users/:id`、`POST /users/:id/roles`（用户设角色）、`POST /roles/:id/menus`（角色授权菜单——UI 也缺）、各类 `PUT`（部门/岗位/字典/参数/公告——页面因此只有新建删除）。
 
@@ -615,7 +643,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 15 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 16 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -631,6 +659,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `system:auth` | `/api/admin/system/auth/profile`, `.../auth/refresh`, `.../auth/logout` |
 | `system:tenant` | `/api/admin/system/tenants`, `.../tenants/*` |
 | `infra:codegen` | `/api/admin/infra/codegen`, `/api/admin/infra/codegen/*` |
+| `infra:file` | `/api/admin/infra/file`, `/api/admin/infra/file/*` |
 | `oauth2:client` | `/api/admin/oauth2/clients`, `/api/admin/oauth2/clients/*` |
 | `member:user` | `/api/admin/member/users`, `/api/admin/member/users/*` |
 | `order:order` | `/api/admin/order/orders`, `/api/admin/order/orders/*` |
@@ -676,7 +705,9 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | [oauth2.md](oauth2.md) | 登录与签发：SSO 链路、四种 grant、错误排查 | 本文 §6 的"操作向"扩展 |
 | [oauth2-compat-retirement.md](oauth2-compat-retirement.md) | 老登录端点下线条件清单 | 本文 §3.3/§5.3 兼容端点的去留依据 |
 | [service-communication.md](service-communication.md) | mono/micro 双形态、gRPC 委托、失败语义 | 本文 §1.2 的展开 |
-| [usage.md](usage.md) | 菜单管理 + 代码生成的界面/API 操作手册 | 本文 §3/§4 的"怎么用"视角 |
+| [usage.md](usage.md) | 菜单管理 + 代码生成 + 文件上传（§3）+ Excel 导出（§4）+ 新建模块脚手架（§5）操作手册 | 本文 §3/§4 的"怎么用"视角 |
+| [roadmap.md](roadmap.md) | P0/P1/P2 分层排期与收口状态 | 本文只记现状，进度与欠账看它 |
+| [superpowers/specs/2026-10-19-module-template-design.md](superpowers/specs/2026-10-19-module-template-design.md) | newmodule 脚手架设计：触点清单、全有或全无、回滚语义 | 用法在 usage.md §5；新增模块后**手工回填本文对应章节**（脚手架不自动改 modules.md） |
 
 ---
 
@@ -686,4 +717,4 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 - micro 形态 `system_user_grpc.go` 6 个方法全部 "not implemented" 占位（§7.5）。
 - `architecture.md` §5 原两处漂移（app 端 logout/refresh 是否走鉴权、casbin sub 格式）已随本文提交更正。
 - 前端：角色"分配菜单"UI 缺失；多数 CRUD 页无"编辑"按钮；顶栏 Profile 死链；`views/demos` 未删；通知中心 mock。
-- member 有按钮权限无页面菜单（§5.2）；codegen 列表固定 size=200（M4 跟进票）。
+- member 有按钮权限无页面菜单（§5.2）；codegen/oauth2 列表已改服务端真分页（M4 跟进① 已修，size 上限 100）。

@@ -31,6 +31,9 @@
 | 可靠事件 | Transactional Outbox（`FOR UPDATE SKIP LOCKED`）→ NATS JetStream |
 | 多租户 | `X-Tenant-ID` 头 / 域名解析注入租户上下文，GORM 插件自动过滤 `tenant_id`，租户管理 |
 | 可观测性 | `/health` 存活、`/health/ready` DB 探活、`/metrics` Prometheus、OTel 链路追踪、pprof（默认关闭） |
+| 统一响应 | `pkg/resp` 唯一出站出口：`{code,msg,data}` 信封 + `resp.OK/Fail/Page[T]`；错误码五位分段（`pkg/errors`：1xxxx 参数 / 2xxxx 认证 / 3xxxx 业务 / 5xxxx 系统），HTTP 状态按码段映射 |
+| 文件存储 | `pkg/storage` 本地盘 Driver（纯 IO、零策略，可换 S3/OSS）+ 统一上传 API（`/api/admin/infra/file`：上传/下载/删除 + 公开读），解锁公告附件等业务落盘 |
+| Excel 导出 | `pkg/excel` 流式 `Build[T]`（`Column`/`Spec` 声明式列）+ 用户/会员/订单三域 `/export` 端点（xlsx、5 万行保险丝） |
 | 代码生成 | 模板 CRUD 生成器（`pkg/codegen`）+ 在线生成链路（`modules/system/infra`：配置表、预览、ZIP、CLI） |
 | 部署 | docker-compose / Kustomize / Helm（dev·gray·prod）+ ArgoCD 多环境 |
 
@@ -98,6 +101,7 @@ alexGo-cloud/
 ├── deployments/       # docker-compose / kubernetes / helm / argocd
 ├── scripts/           # proto 生成、k6 压测脚本等工程脚本
 ├── tools/codegen/     # codegen CLI（配置表驱动，make generate-crud / generate-db-crud）
+├── tools/newmodule/   # 新建模块脚手架 CLI（make new-module）
 └── docs/              # 文档
 ```
 
@@ -105,11 +109,11 @@ alexGo-cloud/
 
 - [模块功能与权限手册](docs/modules.md)：5 个业务模块的功能、权限码、后端端点、前端页面，以及认证/RBAC/租户横切体系
 - [架构说明](docs/architecture.md)：模块装配、中间件链、单体→微服务切换、Outbox、配置体系、测试策略、部署拓扑
-- [使用文档](docs/usage.md)：菜单管理、代码生成配置（界面操作 + API + 同步语义 + CLI）
+- [使用文档](docs/usage.md)：菜单管理、代码生成配置（界面操作 + API + 同步语义 + CLI）、文件上传与附件、Excel 导出、新建模块脚手架
 - [OAuth2 统一登录](docs/oauth2.md)：SSO 授权码 + PKCE 链路、redirect_uri 白名单、四种 grant、客户端管理、错误排查
 - [兼容层下线评估](docs/oauth2-compat-retirement.md)：老登录端点保留条件与下线清单
 - [服务通信](docs/service-communication.md)：模块间调用与 gRPC 委托
-- 使用指南树（yudao-cloud 开发指南式：快速启动 / 技术选型 / 专题指南）**建设中**
+- [整体规划](docs/roadmap.md)：P0/P1/P2 分层排期与收口状态（每项注明提交号）
 
 ## 🐳 部署与运维
 
@@ -185,6 +189,7 @@ make pprof
 | `make proto` | 生成 protobuf 代码（需 protoc） |
 | `make generate-crud` | 从配置表生成已导入表（`MODULE` 过滤，默认 `system`；不覆盖已有文件） |
 | `DB_DSN=... make generate-db-crud MODULE=system TABLES=users,roles,menus` | 现场读元数据（未导入则先入配置表）生成 CRUD |
+| `make new-module NAME=demo ENTITIES=item[,foo]` | 新建模块脚手架（`tools/newmodule`：目录 + main.go/config.yaml/权限路由/菜单种子 + 前端，全有或全无，可加 `ARGS="-dry-run"`） |
 | `make lint` | golangci-lint（CI 同款） |
 | `make load-test` | k6 压测 |
 | `make helm-upgrade` | Helm 安装/升级 |

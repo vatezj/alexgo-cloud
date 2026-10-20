@@ -19,11 +19,12 @@ Redis(Token Bucket 限流) + NATS JetStream(消息) + OpenTelemetry + Prometheus
 | --- | --- |
 | `alexgo-server/` | 单体进程入口与 HTTP 层：`cmd/main.go` 统一启动装配，`configs/` 全局配置，`server/` Gin 路由、中间件链与 `server.Module` 抽象 |
 | `modules/` | 业务模块，顶层为 `system`、`order`、`member`；其中 `system`（用户/角色/菜单/字典/部门/公告/审计/租户等）**内含 `oauth2`（SSO 授权码+PKCE、客户端管理，`modules/system/oauth2`）与 `infra`（代码生成在线链路，`modules/system/infra`）两个子模块**；`member`（会员注册/登录，micro 形态独立成 `cmd/` 入口）；内部按 `api / controller / model / repository / service` 分层 |
-| `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors` 等 |
+| `pkg/` | 与业务无关的基础设施与横切能力：`config`、`database`、`migrate`、`middleware`、`auth`(JWT/Casbin)、`limiter`、`circuitbreaker`、`outbox`、`mq`、`redis`、`tenant`、`audit`、`monitor`、`trace`、`logger`、`client`(gRPC)、`errors`(五位业务错误码)、`resp`(统一出站信封)、`storage`(文件驱动)、`excel`(xlsx 导出)、`codegen`、`repo`、`token`、`fxgroup` 等 |
 | `apps/web-antd/` | 管理后台前端（vendored vue-vben-admin v5.7.0，Ant Design Vue），经 `/api/**` 调用后端 |
 | `deployments/` | 交付物：`docker-compose/`（本地）、`kubernetes/`（kustomize 清单）、`helm/`（多环境 values）、`argocd/`（GitOps Application） |
 | `scripts/` | 工程脚本：proto 生成（`gen_proto.sh`）、k6 压测（`load_test.js`）等 |
 | `tools/codegen` | codegen CLI（配置表驱动，与后台预览同源；`make generate-crud` / `generate-db-crud`） |
+| `tools/newmodule` | 新建模块脚手架 CLI（`make new-module`：渲染模块目录 + AST/yaml 编辑器改挂 `cmd/main.go`、`config.yaml`、`permission_routes.go`、菜单种子，全有或全无） |
 
 模块内部补充：`modules/system` 额外持有 `migrations/`（golang-migrate SQL 迁移）、`grpcserver/`
 与 `cmd/grpc_main.go`（独立 gRPC 进程入口）、`configs/config.yaml`（模块级配置，如 `jwt_secret`）；
@@ -85,11 +86,10 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
 2. `middleware.NewTenantMiddleware(domainLookup)` — 解析租户并注入上下文：`X-Tenant-ID` 请求头
    优先，其次 Host 域名（`tenant.DomainLookup`，nil 时只认请求头）；是多租户隔离、审计与限流
    维度的基础；
-3. `middleware.Logger()` — 结构化请求日志；
-4. `monitor.PrometheusMiddleware()` — 记录 `http_requests_total`（method/path/status）等指标；
-5. `middleware.RateLimitAndBreaker(cfg, limiter, breaker)` — Redis Token Bucket 限流 + 熔断的
+3. `monitor.PrometheusMiddleware()` — 记录 `http_requests_total`（method/path/status）等指标；
+4. `middleware.RateLimitAndBreaker(cfg, limiter, breaker)` — Redis Token Bucket 限流 + 熔断的
    入口防护；limiter/breaker 为 nil（对应 `limiter.enabled` / `breaker.enabled` 关闭）时优雅放行；
-6. `middleware.NewAuthMiddleware(AuthDeps{Cfg, Enforcer, Validator, ScopeLoader})` — **token/jwt
+5. `middleware.NewAuthMiddleware(AuthDeps{Cfg, Enforcer, Validator, ScopeLoader})` — **token/jwt
    双模式**鉴权（`pkg/middleware/auth.go`）：
    - **模式**：`auth.mode=token`（默认）用不透明令牌经 `token.Validator` 查库校验；Validator 未装配
      属装配错误，直接 401（fail-closed，绝不放行）。`auth.mode=jwt` 走旧静态 JWT 解析，作为回滚开关。
@@ -104,12 +104,24 @@ gRPC 连接拨号条件是 `deployment.mode=micro` **或** `microservice.enabled
    - **data_scope 注入**：仅管理端用户经 `tenant.ScopeLoader` 计算数据权限档写入 ctx（加载失败按
      Mode 5「仅本人」最严兜底、只告警不放行更多数据）；member 用户与未装配（ScopeLoader=nil）时不注入，
      GORM 插件只剩租户隔离，保持安全缺省。
-7. `middleware.OperateLogMiddleware(recorder)` — 操作审计，同样只作用于 `/api/admin/**`
+6. `middleware.OperateLogMiddleware(recorder)` — 操作审计，同样只作用于 `/api/admin/**`
    （recorder 为 nil 时不记录）；
-8. `trace.OTELMiddleware()` — OpenTelemetry（otelgin）链路追踪，可导出 Jaeger/Tempo/OTLP Collector；
+7. `trace.OTELMiddleware()` — OpenTelemetry（otelgin）链路追踪，可导出 Jaeger/Tempo/OTLP Collector；
+8. `middleware.AccessLog()` — 结构化访问日志（状态码/耗时/trace_id，排除健康检查端点）；
 9. `middleware.Trace()` — trace 信息补全的占位。
 
 模块路由统一挂在 `/api` 组（`r.Group("/api")` 后遍历 `Modules` 调用 `RegisterRoutes`）。
+
+**统一出站信封**（`pkg/resp` 是唯一响应出口，业务端点不得自行 `c.JSON`）：
+
+- 体：`{"code": <int>, "msg": <string>, "data": <any>}`；成功 `code=0`，失败为 `pkg/errors`
+  的**五位业务错误码**（1xxxx 参数 / 2xxxx 认证授权 / 3xxxx 业务规则 / 5xxxx 系统）；
+- 出口函数：`resp.OK(data)`、`resp.Fail(err)`（非 `*BizError` 兜底 50000，原始错误只进日志）、
+  `resp.Page[T](list, total, req)`（`data` 内为 `{list,total,page,size}`）；
+- HTTP 状态由 `statusFor` 按码段映射：1xxxx/3xxxx → 400、2xxxx → 401（`20003` → 403）、
+  5xxxx → 500；**豁免清单**：`/api/oauth2/*` 协议端点（RFC 6749 `{"error",...}`）、
+  `/health*`、`/metrics`、`/debug/pprof/**`，以及下载流端点
+  （codegen ZIP、xlsx 导出、文件字节流——`ctx.Data` 之后不再包信封，报错时须先 `resp.Fail` 返回）。
 
 **运维端点**（不经模块注册，直接挂在 Engine 上）：
 

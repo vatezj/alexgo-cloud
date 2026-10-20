@@ -11,11 +11,17 @@
   注意 `/api/oauth2/*` 协议端点用 RFC 6749 信封 `{"error","error_description"}`，与本节 admin 信封不同。
 - **权限（Casbin）**：每个接口前缀注册为权限码，需角色持有对应权限才可访问，否则 403。
   权限码注册见 `modules/system/service/permission_routes.go`。
-- **信封**（infra 模块惯例，`codegen_controller.go` 头注释）：
-  - 列表：`{"data": [...], "total": n}`
-  - 详情：`{"data": {...}, "columns": [...]}`
-  - 变更成功：`{"status": "ok"}`
-  - 错误：`{"error": "..."}`，状态码只用 **400**（业务拒绝/参数错）与 **500**（内部错），仓库无 404 惯例。
+- **信封**（统一出站出口 `pkg/resp`，所有 API 响应必经 `OK/Fail/Page`）：
+  - 成功：`{"code": 0, "msg": "ok", "data": ...}`；无返回值动作为 `"data": null`。
+  - 分页列表：`"data": {"list": [...], "total": n, "page": p, "size": s}`
+    （`resp.Page[T]`，入参 `page`/`size`，size ≤ 100；未分页列表 `"data"` 直接是数组）。
+  - 失败：`{"code": <五位错误码>, "msg": <中文文案>, "data": null}`；
+    **HTTP 状态按码段映射**（`pkg/resp/resp.go` 的 `statusFor`）：1xxxx/3xxxx → 400、
+    2xxxx → 401（`20003` 无权限 → 403）、5xxxx → 500。仓库无 404 惯例。
+  - 五位错误码分段见 `pkg/errors/code.go`：1xxxx 参数、2xxxx 认证授权、3xxxx 业务规则、5xxxx 系统。
+  - 豁免清单（勿改）：`/api/oauth2/*` 协议端点用 RFC 6749 信封 `{"error","error_description"}`、
+    `/health*`、`/metrics`、`/debug/pprof/**`。
+- **文件与导出**：文件上传/下载见 §3，Excel 导出见 §4；新建模块脚手架见 §5。
 
 ---
 
@@ -118,10 +124,10 @@ curl -X PUT http://localhost:8080/api/admin/system/menus/12 \
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/infra/codegen/tables` | 分页列表（`?page=&size=`，size ≤ 200） |
-| GET | `/api/admin/infra/codegen/db-tables` | 库内可导入表名（导入弹窗下拉数据源，`{data:[...]}`；元数据不可达 → 500） |
+| GET | `/api/admin/infra/codegen/tables` | 分页列表（`?page=&size=`，size ≤ **100**，信封 `data:{list,total,page,size}`；前端按页循环拉全） |
+| GET | `/api/admin/infra/codegen/db-tables` | 库内可导入表名（导入弹窗下拉数据源，信封 `data:[...]`；元数据不可达 → 500） |
 | POST | `/api/admin/infra/codegen/import` | 导入物理表为配置（`{"table_name":"..."}`） |
-| GET | `/api/admin/infra/codegen/tables/:id` | 详情（`{data, columns}`） |
+| GET | `/api/admin/infra/codegen/tables/:id` | 详情（信封 `data:{data, columns}`） |
 | PUT | `/api/admin/infra/codegen/tables/:id` | 改配置（白名单字段，见 2.5） |
 | DELETE | `/api/admin/infra/codegen/tables/:id` | 删除配置（级联删列） |
 | GET | `/api/admin/infra/codegen/tables/:id/columns` | 列配置列表 |
@@ -175,7 +181,9 @@ curl -X POST $BASE/download -H "$AUTH" -H "$CT" -d '{"table_ids":[1]}' -o codege
 | `parent_table_id` | 主子表父表 id（0 视为未传） |
 | `remark` | 自由文本 |
 
-校验失败与重复导入均返回 **400** `{"error": "...table/class_name..."}`（错误文本包 `ErrTableInvalid` 哨兵）。
+校验失败与重复导入均返回 **400** 统一信封：重复导入 `{"code":30008,...}`、
+字段校验 `{"code":10001,...}`（错误文本包 `ErrTableInvalid`/`ErrTableTaken` 哨兵，
+文案在 `msg`）。
 
 ### 2.6 同步语义（spec §9.4）
 
@@ -288,3 +296,135 @@ controller 一次性返回全量行，查询表单提交值经 `matchQuery` 客�
 - **界面**：编辑弹窗「模板类型」下拉可切单表/树表（主子表 M6 置灰）。
 - **验收**（spec §10.5）：`CGO_ENABLED=0 go test ./pkg/codegen -run TreeGolden`（14 产物）
   + `make codegen-smoke`（3 表 × 14 = 42 产物）。
+
+---
+
+## 3. 文件上传与附件（infra 文件存储）
+
+权限码：`infra:file` → 前缀 `/api/admin/infra/file`（`modules/system/service/permission_routes.go`）。
+存储驱动 `pkg/storage`（本地盘，纯 IO 三方法 `Save/Open/Delete`，可换 S3/OSS 实现同一 `Driver`），
+策略（白名单/限流/随机名/落库）在 `modules/system/infra/service/file_service.go`。
+
+### 3.1 API
+
+| 方法与路径 | 说明 |
+| --- | --- |
+| `POST /api/admin/infra/file/upload` | 上传（multipart：字段 `file`；可选表单域 `public=true`、`biz_type=<归类>`） |
+| `GET /api/admin/infra/file/:id` | 受控下载（`Content-Disposition: attachment`，需鉴权 + `infra:file`） |
+| `DELETE /api/admin/infra/file/:id` | 删除（盘上文件 + 落库记录一并清） |
+| `GET /api/public/infra/file/:key` | 公开读（`public_key` 随机键，**免鉴权**，`inline`；private 行与不存在统一 30010） |
+
+上传成功返回：
+
+```json
+{"code":0,"msg":"ok","data":{"id":1,"name":"a.png","size":123,"mime":"image/png",
+ "public_url":"/api/public/infra/file/<key>"}}
+```
+
+### 3.2 上传校验（双保险）
+
+- **扩展名白名单**：内置 `jpg,jpeg,png,gif,webp,pdf,zip,xlsx`（刻意不含 svg/html，堵存储型 XSS）；
+  `config.yaml` 的 `storage.allowed_exts` 可整体覆盖，省略则用内置表。不符 → `30011`。
+- **大小**：`storage.max_size_mb`（默认 10）。上传头预检 + 落盘字节流限流双保险
+  （`FileHeader.Size` 客户端可伪造，最终以流为准），超限删已写文件 → `30012`。
+- **双 MIME 校验**：头 512 字节 `DetectContentType` 结果须落在该扩展名的允许集合
+  （`extMimeOK`；zip/xlsx 同为 `application/zip`），不符 → `30011`。
+- **路径**：随机名生成，驱动侧 `relPath` 不含任何用户输入（`pkg/storage` 包注释约定）。
+
+### 3.3 公告附件闭环（前端示例）
+
+`apps/web-antd/src/utils/notice-attachments.ts`：上传恒 `public:true + bizType:'notice'`，
+把返回的 `{id,name,size,url}` 序列化成 JSON 数组存进 `system_notices.attachments`
+（varchar 4096，后端原样存取不解析）；展示时按 `url` 直接走公开读端点。
+
+```bash
+# curl 上传
+curl -X POST http://localhost:8080/api/admin/infra/file/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@./a.png" -F "public=true" -F "biz_type=notice"
+```
+
+---
+
+## 4. Excel 导出
+
+`pkg/excel`：声明式列（`Column[T]{Title,Cell}`）+ `Spec[T]{Sheet,FileName,Columns,Rows}`，
+`Build` 一次产出 xlsx 字节；行数保险丝 `MaxExportRows = 50000`，超限 → `30013`（400 信封，
+**先 Build 后写头**——Build 报错时一个字节未出，信封安全）。
+
+### 4.1 端点（三域，GET，当前租户全量）
+
+| 端点 | 权限码 | Sheet / 文件名 |
+| --- | --- | --- |
+| `GET /api/admin/system/users/export` | `system:user` | 用户 / `users_<yyyyMMdd_HHmmss>.xlsx` |
+| `GET /api/admin/member/users/export` | `member:user` | 会员 / `member_users_<时间戳>.xlsx` |
+| `GET /api/admin/order/orders/export` | `order:order` | 订单 / `orders_<时间戳>.xlsx` |
+
+响应为**下载流**（豁免信封）：`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
++ `Content-Disposition: attachment`（RFC5987 文件名）。前端走 `requestClient.download`
+（`exportUsers` / `exportOrders`，见 `apps/web-antd/src/api/admin.ts`），
+Blob 错误体会按信封解 `msg` 弹 toast（`apps/web-antd/src/api/blob-error.ts`）；
+member 导出端点暂无前端按钮（后端 curl 可用）。
+
+```bash
+curl -OJ -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/admin/system/users/export
+```
+
+> 导入目前留小票（roadmap P1-2 尾注），本节只覆盖导出。
+
+---
+
+## 5. 新建模块脚手架（newmodule）
+
+一条命令生成新业务模块的全部骨架，并原子地改挂 4 个既有文件；任一步失败**全有或全无**
+（已写文件删除 + 既有文件从写前备份回滚）。设计与触点细节见
+[`superpowers/specs/2026-10-19-module-template-design.md`](superpowers/specs/2026-10-19-module-template-design.md)，
+本文只记用法。
+
+### 5.1 用法
+
+```bash
+make new-module NAME=demo ENTITIES=item                    # 主入口
+make new-module NAME=demo ENTITIES=item,category ARGS="-dry-run"   # 只看计划不落盘
+go run ./tools/newmodule -name=demo -entities=item -skip-frontend  # 直调 CLI
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `-name` | ✅ | 模块名（小写 snake_case） |
+| `-entities` | ✅ | 逗号分隔初始实体（单数小写下蛇），每个生成最小 CRUD 骨架 |
+| `-menu-prefix` | ❌ | 菜单/路由前缀，默认 = `-name`；**自定义值会被显式拒绝**（模板写死 `/<module>`，设置与产物不一致属陷阱） |
+| `-dry-run` | ❌ | 只打印 ChangeSet 计划，不落盘（同时跳过 build 验证） |
+| `-skip-frontend` | ❌ | 只生成后端 |
+| `-skip-build` | ❌ | 跳过 `go build ./...` 验证 |
+
+### 5.2 触点（流水线 1 校验 → 2 内存构建 → 3 落盘 → 4 验证 → 5 报告）
+
+| # | 触点 | 处理 |
+| --- | --- | --- |
+| 1 | `modules/<name>/` 全套目录（module/controller/service/repository/model + migration_source） | 新建 |
+| 2 | `alexgo-server/cmd/main.go` | AST 插 import + FxModule 装配 |
+| 3 | `alexgo-server/configs/config.yaml` | `yaml.Node` 插 `modules.<name>: true`（保注释保排版） |
+| 4 | `modules/system/service/permission_routes.go` | map 字面量按字母序插入权限码→路由条目 |
+| 5 | 菜单种子 | system 模块 migrations 新建 SQL 对（幂等 NOT EXISTS：1 目录 + N 页面；**不含角色绑定**，启动 seed 全量 `SetRoleMenus` 兜底） |
+| 6 | 前端 api + views | 新建（示例实体复用 codegen 引擎产物） |
+| 7 | `docs/modules.md` | **不自动改**，收尾报告输出追加内容，留人工 |
+
+两条免改结论：前端 `accessMode: 'backend'`（路由来自 `/menu/all`，无静态路由文件）；
+`seed.go` 每次启动全量绑 admin 种子角色 + 重建策略（菜单落库即授权，无需手工绑）。
+
+### 5.3 收尾报告
+
+stdout 输出（`tools/newmodule/report.go`）：`✔ 新建模块 <name>（实体: ...）` + 新建文件清单 +
+修改文件清单 + **手工项**（`docs/modules.md` 补条目、菜单名是英文占位可后台改中文、
+如需独立部署参照 `modules/member/cmd/main.go`、回滚步骤）+ 验证结果
+（`go build ./... 通过` / `跳过` / dry-run 标注）。失败时 `✘ <原因>` 走 stderr、退出码 1，
+已按全有或全无回滚。
+
+### 5.4 验收
+
+```bash
+CGO_ENABLED=0 go test ./tools/newmodule/...   # 单测 + golden 路径清单钉触点
+make new-module NAME=demo ENTITIES=item ARGS="-dry-run"   # 干跑，确认计划后再实跑
+```
