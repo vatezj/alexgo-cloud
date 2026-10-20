@@ -48,12 +48,10 @@ var FxModule = fx.Module("scorecard",
 			service.NewFriendService,
 			fx.ParamTags("", "", "", "", `optional:"true"`),
 		),
-		app.NewAppRoomController,
-		app.NewAppRoomUserController,
-		app.NewAppRoomLogController,
-		app.NewAppRecordController,
-		app.NewAppFriendController,
-		app.NewAppFriendBlackController,
+		// Task 12 合一版 app 控制器（Bearer 自鉴权）。token.Validator 的接口映射归
+		// 入口（alexgo-server/cmd/main.go ifaceOptions），模块内不重复 Provide。
+		// admin 端合一控制器 Task 13 落地后补 Provide。
+		app.NewAppController,
 	),
 	fx.Provide(
 		fx.Annotate(
@@ -105,35 +103,20 @@ var FxModule = fx.Module("scorecard",
 type ModuleParams struct {
 	fx.In
 
-	Cfg                *config.Config
-	RoomAppCtrl        *app.AppRoomController
-	RoomUserAppCtrl    *app.AppRoomUserController
-	RoomLogAppCtrl     *app.AppRoomLogController
-	RecordAppCtrl      *app.AppRecordController
-	FriendAppCtrl      *app.AppFriendController
-	FriendBlackAppCtrl *app.AppFriendBlackController
+	Cfg     *config.Config
+	AppCtrl *app.AppController
 }
 
 type scorecardModule struct {
-	cfg                *config.Config
-	RoomAppCtrl        *app.AppRoomController
-	RoomUserAppCtrl    *app.AppRoomUserController
-	RoomLogAppCtrl     *app.AppRoomLogController
-	RecordAppCtrl      *app.AppRecordController
-	FriendAppCtrl      *app.AppFriendController
-	FriendBlackAppCtrl *app.AppFriendBlackController
+	cfg     *config.Config
+	appCtrl *app.AppController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
 	return &scorecardModule{
-		cfg:                p.Cfg,
-		RoomAppCtrl:        p.RoomAppCtrl,
-		RoomUserAppCtrl:    p.RoomUserAppCtrl,
-		RoomLogAppCtrl:     p.RoomLogAppCtrl,
-		RecordAppCtrl:      p.RecordAppCtrl,
-		FriendAppCtrl:      p.FriendAppCtrl,
-		FriendBlackAppCtrl: p.FriendBlackAppCtrl,
+		cfg:     p.Cfg,
+		appCtrl: p.AppCtrl,
 	}
 }
 
@@ -146,13 +129,25 @@ func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 		}
 	}
 
-	appGroup := r.Group("/app/scorecard")
-	appGroup.GET("/rooms/ping", m.RoomAppCtrl.Ping)
-	appGroup.GET("/room_users/ping", m.RoomUserAppCtrl.Ping)
-	appGroup.GET("/room_logs/ping", m.RoomLogAppCtrl.Ping)
-	appGroup.GET("/records/ping", m.RecordAppCtrl.Ping)
-	appGroup.GET("/friends/ping", m.FriendAppCtrl.Ping)
-	appGroup.GET("/friend_blacks/ping", m.FriendBlackAppCtrl.Ping)
+	app := r.Group("/app/scorecard")
+	app.POST("/rooms", m.appCtrl.CreateRoom)
+	app.POST("/rooms/join", m.appCtrl.JoinRoom)
+	app.GET("/rooms/:id/snapshot", m.appCtrl.Snapshot)
+	app.PUT("/rooms/:id/config", m.appCtrl.UpdateConfig)
+	app.POST("/rooms/:id/expense", m.appCtrl.Expense)
+	app.GET("/rooms/:id/logs", m.appCtrl.Logs)
+	app.POST("/rooms/:id/settle", m.appCtrl.Settle)
+	app.POST("/rooms/:id/leave", m.appCtrl.Leave)
+	app.POST("/rooms/:id/transfer-owner", m.appCtrl.TransferOwner)
+	app.GET("/records", m.appCtrl.MyRecords)
+	app.GET("/records/:recordId", m.appCtrl.RecordDetail)
+	app.DELETE("/records/:recordId", m.appCtrl.DeleteRecord)
+	app.GET("/stat", m.appCtrl.Stat)
+	app.GET("/friends", m.appCtrl.ListFriends)
+	app.POST("/friends", m.appCtrl.AddFriend)
+	app.DELETE("/friends/:userId", m.appCtrl.RemoveFriend)
+	app.POST("/friends/:userId/black", m.appCtrl.SetFriendBlack)
+	app.PUT("/friends/:userId/rank", m.appCtrl.SetFriendRank)
 	// 跨模块接口映射（如 token.Issuer）归入口 main.go，模块内不重复 Provide——
 	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
 }
