@@ -13,6 +13,7 @@ import (
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/member"
 	"alexGo-cloud/modules/order"
+	"alexGo-cloud/modules/scorecard"
 	"alexGo-cloud/modules/system"
 	"alexGo-cloud/modules/system/grpcserver"
 	systemservice "alexGo-cloud/modules/system/service"
@@ -172,6 +173,7 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		// B 方案（2026-10-15）：oauth2/infra 已并入 system.FxModule，随 system 整体挂载。
 		system.FxModule,
 		order.FxModule,
+		scorecard.FxModule,
 	}
 	// mono 模式（deployment.mode != "micro"）：member 路由同进程注册，
 	// TokenIssuer/AccountLimitChecker 都由本进程本地满足；
