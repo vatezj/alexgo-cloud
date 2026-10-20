@@ -40,15 +40,16 @@ type ConfigReq struct {
 	MaxLoseScore    *int     `json:"max_lose_score"`
 }
 
-// Expense 记分支出核心事务（spec §3.1）：幂等命中回放 → FOR UPDATE 锁房行 →
+// Expense 记分支出核心事务（spec §3.1）：FOR UPDATE 锁房行 → 幂等命中回放 →
 // round_no+1 应用到期 pending → 茶饭计算（自动 T=round(S×percent) 从赢家所得扣 /
 // 手动 DIY 从 tea_from_user_id 扣 T 进池）→ 记账（表达式列更新，总分守恒）→
 // 达标自动关 → 上限频控（extra.session_no 判本会话首提醒）→ type=1 流水 →
 // version 乐观锁落库。任一步失败整体回滚（spec §5.3）。
 //
 // 事务内所有库访问经 tx 绑定的 repo 实例（ruling：回调里再用根 db 的 repo 会拿到池上
-// 另一条连接，MySQL 下逃出原子边界、sqlite :memory: 下直接空库报错）；幂等查重也
-// 在事务内做，同 client_request_id 的并发支出在房行锁上串行化。
+// 另一条连接，MySQL 下逃出原子边界、sqlite :memory: 下直接空库报错）；幂等查重在
+// 事务内、行锁之后执行——锁定读先读到最新已提交行，其后的普通 SELECT 视图才不会
+// 漏掉并发已提交的同键流水（锁前查重在 MySQL RR 下可双记）。
 func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req ExpenseReq) (*ExpenseResult, error) {
 	if req.Score <= 0 || req.ToUserID == 0 || req.ToUserID == userID || req.ClientRequestID == "" {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
@@ -59,18 +60,7 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 		roomRepo := repository.NewRoomRepository(tx)
 		logRepo := repository.NewRoomLogRepository(tx)
 		userRepo := repository.NewRoomUserRepository(tx)
-		// ① 幂等：命中即回放（查重与后续写同原子边界）。
-		if prev, err := logRepo.GetByRequestID(ctx, roomID, req.ClientRequestID); err != nil {
-			return err
-		} else if prev != nil {
-			snap, err := s.buildSnapshot(ctx, tx, roomID, userID)
-			if err != nil {
-				return err
-			}
-			out = &ExpenseResult{Snapshot: snap, LogID: prev.ID, TeaCharged: prev.Tea}
-			return nil
-		}
-		// ② 锁房行（FOR UPDATE 串行化同房支出；version 乐观锁是第二道防线）。
+		// ① 锁房行（FOR UPDATE 串行化同房支出；version 乐观锁是第二道防线）。
 		room, err := roomRepo.GetForUpdate(ctx, tx, roomID)
 		if err != nil {
 			return err
@@ -93,6 +83,20 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 			return err
 		} else if to == nil {
 			return errs.New(errs.CodeScorecardTargetNotMember, nil)
+		}
+		// ② 幂等：命中即回放。查重必须在行锁之后：锁定读先读到最新已提交行，其后的
+		// 普通 SELECT 才建立在能看到并发已提交流水的视图；放锁前（MySQL RR）快照
+		// 可能先于对方提交，并发同 client_request_id 会双记。重放语义：同 LogID、
+		// prev.Tea，零重记。
+		if prev, err := logRepo.GetByRequestID(ctx, roomID, req.ClientRequestID); err != nil {
+			return err
+		} else if prev != nil {
+			snap, err := s.buildSnapshot(ctx, tx, roomID, userID)
+			if err != nil {
+				return err
+			}
+			out = &ExpenseResult{Snapshot: snap, LogID: prev.ID, TeaCharged: prev.Tea}
+			return nil
 		}
 		// ③ 把序号 +1，应用到期 pending（「从下把生效」：推进到 pending 目标把则刷入并清空）。
 		room.RoundNo++

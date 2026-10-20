@@ -94,6 +94,46 @@ func TestExpense_PendingAppliesNextRound(t *testing.T) {
 	}
 }
 
+func TestUpdateConfig_PercentOnlyKeepsOtherFields(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 10, true, 50, 30) // percent=10 auto maxLose=50 target=30
+	if _, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 100, ToUserID: winner, ClientRequestID: "p1"}); err != nil {
+		t.Fatal(err)
+	}
+	// 只改 percent：pending 首次暂存先种子当前 target/maxLose，applyPending 不得清零
+	if _, err := svc.UpdateConfig(ctx, 100, roomID, ConfigReq{TeaPercent: ptr(20.0)}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 100, ToUserID: winner, ClientRequestID: "p2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TeaCharged != 20 {
+		t.Fatalf("percent 20%% 应生效: tea=%d", res.TeaCharged)
+	}
+	if res.Snapshot.TeaTargetAmount != 30 || res.Snapshot.MaxLoseScore != 50 {
+		t.Fatalf("部分编辑清场了其他配置: target=%d maxLose=%d",
+			res.Snapshot.TeaTargetAmount, res.Snapshot.MaxLoseScore)
+	}
+}
+
+func TestUpdateConfig_AutoToggleKeepsNumerics(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 10, true, 50, 0) // percent=10 auto maxLose=50
+	// 只关自动开关：不进 pending，数值项不动
+	if _, err := svc.UpdateConfig(ctx, 100, roomID, ConfigReq{TeaAutoEnabled: ptr(false)}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 100, ToUserID: winner, ClientRequestID: "a1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TeaCharged != 0 {
+		t.Fatalf("自动关后不应抽茶: tea=%d", res.TeaCharged)
+	}
+	if res.Snapshot.TeaPercent != 10 || res.Snapshot.MaxLoseScore != 50 {
+		t.Fatalf("开关误清数值: percent=%v maxLose=%d", res.Snapshot.TeaPercent, res.Snapshot.MaxLoseScore)
+	}
+}
+
 func TestExpense_TargetReachedAutoOff(t *testing.T) {
 	svc, ctx, roomID, loser, winner := setupRoom(t, 50, true, 0, 30) // 目标 30
 	res, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 100, ToUserID: winner, ClientRequestID: "x"})

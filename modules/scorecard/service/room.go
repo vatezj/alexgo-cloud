@@ -234,10 +234,13 @@ func (s *roomService) Logs(ctx context.Context, userID, roomID uint64, page, siz
 	return s.log.ListByRoom(ctx, roomID, page, size)
 }
 
-// UpdateConfig 改配置（仅房主 30105）：数值项写 pending_* + pending_apply_round_no=round_no+1
-// 「从下把生效」（spec §3.2，当前把不受影响，下一笔支出时 applyPending 刷入）；
-// tea_auto_enabled 无 pending 槽位，即改即生效。刷 expire=now+2h（配置变更 = 心跳）。
-// 单行 SaveVersioned（version 乐观锁）一条语句原子落库，无需外层事务；失败弃用内存 room。
+// UpdateConfig 改配置（仅房主 30105）：数值项（target/percent/maxLose）写 pending_* 暂存，
+// pending_apply_round_no=round_no+1「从下把生效」（spec §3.2，当前把不受影响，下一笔支出时
+// applyPending 整组刷入）。部分编辑不清场：首次暂存先按当前生效值种子全部 pending 槽、
+// 再覆写提供的项；已有暂存（PendingApplyRoundNo>0）只覆写提供的项、保留其余暂存值。
+// tea_auto_enabled 无 pending 槽位、非「下把生效」值，提供即改生效字段本身，不动 pending。
+// 刷 expire=now+2h（配置变更 = 心跳）。单行 SaveVersioned（version 乐观锁）原子落库，
+// 无需外层事务；失败弃用内存 room。
 func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, req ConfigReq) (*RoomSnapshot, error) {
 	room, err := s.room.GetByID(ctx, roomID)
 	if err != nil {
@@ -254,14 +257,24 @@ func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, r
 		(req.MaxLoseScore != nil && *req.MaxLoseScore < 0) {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
-	if req.TeaTargetAmount != nil {
-		room.PendingTeaTargetAmount = *req.TeaTargetAmount
-	}
-	if req.TeaPercent != nil {
-		room.PendingTeaPercent = *req.TeaPercent
-	}
-	if req.MaxLoseScore != nil {
-		room.PendingMaxLoseScore = *req.MaxLoseScore
+	// 数值项进 pending（「从下把生效」）；一项未提供则不动 pending（含仅改开关/空请求）。
+	if req.TeaTargetAmount != nil || req.TeaPercent != nil || req.MaxLoseScore != nil {
+		if room.PendingApplyRoundNo == 0 {
+			// 首次暂存：种子当前生效值，applyPending 整组刷入时未提供的项不被清零。
+			room.PendingTeaTargetAmount = room.TeaTargetAmount
+			room.PendingTeaPercent = room.TeaPercent
+			room.PendingMaxLoseScore = room.MaxLoseScore
+		}
+		if req.TeaTargetAmount != nil {
+			room.PendingTeaTargetAmount = *req.TeaTargetAmount
+		}
+		if req.TeaPercent != nil {
+			room.PendingTeaPercent = *req.TeaPercent
+		}
+		if req.MaxLoseScore != nil {
+			room.PendingMaxLoseScore = *req.MaxLoseScore
+		}
+		room.PendingApplyRoundNo = room.RoundNo + 1
 	}
 	if req.TeaAutoEnabled != nil {
 		teaAuto := 0
@@ -270,7 +283,6 @@ func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, r
 		}
 		room.TeaAutoEnabled = teaAuto
 	}
-	room.PendingApplyRoundNo = room.RoundNo + 1
 	room.ExpireTime = time.Now().Add(roomTTL)
 	if err := s.room.SaveVersioned(ctx, s.db, room); err != nil {
 		return nil, err // 失败弃用内存 room（Version 已就地 +1 语义，T5 契约）
