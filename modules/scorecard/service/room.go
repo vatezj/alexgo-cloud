@@ -30,8 +30,8 @@ const roomCodeMaxAttempts = 6
 // recentLogLimit 快照内嵌最近流水条数（spec §4.1 快照含最近日志）。
 const recentLogLimit = 20
 
-// RoomService scorecard 房间服务：开房/进房/快照/流水分页。
-// Task 7-13 在同一实现上追加 Expense/UpdateConfig/Settle/Leave/TransferOwner 等。
+// RoomService scorecard 房间服务：开房/进房/快照/流水分页/支出/改配置。
+// Task 8-13 在同一实现上追加 Settle/Leave/TransferOwner 等。
 type RoomService interface {
 	// Create 开房：房号可空（服务端生成 4 位），冲突重试耗尽 → 30106。
 	Create(ctx context.Context, userID uint64, req CreateRoomReq) (*RoomSnapshot, error)
@@ -41,6 +41,10 @@ type RoomService interface {
 	Snapshot(ctx context.Context, userID, roomID uint64) (*RoomSnapshot, error)
 	// Logs 流水分页（created_at 倒序，Task 12 app 控制器消费）。
 	Logs(ctx context.Context, userID, roomID uint64, page, size int) ([]*model.RoomLog, int64, error)
+	// Expense 记分支出核心事务：幂等/version 乐观锁/总分守恒/从下把生效/达标关/上限频控（spec §3.1）。
+	Expense(ctx context.Context, userID, roomID uint64, req ExpenseReq) (*ExpenseResult, error)
+	// UpdateConfig 改配置（仅房主；数值项写 pending「从下把生效」，spec §3.2）。
+	UpdateConfig(ctx context.Context, userID, roomID uint64, req ConfigReq) (*RoomSnapshot, error)
 }
 
 type roomService struct {
@@ -228,6 +232,50 @@ func (s *roomService) Logs(ctx context.Context, userID, roomID uint64, page, siz
 		return nil, 0, errs.New(errs.CodeScorecardNotMember, nil)
 	}
 	return s.log.ListByRoom(ctx, roomID, page, size)
+}
+
+// UpdateConfig 改配置（仅房主 30105）：数值项写 pending_* + pending_apply_round_no=round_no+1
+// 「从下把生效」（spec §3.2，当前把不受影响，下一笔支出时 applyPending 刷入）；
+// tea_auto_enabled 无 pending 槽位，即改即生效。刷 expire=now+2h（配置变更 = 心跳）。
+// 单行 SaveVersioned（version 乐观锁）一条语句原子落库，无需外层事务；失败弃用内存 room。
+func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, req ConfigReq) (*RoomSnapshot, error) {
+	room, err := s.room.GetByID(ctx, roomID)
+	if err != nil {
+		return nil, err
+	}
+	if room == nil {
+		return nil, errs.New(errs.CodeScorecardRoomNotFound, nil)
+	}
+	if room.CreatorID != userID {
+		return nil, errs.New(errs.CodeScorecardNotOwner, nil)
+	}
+	if (req.TeaPercent != nil && (*req.TeaPercent < 0 || *req.TeaPercent > 100)) ||
+		(req.TeaTargetAmount != nil && *req.TeaTargetAmount < 0) ||
+		(req.MaxLoseScore != nil && *req.MaxLoseScore < 0) {
+		return nil, errs.New(errs.CodeParamInvalid, nil)
+	}
+	if req.TeaTargetAmount != nil {
+		room.PendingTeaTargetAmount = *req.TeaTargetAmount
+	}
+	if req.TeaPercent != nil {
+		room.PendingTeaPercent = *req.TeaPercent
+	}
+	if req.MaxLoseScore != nil {
+		room.PendingMaxLoseScore = *req.MaxLoseScore
+	}
+	if req.TeaAutoEnabled != nil {
+		teaAuto := 0
+		if *req.TeaAutoEnabled {
+			teaAuto = 1
+		}
+		room.TeaAutoEnabled = teaAuto
+	}
+	room.PendingApplyRoundNo = room.RoundNo + 1
+	room.ExpireTime = time.Now().Add(roomTTL)
+	if err := s.room.SaveVersioned(ctx, s.db, room); err != nil {
+		return nil, err // 失败弃用内存 room（Version 已就地 +1 语义，T5 契约）
+	}
+	return s.buildSnapshot(ctx, s.db, roomID, userID)
 }
 
 // buildSnapshot 组装房间全量快照（开房/进房/快照接口与 Task 7 expense 事务内共用）。
