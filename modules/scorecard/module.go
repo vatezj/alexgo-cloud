@@ -38,6 +38,9 @@ var FxModule = fx.Module("scorecard",
 			service.NewRoomService,
 			fx.ParamTags("", "", "", "", "", `optional:"true"`, ""),
 		),
+		// RecordService 直产接口类型（同 RoomService 模式）：db + RecordRepository 均可解析，
+		// Task 12/13 控制器按 service.RecordService 注入。
+		service.NewRecordService,
 		app.NewAppRoomController,
 		app.NewAppRoomUserController,
 		app.NewAppRoomLogController,
