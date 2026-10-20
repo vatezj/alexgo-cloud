@@ -448,7 +448,7 @@ make new-module NAME=demo ENTITIES=item ARGS="-dry-run"   # 干跑，确认计�
 
 ### 6.2 监管操作（前端 3 页 + 详情子页）
 
-- `/scorecard/rooms`：状态筛选 → 「详情」跳 `/scorecard/rooms/detail?id=`
+- `/scorecard/rooms`：状态下拉（全部/进行中/已结算/已关闭）+ 房号输入精确筛（`GET /api/admin/scorecard/rooms?status=&room_code=`，空值不传参）→ 「详情」跳 `/scorecard/rooms/detail?id=`
   （房行 / 成员 / 流水三区）→ 「强制关房」二次确认
   （`POST /api/admin/scorecard/rooms/:id/close`，**唯一运维写动作**；进行中与已结算
   房均可关，已关再关报 `30103`）。

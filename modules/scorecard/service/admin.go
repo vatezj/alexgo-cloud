@@ -16,12 +16,13 @@ import (
 const adminDetailLogsCap = 200
 
 // AdminListRooms 监管端房间分页。status<0 = 不过滤（controller 默认 -1）；
+// roomCode 空 = 不过滤，非空按房号精确等值（spec §4.2 房间列表筛选）；
 // repo.ListAdmin 插件在位时只看本租户（跨租户监管由租户上下文决定）。
-func (s *roomService) AdminListRooms(ctx context.Context, status int, page, size int) ([]*model.Room, int64, error) {
+func (s *roomService) AdminListRooms(ctx context.Context, status int, roomCode string, page, size int) ([]*model.Room, int64, error) {
 	if page <= 0 || size <= 0 {
 		return nil, 0, errs.New(errs.CodeParamInvalid, nil)
 	}
-	return s.room.ListAdmin(ctx, status, page, size)
+	return s.room.ListAdmin(ctx, status, roomCode, page, size)
 }
 
 // AdminRoomDetail 监管端房间详情：房行（不存在/跨租户 → 30101）+ 全量成员

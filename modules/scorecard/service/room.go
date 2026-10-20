@@ -57,9 +57,10 @@ type RoomService interface {
 	// SweepExpired 超时关房（系统级 ticker）：跨租户拉逾期进行中房，逐房事务关闭
 	// （status=2 + type=8 流水）；返回本轮实际关闭数。心跳（快照读）不续期。
 	SweepExpired(ctx context.Context) (int64, error)
-	// AdminListRooms 监管端房间分页（Task 13）：status<0 不过滤（repo.ListAdmin，
-	// 插件在位时只看本租户）。实现见 admin.go。
-	AdminListRooms(ctx context.Context, status int, page, size int) ([]*model.Room, int64, error)
+	// AdminListRooms 监管端房间分页（Task 13）：status<0 不过滤；roomCode 空不过滤
+	// （非空按房号精确等值，spec §4.2 房间列表筛选；repo.ListAdmin，插件在位时
+	// 只看本租户）。实现见 admin.go。
+	AdminListRooms(ctx context.Context, status int, roomCode string, page, size int) ([]*model.Room, int64, error)
 	// AdminRoomDetail 监管端房间全量详情（Task 13）：房行 + 成员 + 最近流水；
 	// 房不存在/跨租户 → 30101。实现见 admin.go。
 	AdminRoomDetail(ctx context.Context, roomID uint64) (*AdminRoomDetail, error)

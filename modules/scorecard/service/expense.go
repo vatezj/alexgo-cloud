@@ -14,13 +14,13 @@ import (
 	errs "alexGo-cloud/pkg/errors"
 )
 
-// ExpenseReq 记分支出请求。Score 输家分 S（>0）；Tea 仅手动 DIY 模式（未开自动百分比）生效；
-// ClientRequestID 房间内幂等键（重放返回上次结果，不重复记账）。
+// ExpenseReq 记分支出请求。Score 输家分 S（>0）；Tea 仅手动 DIY 模式（未开自动百分比）生效，
+// 单笔 ≤ maxTeaPerExpense；ClientRequestID 房间内幂等键（重放返回上次结果，不重复记账）。
 type ExpenseReq struct {
 	Score           int    `json:"score"`
 	Tea             int    `json:"tea"`
 	ToUserID        uint64 `json:"to_user_id"`
-	TeaFromUserID   uint64 `json:"tea_from_user_id"` // 手动 DIY 来源，缺省=支出方
+	TeaFromUserID   uint64 `json:"tea_from_user_id"` // 手动 DIY 来源，缺省=支出方；非 0 时须在房（30113）
 	ClientRequestID string `json:"client_request_id"`
 }
 
@@ -40,6 +40,10 @@ type ConfigReq struct {
 	MaxLoseScore    *int     `json:"max_lose_score"`
 }
 
+// maxTeaPerExpense 单笔茶饭（DIY 手动）上限：与 score 侧同量级的参数保险丝，
+// 超限在事务前直接 10001 拒（防误传多打零把池打爆）。
+const maxTeaPerExpense = 1_000_000
+
 // Expense 记分支出核心事务（spec §3.1）：FOR UPDATE 锁房行 → 幂等命中回放 →
 // round_no+1 应用到期 pending → 茶饭计算（自动 T=round(S×percent) 从赢家所得扣 /
 // 手动 DIY 从 tea_from_user_id 扣 T 进池）→ 记账（表达式列更新，总分守恒）→
@@ -51,7 +55,8 @@ type ConfigReq struct {
 // 事务内、行锁之后执行——锁定读先读到最新已提交行，其后的普通 SELECT 视图才不会
 // 漏掉并发已提交的同键流水（锁前查重在 MySQL RR 下可双记）。
 func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req ExpenseReq) (*ExpenseResult, error) {
-	if req.Score <= 0 || req.ToUserID == 0 || req.ToUserID == userID || req.ClientRequestID == "" {
+	if req.Score <= 0 || req.ToUserID == 0 || req.ToUserID == userID || req.ClientRequestID == "" ||
+		req.Tea > maxTeaPerExpense {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
 	var out *ExpenseResult
@@ -112,6 +117,13 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 		} else if req.Tea > 0 {
 			tea = req.Tea // 手动 DIY
 			if req.TeaFromUserID != 0 {
+				// 来源须在房（与 to_user_id 同款校验，同码 30113）：AddScore 对 0 行静默，
+				// 非成员来源会让池照加而无人扣分 → 总分守恒破坏。
+				if from, err := userRepo.Get(ctx, roomID, req.TeaFromUserID); err != nil {
+					return err
+				} else if from == nil {
+					return errs.New(errs.CodeScorecardTargetNotMember, nil)
+				}
 				srcUserID = req.TeaFromUserID
 			}
 		}
@@ -152,7 +164,11 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 			}
 		}
 		// ⑦ 上限频控：本会话首次达上限全房提醒（记入 AlarmedUserIDs），之后仅写日志。
-		// 会话判定：日志 extra 存 session_no，重进房后老日志 session_no 不匹配 → 新会话重新首提醒。
+		// 会话判定：日志 extra 存 session_no，等于成员当前 session_no 即视为本会话已提醒。
+		// 已知限制（此处只记实情、不改逻辑）：Join 是成员行硬删重建、恒 session_no=1
+		// （room.go Create/Join 同款），重进房后老 type=6 日志的 session_no 也是 1 → 依然匹配，
+		// 所以「跨会话重新首提醒」并不重现——首提醒跨会话不重现属已知遗留；
+		// 要真按会话区分，需让 session_no 递增或日志另存会话标识。
 		if room.MaxLoseScore > 0 {
 			users, err := userRepo.ListByRoom(ctx, roomID)
 			if err != nil {

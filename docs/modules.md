@@ -66,7 +66,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateLog → OTEL → AccessLog → Trace
 ```
 
-- **Tenant**：`X-Tenant-ID` 头 → Host 域名匹配 `tenants.domain` → 默认 `0`；登录后由 **token 内 tenant_id 覆盖**（防头伪造跨租户，`pkg/middleware/auth.go`）。
+- **Tenant**：`X-Tenant-ID` 头 → Host 域名匹配 `tenants.domain` → 默认 `0`；登录后由 **token 内 tenant_id 覆盖**（防头伪造跨租户，全路径生效：`/api/admin/**` 与 vben 自读在 `pkg/middleware/auth.go`，`/api/app/**` 在各 handler 的 `claims()` 里同款回写请求 ctx）。
 - **RateLimitAndBreaker**：Redis Token Bucket（key `{tid}:{ip}:{FullPath}`）+ 熔断；两开关默认 false，`/health`、`/metrics` 豁免。
 - **Auth**（`pkg/middleware/auth.go`）：作用范围 = `/api/admin/**` + vben 自读 3 端点（`/api/auth/codes`、`/api/user/info`、`/api/menu/all`）。按序：解析 token（token 模式查库 fail-closed / jwt 模式静态解析）→ tenant 覆盖 → **`user_type != 1` 恒 403（置于 Casbin 之前）** → data_scope 注入（失败按 Mode 5 最严兜底）→ `Casbin Enforce(sub, FullPath, method)`。
 - **OperateLog**：仅 `/api/admin/**`，写 `operate_logs` 表。
@@ -563,7 +563,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ### 8.1 路由与权限模式
 
-- **`accessMode: 'backend'`**（`src/preferences.ts`）：菜单 + 动态路由全部后端下发，前端**零静态业务路由表**（`router/routes/modules/` 目录不存在；静态路由只有 `core.ts` 的登录/回调/404）。
+- **`accessMode: 'backend'`**（`src/preferences.ts`）：菜单 + 动态路由全部后端下发，前端**零静态业务路由表**（`router/routes/modules/` 目录不存在；静态路由只有 `core.ts` 的登录/回调/404，例外 `external/scorecard.ts`——scorecard 房间详情子页，T14 引入、不进菜单，见 §11.9）。
 - 守卫流程（`router/guard.ts` + `router/access.ts`）：无 token → `/login`；首次进站拉 `GET /api/user/info` → `GET /api/menu/all` → `generateRoutesByBackend` 把 `component` 字符串（如 `views/system/SystemUsersPage`）经 `import.meta.glob('../views/**/*.vue')` 解析成组件（找不到回落 not-found）→ 目录节点补 redirect 到首子路由 → 生成侧栏菜单 → `setAccessChecked`（**动态路由只生成一次**；`accessCodes` 持久化 localStorage，菜单/路由不持久化，刷新重拉）。
 - 后端路由命名：`/system/users` → `system_users`；`meta` 仅 `title/icon/orderNo/order/permissions`（**无 keepAlive/hideInMenu/link** → 标签页缓存、iframe 外链暂不可用）。
 - **`v-access:code` 指令**：Set 精确交集，不命中直接 `el.remove()`；多码任一命中即显示。`v-access:role` 在 backend 模式下退化为按 code（无人使用）。
@@ -780,7 +780,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 | 方法 | 路径 | handler | 权限码 | 说明 |
 | --- | --- | --- | --- | --- |
-| GET | `/rooms` | AdminController.ListRooms | `scorecard:room` | 房间分页（`status` 缺省 -1 不过滤，`page`/`size` size ≤ 100） |
+| GET | `/rooms` | AdminController.ListRooms | `scorecard:room` | 房间分页（`status` 缺省 -1 不过滤；`room_code` 缺省空串不过滤、非空精确等值；`page`/`size` size ≤ 100） |
 | GET | `/rooms/:id` | AdminController.RoomDetail | `scorecard:room` | 房行 + 全量成员 + 最近流水（**cap 200 条**，全量流水走 app 端分页接口）；房不存在/跨租户 30101 |
 | POST | `/rooms/:id/close` | AdminController.CloseRoom | `scorecard:room` | **唯一运维写动作**：强制关房，`status` 0/1 → 2，无房主校验；行锁 + `version` 就地 +1 + type=8 流水（`extra.event=admin_close`）；已关再关 30103 |
 | GET | `/records` | AdminController.ListRecords | `scorecard:record` | 战绩分页（`user_id`/`room_id` 传 0 = 不过滤） |
@@ -846,9 +846,9 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 | 路由 | 组件 | 功能 | 权限与可见性 |
 | --- | --- | --- | --- |
-| `/scorecard/rooms` | `views/scorecard/ScorecardRoomsPage.vue` | 房间分页列表（状态筛选、详情入口、强制关房二次确认，仅 `status===0` 给入口） | 菜单行 perm `scorecard:room` |
+| `/scorecard/rooms` | `views/scorecard/ScorecardRoomsPage.vue` | 房间分页列表（状态下拉 + 房号输入筛选，随查询传 `status`/`room_code`、空值不传参；详情入口、强制关房二次确认，仅 `status===0` 给入口） | 菜单行 perm `scorecard:room` |
 | `/scorecard/rooms/detail` | `RoomDetailPage.vue`（query `?id=`） | 房行信息 + 成员表 + 流水（本地分页，后端 cap 200） | **不在菜单**：走 `src/router/routes/external/scorecard.ts` 静态注册（`meta.hideInMenu`，保留登录守卫），数据权限由 admin API 的 casbin（`scorecard:room`）强制 |
-| `/scorecard/records` | `ScorecardRecordsPage.vue` | 战绩分页（`user_id`/`room_id` 筛选）+ 明细弹窗看全房成员行 | 菜单行 perm `scorecard:record` |
+| `/scorecard/records` | `ScorecardRecordsPage.vue` | 战绩分页（`user_id`/`room_id` 筛选；「看全房」按 `room_id` 收窄列表，实现是列表按房筛、非弹窗） | 菜单行 perm `scorecard:record` |
 | `/scorecard/friends` | `ScorecardFriendsPage.vue` | 好友/拉黑关系只读列表 | 菜单行 perm `scorecard:friend` |
 
 - **详情页为何不进菜单**：`accessMode: 'backend'` 下非 core 路由只由 `/api/menu/all` 的菜单树生成，
@@ -861,7 +861,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ---
 
-### 附：已知缺口与遗留（写文档时核实）
+## 附：已知缺口与遗留（写文档时核实）
 
 - `orders` 表无 tenant_id，多租户隔离不生效（§7.4）。
 - micro 形态 `system_user_grpc.go` 6 个方法全部 "not implemented" 占位（§7.5）。

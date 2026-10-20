@@ -15,6 +15,10 @@ import (
 	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
+// sweepBatchLimit 超时关房单轮扫描上限（终审 parked #3）：单轮封顶，余量下轮
+// —— ticker 每分钟一轮，逾期房积压时分批收敛，不一次性拉爆内存。
+const sweepBatchLimit = 200
+
 // RoomRepository 房间数据访问。读路径的租户隔离依赖 gormplugin（ctx 带租户编号时
 // Query/Update/Delete 自动追加 tenant_id 条件，生产 main.go 与单测均真注册）；
 // 写路径 SaveVersioned 额外显式带 tenant_id（tid=0 时 fail-closed）。
@@ -23,8 +27,8 @@ type RoomRepository interface {
 	GetByID(ctx context.Context, id uint64) (*model.Room, error)                   // 软查（快照/校验用）：不存在/跨租户 → (nil, nil)
 	GetForUpdate(ctx context.Context, tx *gorm.DB, id uint64) (*model.Room, error) // SELECT FOR UPDATE（sqlite 忽略锁子句）
 	GetByCode(ctx context.Context, code string) (*model.Room, error)
-	SaveVersioned(ctx context.Context, tx *gorm.DB, r *model.Room) error                     // UPDATE 全字段 WHERE id AND version；RowsAffected=0 → 30112
-	ListAdmin(ctx context.Context, status int, page, size int) ([]*model.Room, int64, error) // status<0 = 不过滤
+	SaveVersioned(ctx context.Context, tx *gorm.DB, r *model.Room) error                                      // UPDATE 全字段 WHERE id AND version；RowsAffected=0 → 30112
+	ListAdmin(ctx context.Context, status int, roomCode string, page, size int) ([]*model.Room, int64, error) // status<0 = 不过滤；roomCode 空 = 不过滤
 	SweepExpired(ctx context.Context, now time.Time) ([]*model.Room, error)
 }
 
@@ -109,21 +113,27 @@ func (r *roomRepo) SaveVersioned(ctx context.Context, tx *gorm.DB, room *model.R
 	return nil
 }
 
-// ListAdmin 监管端分页列表。status<0 不过滤；插件在位时只看本租户。
-func (r *roomRepo) ListAdmin(ctx context.Context, status int, page, size int) ([]*model.Room, int64, error) {
+// ListAdmin 监管端分页列表。status<0 不过滤；roomCode 非空按房号精确等值过滤
+// （spec §4.2 房间列表筛选）；插件在位时只看本租户。
+func (r *roomRepo) ListAdmin(ctx context.Context, status int, roomCode string, page, size int) ([]*model.Room, int64, error) {
 	q := r.db.Model(&model.Room{}).Order("id desc")
 	if status >= 0 {
 		q = q.Where("status = ?", status)
+	}
+	if roomCode != "" {
+		q = q.Where("room_code = ?", roomCode)
 	}
 	return repo.Paginate[*model.Room](ctx, q, page, size)
 }
 
 // SweepExpired 拉逾期进行中房间。系统级任务：IgnoreTenant 跨全部租户扫
 // （逐房处理由 service 各自带租户上下文写日志），与 rbac.go ListAll 同口径。
+// 单轮封顶 200 行，余量下轮（每分钟一轮，避免一轮拉爆内存/事务）。
 func (r *roomRepo) SweepExpired(ctx context.Context, now time.Time) ([]*model.Room, error) {
 	var list []*model.Room
 	err := r.db.WithContext(gormplugin.IgnoreTenant(ctx)).
 		Where("status = ? AND expire_time < ?", 0, now).
+		Limit(sweepBatchLimit).
 		Find(&list).Error
 	return list, err
 }

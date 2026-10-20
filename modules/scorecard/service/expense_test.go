@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 )
 
@@ -182,5 +183,63 @@ func TestExpense_DiyTeaFromSource(t *testing.T) {
 	// DIY：输家 -100，赢家 +100-20（来源=赢家），守恒
 	if m[loser] != -100 || m[winner] != 80 || res.TeaCharged != 20 {
 		t.Fatalf("DIY 口径错: %v tea=%d", m, res.TeaCharged)
+	}
+}
+
+// TestExpense_DiyTeaFromNonMemberRejected 终审 Important #2：DIY 来源非在房成员 →
+// 30113 拒绝，且分数/池/流水原样（AddScore 0 行静默 → 不校验会守恒破坏）。
+func TestExpense_DiyTeaFromNonMemberRejected(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 0, 0) // 手动模式
+	// 用户 300 真实存在（是另一间房的房主），但不在本房 —— 比纯假 ID 更硬。
+	if _, err := svc.Create(ctx, 300, CreateRoomReq{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 100, Tea: 20, TeaFromUserID: 300, ToUserID: winner, ClientRequestID: "n1",
+	})
+	if !errs.Is(err, errs.CodeScorecardTargetNotMember) {
+		t.Fatalf("非成员来源应 30113, got %v", err)
+	}
+	// 守恒钉死：成员分全 0、池 0、无 type=1 流水（事务整体回滚/未写）。
+	if m := memberScoreMap(t, svc, ctx, roomID); m[loser] != 0 || m[winner] != 0 {
+		t.Fatalf("拒绝后分数被动过: %v", m)
+	}
+	snap, err := svc.Snapshot(ctx, loser, roomID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.TeaPoolTotal != 0 {
+		t.Fatalf("拒绝后池被动过: %d", snap.TeaPoolTotal)
+	}
+	// 拒绝后不落 type=1 记分流水（开房/进房的 type=3 是既有流水，不应受影响）。
+	logs, _, err := svc.Logs(ctx, loser, roomID, 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range logs {
+		if l.Type == 1 {
+			t.Fatalf("拒绝后仍落了记分流水: %+v", l)
+		}
+	}
+}
+
+// TestExpense_TeaOverLimitRejected 终审 #2：单笔 Tea 超上限 → 10001，且不动房。
+func TestExpense_TeaOverLimitRejected(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 0, 0)
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 100, Tea: maxTeaPerExpense + 1, TeaFromUserID: winner, ToUserID: winner,
+		ClientRequestID: "o1",
+	})
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("Tea 超限应 10001, got %v", err)
+	}
+	if m := memberScoreMap(t, svc, ctx, roomID); m[loser] != 0 || m[winner] != 0 {
+		t.Fatalf("超限拒绝后分数被动过: %v", m)
+	}
+	// 临界值（=上限）仍放行，保险丝不是业务规则。
+	if _, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 100, Tea: maxTeaPerExpense, ToUserID: winner, ClientRequestID: "o2",
+	}); err != nil {
+		t.Fatalf("上限值应放行: %v", err)
 	}
 }

@@ -4,7 +4,17 @@ import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 
-import { Button, message, Modal, Table, TableColumn, Tag } from 'ant-design-vue';
+import {
+  Button,
+  Input,
+  message,
+  Modal,
+  Select,
+  SelectOption,
+  Table,
+  TableColumn,
+  Tag,
+} from 'ant-design-vue';
 
 import { closeRoomApi, getRoomsApi } from '#/api/scorecard';
 
@@ -20,18 +30,39 @@ const statusMap: Record<number, { color: string; text: string }> = {
   2: { text: '已关闭', color: 'default' },
 };
 
+// 筛选：status 空串 = 全部（不传参），room_code 空 = 不过滤（后端精确等值）。
+const filters = ref<{ room_code: string; status: string }>({
+  room_code: '',
+  status: '',
+});
+
 async function load() {
   loading.value = true;
   try {
+    const status = filters.value.status;
+    const roomCode = filters.value.room_code.trim();
     const res = await getRoomsApi({
       page: pagination.value.current,
       size: pagination.value.pageSize,
+      ...(status ? { status } : {}),
+      ...(roomCode ? { room_code: roomCode } : {}),
     });
     list.value = (res as any).list ?? res;
     total.value = (res as any).total ?? 0;
   } finally {
     loading.value = false;
   }
+}
+
+function applyFilter() {
+  pagination.value.current = 1;
+  load();
+}
+
+function resetFilter() {
+  filters.value = { status: '', room_code: '' };
+  pagination.value.current = 1;
+  load();
 }
 
 function openDetail(row: any) {
@@ -56,6 +87,28 @@ onMounted(load);
 <template>
   <Page auto-content-height>
     <div class="p-4">
+      <div class="mb-3 flex gap-2">
+        <Select
+          v-model:value="filters.status"
+          class="w-40"
+          placeholder="全部状态"
+          @change="applyFilter"
+        >
+          <SelectOption value="">全部</SelectOption>
+          <SelectOption value="0">进行中</SelectOption>
+          <SelectOption value="1">已结算</SelectOption>
+          <SelectOption value="2">已关闭</SelectOption>
+        </Select>
+        <Input
+          v-model:value="filters.room_code"
+          allow-clear
+          class="w-40"
+          placeholder="房号"
+          @press-enter="applyFilter"
+        />
+        <Button type="primary" @click="applyFilter">查询</Button>
+        <Button @click="resetFilter">重置</Button>
+      </div>
       <Table
         :data-source="list"
         :loading="loading"

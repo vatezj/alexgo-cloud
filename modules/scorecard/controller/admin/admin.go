@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -24,11 +25,13 @@ func NewAdminController(rooms service.RoomService, records service.RecordService
 	return &AdminController{rooms: rooms, records: records, friends: friends}
 }
 
-// ListRooms GET /admin/scorecard/rooms：房间分页，status 缺省 -1 不过滤。
+// ListRooms GET /admin/scorecard/rooms：房间分页，status 缺省 -1 不过滤；
+// room_code 缺省空串 = 不过滤，非空按房号精确等值（spec §4.2 房间列表筛选）。
 func (c *AdminController) ListRooms(ctx *gin.Context) {
 	var req struct {
 		resp.PageReq
-		Status *int `form:"status"`
+		Status   *int   `form:"status"`
+		RoomCode string `form:"room_code"`
 	}
 	if err := ctx.ShouldBindQuery(&req); err != nil { // PageReq binding max=100 挡超限
 		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
@@ -39,7 +42,7 @@ func (c *AdminController) ListRooms(ctx *gin.Context) {
 	if req.Status != nil {
 		status = *req.Status
 	}
-	list, total, err := c.rooms.AdminListRooms(ctx.Request.Context(), status, req.Page, req.Size)
+	list, total, err := c.rooms.AdminListRooms(ctx.Request.Context(), status, strings.TrimSpace(req.RoomCode), req.Page, req.Size)
 	if err != nil {
 		resp.Fail(ctx, err)
 		return

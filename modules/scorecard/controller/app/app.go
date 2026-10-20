@@ -10,6 +10,7 @@ import (
 	"alexGo-cloud/modules/scorecard/service"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/resp"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
 
@@ -26,7 +27,10 @@ func NewAppController(rooms service.RoomService, records service.RecordService,
 	return &AppController{rooms: rooms, records: records, friends: friends, validator: validator}
 }
 
-// claims 解析 Bearer 并校验 member 身份；失败已写响应，ok=false 直接 return。
+// claims 解析 Bearer 并校验 member 身份；成功后把 token 内租户写回请求 ctx
+// （spec §4.3，与 pkg/middleware/auth.go admin 路径同一 API）——TenantMiddleware
+// 按 X-Tenant-ID 头解析的值在此被覆盖，伪造头无法跨租户；失败已写响应，ok=false 直接 return。
+// 全部 handler 均先过本函数再取 ctx.Request.Context()，repo 层因此恒拿 token 租户。
 func (c *AppController) claims(ctx *gin.Context) (*token.Claims, bool) {
 	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
 	if raw == "" {
@@ -42,6 +46,7 @@ func (c *AppController) claims(ctx *gin.Context) (*token.Claims, bool) {
 		resp.Fail(ctx, errs.New(errs.CodeForbidden, nil))
 		return nil, false
 	}
+	ctx.Request = ctx.Request.WithContext(tenant.WithTenantID(ctx.Request.Context(), cl.TenantID))
 	return cl, true
 }
 
