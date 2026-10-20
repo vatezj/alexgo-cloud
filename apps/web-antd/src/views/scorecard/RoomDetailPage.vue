@@ -62,7 +62,7 @@ onMounted(load);
         <Table
           :data-source="logs"
           :loading="loading"
-          :pagination="{ ...logPagination, total: logs.length }"
+          :pagination="{ ...logPagination, total: logs.length, onChange: (p: number, ps: number) => { logPagination.current = p; logPagination.pageSize = ps; } }"
           row-key="id"
           size="small"
         >
