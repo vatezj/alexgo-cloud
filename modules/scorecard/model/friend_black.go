@@ -1,16 +1,16 @@
 package model
 
-import (
-	"time"
-)
+import "time"
 
+// FriendBlack 拉黑：UserID 拉黑 BlockedUserID（单向行；判定时查双向）。
 type FriendBlack struct {
-	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	TenantID  uint64    `gorm:"column:tenant_id" json:"-"`           // 租户ID
-	Name      string    `gorm:"column:name" json:"name"`             // 名称
-	Status    int       `gorm:"column:status" json:"status"`         // 状态 1=启用 0=停用
-	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"` // 创建时间
-	UpdatedAt time.Time `gorm:"column:updated_at" json:"updated_at"` // 更新时间
+	ID            uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	TenantID      uint64    `gorm:"column:tenant_id" json:"-"` // 租户ID
+	UserID        uint64    `gorm:"column:user_id;uniqueIndex:uk_friend_black" json:"user_id"`
+	BlockedUserID uint64    `gorm:"column:blocked_user_id;uniqueIndex:uk_friend_black" json:"blocked_user_id"`
+	CreatedAt     time.Time `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at" json:"updated_at"`
 }
 
-func (FriendBlack) TableName() string { return "friend_blacks" }
+// TableName 指定拉黑关系表名（单数，与迁移 DDL 一致）。
+func (FriendBlack) TableName() string { return "friend_black" }
