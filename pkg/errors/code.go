@@ -39,6 +39,32 @@ const (
 	CodeFileTooLarge Code = 30012
 	// CodeExportTooManyRows excel：导出行数超过 MaxExportRows 上限（5万保险丝）。
 	CodeExportTooManyRows Code = 30013
+	// CodeScorecardRoomNotFound scorecard：房间不存在或非本租户。
+	CodeScorecardRoomNotFound Code = 30101
+	// CodeScorecardNotMember scorecard：非房间成员。
+	CodeScorecardNotMember Code = 30102
+	// CodeScorecardRoomClosed scorecard：房间已关闭。
+	CodeScorecardRoomClosed Code = 30103
+	// CodeScorecardRoomSettled scorecard：房间已结算，禁止记分。
+	CodeScorecardRoomSettled Code = 30104
+	// CodeScorecardNotOwner scorecard：仅房主可操作。
+	CodeScorecardNotOwner Code = 30105
+	// CodeScorecardRoomTaken scorecard：房号生成冲突重试耗尽。
+	CodeScorecardRoomTaken Code = 30106
+	// CodeScorecardTransferInvalid scorecard：转让目标无效（不在房/拉黑/同人）。
+	CodeScorecardTransferInvalid Code = 30107
+	// CodeScorecardBlacklisted scorecard：存在拉黑关系，禁止进房/加好友。
+	CodeScorecardBlacklisted Code = 30108
+	// CodeScorecardFriendTaken scorecard：好友关系已存在。
+	CodeScorecardFriendTaken Code = 30109
+	// CodeScorecardRecordNotFound scorecard：战绩不存在。
+	CodeScorecardRecordNotFound Code = 30110
+	// CodeScorecardNotYourRecord scorecard：仅能操作本人战绩。
+	CodeScorecardNotYourRecord Code = 30111
+	// CodeScorecardVersionConflict scorecard：并发冲突，请刷新快照重试。
+	CodeScorecardVersionConflict Code = 30112
+	// CodeScorecardTargetNotMember scorecard：目标不是房间成员。
+	CodeScorecardTargetNotMember Code = 30113
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -67,6 +93,20 @@ var registry = map[Code]string{
 	CodeFileTooLarge:       "文件超过大小限制",
 
 	CodeExportTooManyRows: "导出行数超过上限",
+
+	CodeScorecardRoomNotFound:    "房间不存在",
+	CodeScorecardNotMember:       "你不是该房间成员",
+	CodeScorecardRoomClosed:      "房间已关闭",
+	CodeScorecardRoomSettled:     "房间已结算",
+	CodeScorecardNotOwner:        "仅房主可操作",
+	CodeScorecardRoomTaken:       "房号生成失败，请重试",
+	CodeScorecardTransferInvalid: "转让目标无效",
+	CodeScorecardBlacklisted:     "存在拉黑关系，无法操作",
+	CodeScorecardFriendTaken:     "好友关系已存在",
+	CodeScorecardRecordNotFound:  "战绩不存在",
+	CodeScorecardNotYourRecord:   "仅能操作本人战绩",
+	CodeScorecardVersionConflict: "操作冲突，请下拉刷新",
+	CodeScorecardTargetNotMember: "目标不是房间成员",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 }
