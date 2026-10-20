@@ -21,7 +21,7 @@
   - 五位错误码分段见 `pkg/errors/code.go`：1xxxx 参数、2xxxx 认证授权、3xxxx 业务规则、5xxxx 系统。
   - 豁免清单（勿改）：`/api/oauth2/*` 协议端点用 RFC 6749 信封 `{"error","error_description"}`、
     `/health*`、`/metrics`、`/debug/pprof/**`。
-- **文件与导出**：文件上传/下载见 §3，Excel 导出见 §4；新建模块脚手架见 §5。
+- **文件与导出**：文件上传/下载见 §3，Excel 导出见 §4；新建模块脚手架见 §5；scorecard 打牌记账运维见 §6。
 
 ---
 
@@ -428,3 +428,55 @@ stdout 输出（`tools/newmodule/report.go`）：`✔ 新建模块 <name>（实�
 CGO_ENABLED=0 go test ./tools/newmodule/...   # 单测 + golden 路径清单钉触点
 make new-module NAME=demo ENTITIES=item ARGS="-dry-run"   # 干跑，确认计划后再实跑
 ```
+
+---
+
+## 6. scorecard 打牌记账（运维要点）
+
+模块功能、端点、数据模型见 [modules.md §11](modules.md#11-scorecard--打牌记账模块)；
+本节只记落地开关、日常操作与本地库维护。
+
+### 6.1 开关与鉴权
+
+- `alexgo-server/configs/config.yaml` → `modules.scorecard: true`；置 `false` 时
+  `RegisterRoutes` 直接返回，两组路由整体消失（其余模块不受影响）。
+- app 端 `/api/app/scorecard/**`（18 条）：**member** Bearer token，handler 内自鉴权、
+  不走 casbin；缺/坏 token 401、非 member 身份 403。
+- admin 端 `/api/admin/scorecard/**`（5 条）：casbin 三前缀
+  `scorecard:room` / `scorecard:record` / `scorecard:friend`，授权走 §1 的
+  菜单管理 → 角色授权（菜单行落库后由启动 seed 全量绑 admin 并重建策略）。
+
+### 6.2 监管操作（前端 3 页 + 详情子页）
+
+- `/scorecard/rooms`：状态筛选 → 「详情」跳 `/scorecard/rooms/detail?id=`
+  （房行 / 成员 / 流水三区）→ 「强制关房」二次确认
+  （`POST /api/admin/scorecard/rooms/:id/close`，**唯一运维写动作**；进行中与已结算
+  房均可关，已关再关报 `30103`）。
+- `/scorecard/records`、`/scorecard/friends`：只读分页（战绩可按 `user_id`/`room_id` 筛）。
+- 详情页流水最多 **200 条**（服务端 cap）；要全量流水走 app 端
+  `GET /api/app/scorecard/rooms/:id/logs` 分页。
+
+### 6.3 超时关房（后台 ticker）
+
+- 判定：`status=0 且 expire_time < now`，**每分钟**扫一轮 → 置 `status=2` 并写
+  type=8 流水（`extra.timeout_close`）。
+- 续期口径：只有**开房 / 进房 / 退房 / 配置变更 / 每笔支出**刷 `expire_time = now+2h`；
+  **看快照不算操作、不续期**。
+- 日志关键字 `scorecard sweep failed`（warn）= 该轮扫描失败，下轮自动重试，不影响请求链路。
+
+### 6.4 菜单与本地库维护
+
+- scorecard 菜单来自 system 迁移 `20261020000001_scorecard_menus.up.sql`
+  （1 目录 + 3 页，**英文占位名**）——改中文在后台「菜单管理」改，不回改 SQL；
+  房间详情页 `/scorecard/rooms/detail` **不进菜单**（前端 externalRoutes 静态注册）。
+- 迁移器只跑 `Up()`（`pkg/migrate/runner.go`，`migrate.auto` 可关），按模块表
+  `schema_migrations_<module>` 记版本、**无 checksum**：已记账的 up 永不重放，
+  重复 `make migrate` 是空跑（`ErrNoChange`），不会重写既有数据。
+- 本地库若残留脚手架版 6 页菜单（废弃 path `/scorecard/room_users|room_logs|friend_blacks`），
+  洗净二选一：
+  1. **手工删行**（最快，不动版本账）：
+     `DELETE FROM menus WHERE tenant_id=0 AND type='menu' AND path IN ('/scorecard/room_users','/scorecard/room_logs','/scorecard/friend_blacks');`
+  2. **down→up 一轮**：执行 `modules/system/migrations/20261020000001_scorecard_menus.down.sql`
+     （超集幂等 DELETE，覆盖 7 个 path）→ 把 `schema_migrations_system` 的 `version`
+     回退到 `20261016000002` 且 `dirty=0`（以实际库为准）→ `make migrate` 重跑 up，
+     按 `NOT EXISTS` 重插 3 页形态；重启进程让 seed 重建策略并绑 admin。

@@ -1,8 +1,8 @@
 # 模块功能与权限手册
 
-> 覆盖后端业务子系统（顶层 3 模块：**system 含 oauth2、infra 两个子模块**，另有 member、order；功能口径仍按 system / infra / member / oauth2 / order 划分）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
+> 覆盖后端业务子系统（顶层 4 模块：**system 含 oauth2、infra 两个子模块**，另有 member、order、scorecard；功能口径仍按 system / infra / member / oauth2 / order / scorecard 划分）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
 > 配套阅读：[架构说明](architecture.md)（中间件链/配置/部署）、[OAuth2 统一登录](oauth2.md)（登录与签发细节）、[使用文档](usage.md)（菜单管理与代码生成操作）、[服务通信](service-communication.md)（mono/micro 双形态）。
-> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13，文件存储 / Excel 导出 / 统一信封等补录条目核对于 2026-10-20。
+> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13，文件存储 / Excel 导出 / 统一信封等补录条目核对于 2026-10-20，scorecard 章节核对于 2026-10-21。
 
 ---
 
@@ -18,6 +18,7 @@
 8. [前端总览（apps/web-antd）](#8-前端总览appsweb-antd)
 9. [权限码速查总表](#9-权限码速查总表)
 10. [文档地图](#10-文档地图)
+11. [scorecard — 打牌记账模块](#11-scorecard--打牌记账模块)
 
 ---
 
@@ -34,6 +35,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 | **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 7 | `member_user.tenant_id` |
 | **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
 | **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 3 | 无（gap，见 §7.4） |
+| scorecard | modules/scorecard | 打牌记账（房间/计分/茶饭/战绩/好友） | /api/app/scorecard、/api/admin/scorecard | 23 | 全表 tenant_id |
 
 所有模块实现 `server.Module.RegisterRoutes`，由 `alexgo-server/server/http.go` 统一挂到 `/api` 组。
 
@@ -41,7 +43,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 
 | 形态 | 进程 | 说明 |
 | --- | --- | --- |
-| **mono**（默认） | 单进程 `alexgo-server`：oauth2 + infra + system + order + member | 模块间 fx 直调 |
+| **mono**（默认） | 单进程 `alexgo-server`：oauth2 + infra + system + order + member + scorecard | 模块间 fx 直调 |
 | **micro** | `system-server`（`make run-system`，含 gRPC TokenService）+ `member-server`（`make run-member`，`:8081`，只装 oauth2 + member，**无 Casbin**） | member 经 gRPC `TokenService` 委托签发/刷新/吊销，校验查共享 token 表 |
 
 详见 [service-communication.md](service-communication.md)。
@@ -151,7 +153,7 @@ RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色�
 
 ### 3.2 权限
 
-- 全站 casbin 前缀表 `permissionRoutes` 定义在本模块 `service/permission_routes.go`，但**保护的是所有模块**的 admin 路由（含 `infra:codegen`、`infra:file`、`oauth2:client`、`member:user`、`order:order`）。
+- 全站 casbin 前缀表 `permissionRoutes` 定义在本模块 `service/permission_routes.go`，但**保护的是所有模块**的 admin 路由（含 `infra:codegen`、`infra:file`、`oauth2:client`、`member:user`、`order:order`、`scorecard:room`/`scorecard:record`/`scorecard:friend`）。
 - 本模块权限前缀 11 组：`system:user` / `role` / `menu` / `dept` / `post` / `dict` / `config` / `notice` / `log` / `auth` / `tenant`，各自映射 `/api/admin/system/<资源>` 及 `/*`。
 - 菜单/按钮种子（seed.go）：
 
@@ -590,6 +592,10 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 │  ├─ [按钮] 登录鉴权   perm="system:auth:profile"
 │  ├─ [按钮] 租户管理    perm="system:tenant:manage"
 │  └─ [按钮] 会员管理    perm="member:user:manage"
+├─ Scorecard         /scorecard            perm="scorecard"  sort=80
+│  ├─ Rooms          /scorecard/rooms      views/scorecard/ScorecardRoomsPage     perm="scorecard:room"
+│  ├─ Records        /scorecard/records    views/scorecard/ScorecardRecordsPage   perm="scorecard:record"
+│  └─ Friends        /scorecard/friends    views/scorecard/ScorecardFriendsPage   perm="scorecard:friend"
 ├─ 代码生成          /codegen               perm="infra"  sort=90
 │  └─ 代码生成配置   /codegen/config        views/infra/codegen/index        perm="infra:codegen"
 │     ├─ [按钮] 导入   perm="infra:codegen:import"
@@ -604,6 +610,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 - 按钮（type=button）不进路由/菜单，只贡献权限码。
 - `/codegen`、`/oauth2` 目录 parent_id 用 `COALESCE(系统管理 id, 0)`——**迁移先于 seed 执行的全新库会落到根级**，以实际库为准。
+- `/scorecard` 目录与 3 页面是迁移种子的**英文占位名**（`Scorecard`/`Rooms`/`Records`/`Friends`，system 迁移 `20261020000001_scorecard_menus.up.sql`，parent_id=0 直挂根级），后台菜单管理可改中文；房间详情子页 `/scorecard/rooms/detail` **不在菜单**，走前端 externalRoutes 静态注册（见 §11.8）。
 
 ### 8.3 静态核心路由（不走权限）
 
@@ -628,6 +635,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `core/oauth2.ts` | oauth2 协议端点 | `authorizeLoginApi`、`exchangeTokenApi`——**裸 fetch 不走拦截器**（因 RFC6749 信封/302 语义） |
 | `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户 全套函数 + TS 类型 |
 | `infra.ts` | infra | codegen 11 函数 + 文件存储（`uploadFile` multipart、`getFile` 等，见 §4.7）+ `saveBlob`（委托 `downloadFileFromBlob`）+ 类型 |
+| `scorecard.ts` | scorecard admin 监管 | `getRoomsApi` / `getRoomDetailApi` / `closeRoomApi` / `getRecordsApi` / `getFriendsApi` + 3 类型（app 端 18 接口由微信小程序侧接入，本仓库不封装，见 §11） |
 
 **已知封装缺口**：`PUT /admin/system/users/:id`、`POST /users/:id/roles`（用户设角色）、`POST /roles/:id/menus`（角色授权菜单——UI 也缺）、各类 `PUT`（部门/岗位/字典/参数/公告——页面因此只有新建删除）。
 
@@ -643,7 +651,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 16 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 19 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -663,6 +671,9 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `oauth2:client` | `/api/admin/oauth2/clients`, `/api/admin/oauth2/clients/*` |
 | `member:user` | `/api/admin/member/users`, `/api/admin/member/users/*` |
 | `order:order` | `/api/admin/order/orders`, `/api/admin/order/orders/*` |
+| `scorecard:room` | `/api/admin/scorecard/rooms`, `/api/admin/scorecard/rooms/*` |
+| `scorecard:record` | `/api/admin/scorecard/records`, `/api/admin/scorecard/records/*` |
+| `scorecard:friend` | `/api/admin/scorecard/friends`, `/api/admin/scorecard/friends/*` |
 
 ### 9.2 前端 `v-access:code` 使用清单
 
@@ -684,7 +695,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `infra:codegen:sync` | 同上 | 同步 |
 | `infra:codegen:delete` | 同上 | 删除 |
 
-仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`。
+仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
 
 ### 9.3 注意事项
 
@@ -708,6 +719,145 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | [usage.md](usage.md) | 菜单管理 + 代码生成 + 文件上传（§3）+ Excel 导出（§4）+ 新建模块脚手架（§5）操作手册 | 本文 §3/§4 的"怎么用"视角 |
 | [roadmap.md](roadmap.md) | P0/P1/P2 分层排期与收口状态 | 本文只记现状，进度与欠账看它 |
 | [superpowers/specs/2026-10-19-module-template-design.md](superpowers/specs/2026-10-19-module-template-design.md) | newmodule 脚手架设计：触点清单、全有或全无、回滚语义 | 用法在 usage.md §5；新增模块后**手工回填本文对应章节**（脚手架不自动改 modules.md） |
+
+---
+
+## 11. scorecard — 打牌记账模块
+
+### 11.1 功能
+
+线下打牌的**纯分数记账**全链路：房间（开房/进房/配置/流水）、记分支出、茶饭池（自动百分比 + 手动 DIY）、结算/退房/转让房主、战绩与统计、好友/拉黑/排名开关。产品红线是**只记分数**——代码、字段、接口命名一律 `score`/`tea`，全程计量只有分数与茶饭两样。设计与需求见
+[`superpowers/specs/2026-10-20-scorecard-module-design.md`](superpowers/specs/2026-10-20-scorecard-module-design.md)
+与 [modules/dapaijizhang.md](modules/dapaijizhang.md)（微信小程序端不在本仓库，接本节 app 端 18 接口）。
+
+装配要点（`modules/scorecard/module.go`；`alexgo-server/configs/config.yaml` 的 `modules.scorecard: false` 时 `RegisterRoutes` 直接返回）：
+
+- **Repository**：Room / RoomUser / RoomLog / Record / Friend / FriendBlack 六类；写路径 `FOR UPDATE` 行锁 + `SaveVersioned`（`WHERE id AND version`）乐观锁
+- **Service**：`RoomService`（开房/进房/快照/改配置/支出/流水/结算/退房/转让 + 监管三方法）、`RecordService`（我的战绩/明细/删除/统计 + 监管列表）、`FriendService`（好友/拉黑/排名开关 + 监管列表）
+- **Controller**：`AppController`（18 接口，Bearer 自鉴权）与 `AdminController`（5 接口，casbin 放行后只做参数与领域校验，**不取 claims、监管动作不落操作者身份**）
+- **后台任务**：超时关房 ticker（每分钟 `SweepExpired`，见 §11.6）
+- 用户体系**复用 member**：不建用户表、不做登录，身份一律 `member_user.id`；`scorecard.FxModule` 装配于 `alexgo-server/cmd/main.go`
+
+### 11.2 权限与菜单
+
+| 端 | 范围 | 鉴权 |
+| --- | --- | --- |
+| app | `/api/app/scorecard/**`（18 条） | handler 内解析 `Authorization: Bearer` → `token.Validator.Validate` → `UserType==Member`，**不走 casbin**（与 member app 端同构）；缺/坏 token 401 `20001`、非 member 403 `20003`、路径 id 非法 400 `10001` |
+| admin | `/api/admin/scorecard/**`（5 条） | 管理员 token + casbin（`user_type=1` 门槛在前），三前缀见 §9.1：`scorecard:room` / `scorecard:record` / `scorecard:friend` |
+
+菜单种子在 **system 模块迁移**
+`modules/system/migrations/20261020000001_scorecard_menus.up.sql`（全部 `NOT EXISTS` 幂等、`tenant_id=0`）：
+目录「Scorecard」`/scorecard`（perm `scorecard`、`lucide:package`、sort=80、直挂根级）+ 3 页面
+「Rooms」`/scorecard/rooms`、「Records」`/scorecard/records`、「Friends」`/scorecard/friends`
+（perm 取前两段，component 指向 §11.9 三个列表页）。菜单名是**英文占位**，后台菜单管理可改中文；
+启动 seed 全量绑 admin 角色并重建策略（§2.6）。房间详情页**不在菜单**（见 §11.9）；
+按钮级权限不拆——后端只认前两段前缀（§9.3）。
+
+### 11.3 app 端点（18 条，前缀 `/api/app/scorecard`）
+
+| 方法 | 路径 | handler | 说明 |
+| --- | --- | --- | --- |
+| POST | `/rooms` | AppController.CreateRoom | 开房：`room_code` 可空 = 服务端生成 4 位去混淆房号（冲突重试 5 次、耗尽 30106），可带默认配置；创建者入房（`is_creator=1`、`session_no=1`），`version=1`、`expire=now+2h`，返回快照 |
+| POST | `/rooms/join` | AppController.JoinRoom | 按 `room_code` 进房：已结算 30104 / 已关闭 30103 拒、与任一成员互拉黑 30108 拒；**幂等**——已在房直接返回现状（不重复加人、不记流水、不刷过期）；成员行是硬删，重进 = 新会话（`session_no=1`、计分清零） |
+| GET | `/rooms/:id/snapshot` | AppController.Snapshot | 全量快照：`version` / 成员分 / 配置 / 茶饭池 / 最近 20 条流水；非成员 30102；昵称头像走 member BriefProvider（拉取失败降级空昵称） |
+| PUT | `/rooms/:id/config` | AppController.UpdateConfig | 改配置，仅房主 30105；数值项写 `pending_*` 且 `pending_apply_round_no = round_no+1`（**从下把生效**，下一笔支出整组刷入），`tea_auto_enabled` 提供即改生效字段；刷心跳 |
+| POST | `/rooms/:id/expense` | AppController.Expense | 记分支出核心事务：body `score` / `tea` / `to_user_id` / `client_request_id`（幂等键，必填）/ `tea_from_user_id`（手动 DIY 来源，缺省 = 支出方）；行锁 → 幂等回放 → `round_no+1` 应用到期 pending → 茶饭计算（自动 `T=round(S×percent)` 从赢家所得扣）→ 记账（总分守恒）→ 达标关池 → 上限频控（本会话首提醒全房）→ type=1 流水 → `version` 落库，任一步失败整体回滚 |
+| GET | `/rooms/:id/logs` | AppController.Logs | 流水分页（`page`/`size`，size ≤ 100，默认 1/10） |
+| POST | `/rooms/:id/settle` | AppController.Settle | 结算，仅房主：`status 0→1` + 批量写全员 `record` + type=5 流水，此后禁记分（30104） |
+| POST | `/rooms/:id/leave` | AppController.Leave | 退房：进行中房房主先自动结算（全员 `record`、`settle_type=2`）再退；普通成员先为自己写 `record`（全零 → `settle_type=4` 空战绩，否则 3）再删行 + type=4 流水；最后一人离开 → `status=2` |
+| POST | `/rooms/:id/transfer-owner` | AppController.TransferOwner | 转让房主（`target_user_id`）：仅房主、`status=0`、目标在房 30113、非同人 30107、双方不互拉黑 30108 → `creator_id` 换、两行 `is_creator` 互换、type=9 流水；V1 不需对方确认 |
+| GET | `/records` | AppController.MyRecords | 我的战绩分页（时间倒序） |
+| GET | `/records/:recordId` | AppController.RecordDetail | 明细：不存在 30110 / 非本人 30111 → 按 `room_id` 反查全房成员行 |
+| DELETE | `/records/:recordId` | AppController.DeleteRecord | 删本人战绩行（30110 / 30111） |
+| GET | `/stat` | AppController.Stat | 我的统计（聚合 `record`：`total_score`/`win`/`lose`/`draw`/`win_rate`，胜率 = 胜/(胜+负)） |
+| GET | `/friends` | AppController.ListFriends | 好友列表（含 `rank_enabled` 排名开关） |
+| POST | `/friends` | AppController.AddFriend | 加好友（`friend_user_id`）：对方存在性 → 已是好友 30109 → 双向拉黑 30108 → 双向各写一行 |
+| DELETE | `/friends/:userId` | AppController.RemoveFriend | 删好友 |
+| POST | `/friends/:userId/black` | AppController.SetFriendBlack | 拉黑/解除（`blocked` 0/1）；任一方向命中即双向拦截进房与加好友（30108） |
+| PUT | `/friends/:userId/rank` | AppController.SetFriendRank | 排名参与开关（`enabled` 0/1） |
+
+### 11.4 admin 端点（5 条，前缀 `/api/admin/scorecard`）
+
+| 方法 | 路径 | handler | 权限码 | 说明 |
+| --- | --- | --- | --- | --- |
+| GET | `/rooms` | AdminController.ListRooms | `scorecard:room` | 房间分页（`status` 缺省 -1 不过滤，`page`/`size` size ≤ 100） |
+| GET | `/rooms/:id` | AdminController.RoomDetail | `scorecard:room` | 房行 + 全量成员 + 最近流水（**cap 200 条**，全量流水走 app 端分页接口）；房不存在/跨租户 30101 |
+| POST | `/rooms/:id/close` | AdminController.CloseRoom | `scorecard:room` | **唯一运维写动作**：强制关房，`status` 0/1 → 2，无房主校验；行锁 + `version` 就地 +1 + type=8 流水（`extra.event=admin_close`）；已关再关 30103 |
+| GET | `/records` | AdminController.ListRecords | `scorecard:record` | 战绩分页（`user_id`/`room_id` 传 0 = 不过滤） |
+| GET | `/friends` | AdminController.ListFriends | `scorecard:friend` | 好友/拉黑关系分页（只读） |
+
+### 11.5 数据模型（6 表）
+
+迁移 `modules/scorecard/migrations/20261020000001_scorecard_tables.{up,down}.sql`
+（`CREATE TABLE IF NOT EXISTS`、无外键），表名**单数**（照需求文档 §7 原名，
+以 `modules/scorecard/model` 的 `TableName()` 与 gorm 标签为准）；
+**6 表全带 `tenant_id`** + `created_at`/`updated_at`，走 GORM 租户插件隔离（不重蹈 §7.4 `orders` 的 gap）：
+
+| 表 | 要点 |
+| --- | --- |
+| `room` | `room_code`（唯一，4 位）、`creator_id`（当前房主）、`status` 0 进行中 / 1 已结算 / 2 已关闭、`expire_time`、茶饭配置 `tea_target_amount`/`tea_percent`/`tea_pool_total`/`tea_auto_enabled`、`max_lose_score`、`round_no` + `pending_tea_*`/`pending_max_lose_score`/`pending_apply_round_no`（从下把生效）、**`version` 乐观锁** |
+| `room_user` | `room_id`+`user_id` 唯一键、`cur_score`、`cum_lose_score`、`is_creator`、`session_no`（本行进房序次；退房硬删、重进从 1 起） |
+| `room_log` | 流水：`from_user_id`/`to_user_id`、`score`、`tea`、`type` 1 记分 / 2 茶饭 / 3 进房 / 4 退房 / 5 结算 / 6 上限提醒 / 7 配置变更 / 8 状态变更 / 9 转让房主、`client_request_id`（幂等键）、`extra`（json 扩展备注）；索引 `(room_id,created_at)` |
+| `record` | **每成员一行**：`score`/`cum_lose_score` + 终局配置冗余（`tea_pool_total`/`tea_percent`/`tea_target_amount`/`max_lose_score`，统计不 JOIN）、`settle_type` 1 正常结算 / 2 房主退房自动结算 / 3 退房 / 4 零数据空战绩；索引 `(user_id,created_at)`、`(room_id)` |
+| `friend` | `user_id`+`friend_user_id` 唯一键、`rank_enabled` 排名开关 |
+| `friend_black` | `user_id`+`blocked_user_id` 唯一键；任一方向命中即双向拦截 |
+
+仓内「不存在」与「跨租户」统一软查为 `nil` 再由 service 映射 30101（房）/ 30110（战绩）——
+租户插件过滤在前，两种原因不可区分。
+
+### 11.6 跨模块与后台任务
+
+- **member BriefProvider（fx optional）**：窄只读接口 `modules/member/service/brief.go` 的
+  `GetBriefs(ctx, ids) → []UserBrief{ID, Nickname, Avatar, Status}`，映射在 `modules/member/module.go`；
+  scorecard 侧 `RoomService`/`FriendService` 的该注入标 `optional:"true"`——**micro 形态（本进程不装
+  member.FxModule）仍可装配**，缺席时快照昵称降级为空、加好友跳过对方存在校验。敏感列不在
+  SELECT 面内，不存在/已删的 id 自然缺席。
+- **超时关房 ticker**（`module.go` 的 `fx.Invoke`，照 system token `SweepExpired` 模式）：
+  OnStart 起 goroutine **每分钟**跑 `RoomService.SweepExpired`——跨租户拉
+  `status=0 AND expire_time < now` 的房 → 逐房事务 `FOR UPDATE` 复验（并发下可能已被结算/关闭/续期）
+  → `status=2` + type=8 流水（`extra.timeout_close`）；错误只记 warn 不致命、下轮再扫；
+  OnStop cancel 退出。
+- **心跳口径**：`expire_time = now + 2h` 只在**开房/进房/退房/配置变更**与**每笔支出**时刷新；
+  **快照读不构成心跳、不续期**。
+
+### 11.7 实时一致（无 WS）
+
+设计决策 6：不做 WebSocket。客户端轮询 `GET /rooms/:id/snapshot` 取全量状态
+（`version` / 成员分 / 配置 / 茶饭池 / 最近流水）；支出等写操作的响应带回最新 `version`
+（支出另带 `log_id`、实收茶饭、首达上限成员名单）。`version` 由 `SaveVersioned`
+（`UPDATE ... WHERE id AND version`，`RowsAffected=0` → 30112）**单调递增**：客户端以快照对齐、
+按 version 去重并丢弃过期响应，同房间写操作经行锁天然串行（分数守恒的前提）。
+
+### 11.8 错误码（30101–30113）
+
+`pkg/errors/code.go` 的 scorecard 段，落在 3xxxx 业务段（HTTP 400）：
+
+| 码 | 含义 | 码 | 含义 |
+| --- | --- | --- | --- |
+| 30101 | 房间不存在或非本租户 | 30108 | 存在拉黑关系，禁止进房/加好友 |
+| 30102 | 非房间成员 | 30109 | 好友关系已存在 |
+| 30103 | 房间已关闭 | 30110 | 战绩不存在 |
+| 30104 | 房间已结算，禁止记分 | 30111 | 仅能操作本人战绩 |
+| 30105 | 仅房主可操作 | 30112 | 并发冲突，请刷新快照重试 |
+| 30106 | 房号生成冲突重试耗尽 | 30113 | 目标不是房间成员 |
+| 30107 | 转让目标无效（不在房/拉黑/同人） | | |
+
+### 11.9 前端页面（apps/web-antd，4 页）
+
+| 路由 | 组件 | 功能 | 权限与可见性 |
+| --- | --- | --- | --- |
+| `/scorecard/rooms` | `views/scorecard/ScorecardRoomsPage.vue` | 房间分页列表（状态筛选、详情入口、强制关房二次确认，仅 `status===0` 给入口） | 菜单行 perm `scorecard:room` |
+| `/scorecard/rooms/detail` | `RoomDetailPage.vue`（query `?id=`） | 房行信息 + 成员表 + 流水（本地分页，后端 cap 200） | **不在菜单**：走 `src/router/routes/external/scorecard.ts` 静态注册（`meta.hideInMenu`，保留登录守卫），数据权限由 admin API 的 casbin（`scorecard:room`）强制 |
+| `/scorecard/records` | `ScorecardRecordsPage.vue` | 战绩分页（`user_id`/`room_id` 筛选）+ 明细弹窗看全房成员行 | 菜单行 perm `scorecard:record` |
+| `/scorecard/friends` | `ScorecardFriendsPage.vue` | 好友/拉黑关系只读列表 | 菜单行 perm `scorecard:friend` |
+
+- **详情页为何不进菜单**：`accessMode: 'backend'` 下非 core 路由只由 `/api/menu/all` 的菜单树生成，
+  补菜单行会在侧栏多出可见项（`menus` 表也无 hide 列）——故走 externalRoutes 静态注册
+  （§8.1「前端零静态业务路由表」的唯一例外），精确路径赢过 catch-all 404、不吞三个列表路径。
+- API 封装 `src/api/scorecard.ts`（5 函数 + 3 类型，`requestClient` → `/api/admin/scorecard/**`）；
+  **页内不使用 `v-access`**——可见性靠菜单、操作靠后端 casbin（§9.2 已列入「仅菜单/后端使用」）。
+- 脚手架按实体生成的 6 套 CRUD 视图与 api 目录已全部删除，scorecard 路径下只剩上述 4 页 + `api/scorecard.ts`。
+- app 端 18 接口由微信小程序侧（本仓库外）接入，前端不封装。
 
 ---
 
