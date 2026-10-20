@@ -41,6 +41,13 @@ var FxModule = fx.Module("scorecard",
 		// RecordService 直产接口类型（同 RoomService 模式）：db + RecordRepository 均可解析，
 		// Task 12/13 控制器按 service.RecordService 注入。
 		service.NewRecordService,
+		// FriendService 好友服务（Task 11）：briefs（member.BriefProvider）标 optional
+		// 同 RoomService——micro 模式本进程不装 member.FxModule，图里无该接口映射；
+		// 缺席时 Add 降级跳过对方存在校验、List 昵称降级留空。Task 12/13 控制器消费。
+		fx.Annotate(
+			service.NewFriendService,
+			fx.ParamTags("", "", "", "", `optional:"true"`),
+		),
 		app.NewAppRoomController,
 		app.NewAppRoomUserController,
 		app.NewAppRoomLogController,
