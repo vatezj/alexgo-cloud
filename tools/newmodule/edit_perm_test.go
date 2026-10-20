@@ -57,7 +57,7 @@ func TestEditPermissionRoutes(t *testing.T) {
 		}
 	}
 	// 字节级：输出 = 原文件恰好插入 2 个条目行
-	//（本用例新 key 均窄于既有最大宽，差异应为空集：连冒号空格都一字不动）
+	//（本用例新 key 不宽于所在对齐组既有最大宽，差异应为空集：连冒号空格都一字不动）
 	beforeLines := strings.Split(string(src), "\n")
 	afterLines := strings.Split(got, "\n")
 	if len(afterLines) != len(beforeLines)+2 {
@@ -85,9 +85,10 @@ func TestEditPermissionRoutes(t *testing.T) {
 	}
 }
 
-// TestEditPermissionRoutes_WideKey 宽 key（product:category → key+冒号 18 列，超过
-// 既有最大 16 列）：插入前必须把新 key 一并计入目标宽度，对 map 块内每条条目行做
-// 纯空白重对齐；否则新行单独加宽，产物 gofmt -l 标红、整块被重对齐出无关 diff。
+// TestEditPermissionRoutes_WideKey 宽 key（product:category → key+冒号 19 列，与
+// scorecard 组既有最大宽持平；T13 注释块已把 map 切成宽 16 / 宽 19 两组对齐）：
+// 产物必须与 gofmt 的分组对齐输出逐字节一致——手工按单组目标宽重排会把窄组行
+// 一并改宽，gofmt -l 标红。
 // 字节级：输出相对原文的差异仅「条目行冒号后空格」+「2 条新增行」，无其它 diff。
 func TestEditPermissionRoutes_WideKey(t *testing.T) {
 	root := repoRoot(t)
