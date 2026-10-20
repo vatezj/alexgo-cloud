@@ -54,7 +54,8 @@ func newRoomServiceForTest(t *testing.T) (RoomService, *gorm.DB) {
 	}
 	roomRepo := repository.NewRoomRepository(db)
 	svc := NewRoomService(db, roomRepo, repository.NewRoomUserRepository(db),
-		repository.NewRoomLogRepository(db), fakeBriefs{rec: &briefRec{}}, repository.NewFriendBlackRepository(db))
+		repository.NewRoomLogRepository(db), repository.NewRecordRepository(db),
+		fakeBriefs{rec: &briefRec{}}, repository.NewFriendBlackRepository(db))
 	return svc, db
 }
 

@@ -30,8 +30,8 @@ const roomCodeMaxAttempts = 6
 // recentLogLimit 快照内嵌最近流水条数（spec §4.1 快照含最近日志）。
 const recentLogLimit = 20
 
-// RoomService scorecard 房间服务：开房/进房/快照/流水分页/支出/改配置。
-// Task 8-13 在同一实现上追加 Settle/Leave/TransferOwner 等。
+// RoomService scorecard 房间服务：开房/进房/快照/流水分页/支出/改配置/结算/退房/转让房主。
+// Task 9-13 在同一实现上追加记录查询等。
 type RoomService interface {
 	// Create 开房：房号可空（服务端生成 4 位），冲突重试耗尽 → 30106。
 	Create(ctx context.Context, userID uint64, req CreateRoomReq) (*RoomSnapshot, error)
@@ -45,6 +45,14 @@ type RoomService interface {
 	Expense(ctx context.Context, userID, roomID uint64, req ExpenseReq) (*ExpenseResult, error)
 	// UpdateConfig 改配置（仅房主；数值项写 pending「从下把生效」，spec §3.2）。
 	UpdateConfig(ctx context.Context, userID, roomID uint64, req ConfigReq) (*RoomSnapshot, error)
+	// Settle 结算（仅房主 30105）：全员 record 终局快照 + status=1 + type=5 流水（spec §3.3）。
+	Settle(ctx context.Context, userID, roomID uint64) error
+	// Leave 退房：房主先自动结算（settle_type=2）；普通成员写 record（3/4）后硬删成员行；
+	// 最后一人离开 → status=2。重进按新会话从 session_no=1、计分清零起。
+	Leave(ctx context.Context, userID, roomID uint64) error
+	// TransferOwner 转让房主：目标须在房（30113）、拉黑双向拦截（30108）；
+	// 两行 is_creator 互换 + creator_id + type=9 流水。
+	TransferOwner(ctx context.Context, userID, roomID, targetUserID uint64) error
 }
 
 type roomService struct {
@@ -52,14 +60,16 @@ type roomService struct {
 	room   repository.RoomRepository
 	member repository.RoomUserRepository
 	log    repository.RoomLogRepository
+	record repository.RecordRepository
 	briefs membersvc.BriefProvider // import "alexGo-cloud/modules/member/service" 别名 membersvc
 	black  repository.FriendBlackRepository
 }
 
 // NewRoomService 构造房间服务（fx 装配 Task 12 Provide；测试经 newRoomServiceForTest 构造）。
 func NewRoomService(db *gorm.DB, room repository.RoomRepository, member repository.RoomUserRepository,
-	log repository.RoomLogRepository, briefs membersvc.BriefProvider, black repository.FriendBlackRepository) RoomService {
-	return &roomService{db: db, room: room, member: member, log: log, briefs: briefs, black: black}
+	log repository.RoomLogRepository, record repository.RecordRepository,
+	briefs membersvc.BriefProvider, black repository.FriendBlackRepository) RoomService {
+	return &roomService{db: db, room: room, member: member, log: log, record: record, briefs: briefs, black: black}
 }
 
 // Create 开房：房号（自定义冲突直接 30106 / 生成冲突重试 5 次）→ room 行（status=0、
