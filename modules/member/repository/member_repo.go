@@ -12,13 +12,15 @@ import (
 // MemberRepository 会员用户仓储。
 type MemberRepository interface {
 	GetByMobile(ctx context.Context, tenantID uint64, mobile string) (*model.MemberUser, error)
+	// GetByID 按 tenant+id 直取（含已软删行——调用方按 Deleted 字段判定）。
+	GetByID(ctx context.Context, tenantID, id uint64) (*model.MemberUser, error)
 	Create(ctx context.Context, u *model.MemberUser) error
 	Update(ctx context.Context, u *model.MemberUser) error
 	List(ctx context.Context, tenantID uint64, page, size int) ([]*model.MemberUser, int64, error)
 	CountByTenant(ctx context.Context, tenantID uint64) (int64, error)
 	// ListAll 租户内全量（导出用；不截断、不走 Paginate——后者 page/size≤0 兜底 1/10）。
 	ListAll(ctx context.Context, tenantID uint64) ([]*model.MemberUser, error)
-	// UpdateStatus 按 tenant+id 局部更新启用/停用状态（Disable 用；无按 ID 直取方法）。
+	// UpdateStatus 按 tenant+id 局部更新启用/停用状态（Disable 用）。
 	UpdateStatus(ctx context.Context, tenantID, id uint64, status int) error
 	// GetBriefs 按 id 批量取会员摘要（跨模块窄只读，BriefProvider 消费）：
 	// 窄列 + deleted=0 口径与本包其余查询一致；租户隔离依赖 gormplugin 按 ctx 注入。
@@ -34,6 +36,21 @@ func (r *memberRepo) GetByMobile(ctx context.Context, tid uint64, mobile string)
 	var u model.MemberUser
 	err := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND mobile = ? AND deleted = 0", tid, mobile).
+		First(&u).Error
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// GetByID 按 tenant+id 直取（含已软删行——调用方按 Deleted 字段判定，
+// social 登录分支口径：u.Deleted || u.Status != 1 → 用户不存在）。
+// 显式 tenant_id 过滤——gormplugin 对 tid=0 沉默不注入，不能依赖插件兜底；
+// 与本包其余读方法不同，不带 deleted=0。
+func (r *memberRepo) GetByID(ctx context.Context, tenantID, id uint64) (*model.MemberUser, error) {
+	var u model.MemberUser
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
 		First(&u).Error
 	if err != nil {
 		return nil, err

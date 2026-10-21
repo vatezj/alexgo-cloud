@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/member/model"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
@@ -46,6 +47,16 @@ func (m *memRepo) GetByMobile(_ context.Context, tid uint64, mobile string) (*mo
 		return nil, errors.New("not found")
 	}
 	return u, nil
+}
+
+// GetByID 与真实仓储同形：按 (tenant, id) 直取、含软删行，未找到/跨租户 → gorm.ErrRecordNotFound。
+func (m *memRepo) GetByID(_ context.Context, tid, id uint64) (*model.MemberUser, error) {
+	for _, u := range m.byMobile {
+		if u.TenantID == tid && u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 func (m *memRepo) Create(_ context.Context, u *model.MemberUser) error {
 	m.nextID++
