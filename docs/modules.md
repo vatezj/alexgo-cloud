@@ -2,7 +2,7 @@
 
 > 覆盖后端业务子系统（顶层 4 模块：**system 含 oauth2、infra 两个子模块**，另有 member、order、scorecard；功能口径仍按 system / infra / member / oauth2 / order / scorecard 划分）的**功能、权限、后端端点、前端页面**，以及横切的认证、RBAC、租户体系。
 > 配套阅读：[架构说明](architecture.md)（中间件链/配置/部署）、[OAuth2 统一登录](oauth2.md)（登录与签发细节）、[使用文档](usage.md)（菜单管理与代码生成操作）、[服务通信](service-communication.md)（mono/micro 双形态）。
-> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13，文件存储 / Excel 导出 / 统一信封等补录条目核对于 2026-10-20，scorecard 章节核对于 2026-10-21。
+> 与实现不一致时以代码为准；本文关键事实与代码交叉核对于 2026-10-13，文件存储 / Excel 导出 / 统一信封等补录条目核对于 2026-10-20，scorecard 章节核对于 2026-10-21，第三方登录（微信一期，§6.7）补录条目核对于 2026-10-21。
 
 ---
 
@@ -33,7 +33,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 | **system** | `modules/system` | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/租户；RBAC 与 Casbin 策略的唯一实现方 | `/api/admin/system`、`/api/app/system`、`/api` 根（vben 5 端点） | 58 | 全表 `tenant_id`（`tenants`/`casbin_rule` 豁免） |
 | **infra** | `modules/system/infra` | 代码生成（库表导入、字段配置、同步、预览、ZIP 下载）+ 统一文件上传（`infra/file`） | `/api/admin/infra/codegen`、`/api/admin/infra/file`、`/api/public/infra/file` | 15 | 无（系统级） |
 | **member** | `modules/member` | C 端会员注册/登录 + 管理端会员启停 | `/api/app/member`、`/api/admin/member` | 7 | `member_user.tenant_id` |
-| **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理 | `/api/oauth2`、`/api/admin/oauth2` | 8 | client 全局；授权码手管 `tenant_id` |
+| **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理、第三方登录（`social/` 子包，微信一期，见 §6.7） | `/api/oauth2`、`/api/admin/oauth2`、`/api/app/social`、`/api/app/member/auth`（social 三端点）、`/api/admin/social` | 17 | client 全局；授权码手管 `tenant_id`；social 两表租户级 |
 | **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 3 | 无（gap，见 §7.4） |
 | scorecard | modules/scorecard | 打牌记账（房间/计分/茶饭/战绩/好友） | /api/app/scorecard、/api/admin/scorecard | 23 | 全表 tenant_id |
 
@@ -80,6 +80,7 @@ Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateL
 | vben 兼容端点 | `POST /api/auth/login` | 兼容层，保留条件见 [oauth2-compat-retirement.md](oauth2-compat-retirement.md) |
 | app 端 system 账号 | `POST /api/app/system/auth/login` | 统一登录（client=`alexgo-admin`） |
 | app 端会员 | `POST /api/app/member/auth/login` | 统一登录（client=`alexgo-app`、account_type=member） |
+| app 端第三方登录（微信） | `POST /api/app/social/wechat/mp/login`、`POST /api/app/social/wechat/web/login` | 公开 code 换令牌，**不经 UnifiedLogin**（直调 `SocialService` → `token.Issuer`，见 §6.7） |
 
 签发双模式（`auth.mode`，默认 `token`）：
 
@@ -122,7 +123,7 @@ Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateL
   - 全局豁免：`tenants`、`casbin_rule`
   - 系统级（列上无 tenant_id）：`oauth2_client`、`codegen_table`/`codegen_column`
   - 特例：`oauth2_authorize_code` 字段名 `OwnerTenantID` + `column:tenant_id`（规避插件注入，手动管理）
-  - 租户级（插件隔离）：`system_users`、`roles`、`menus`、`user_roles`、`role_menus`、`depts`、`posts`、`dict_*`、`system_configs`、`system_notices`、`system_notice_reads`、`login_logs`、`operate_logs`、`outbox_events`、`member_user`、`system_oauth2_access_token`
+  - 租户级（插件隔离）：`system_users`、`roles`、`menus`、`user_roles`、`role_menus`、`depts`、`posts`、`dict_*`、`system_configs`、`system_notices`、`system_notice_reads`、`login_logs`、`operate_logs`、`outbox_events`、`member_user`、`system_oauth2_access_token`、`system_social_app`、`system_member_identity`（social 包读写**恒显式 `tenant_id` 过滤**、写入 `IgnoreTenant` + 显式赋值，见 §6.7）
   - **未隔离（gap）**：`orders` 无 `TenantID` 字段——service 注释宣称多租户但插件不过滤该表
 - **租户能力**：租户 CRUD（§3）、账号额度闸门（`account_limit<0` 不限）、停用租户在签发与校验两道闸查 `tenants.status`。
 
@@ -131,7 +132,7 @@ Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateL
 由 `modules/system/service/seed.go`（OnStart 异步）+ 迁移 SQL 双源写入（全部幂等、`tenant_id=0`）：
 
 - 管理员 `admin`（bcrypt 密码，读 `modules/system/configs/config.yaml`）+ 角色 `admin`（type=1 内置、data_scope=1）+ `user_roles` 绑定
-- 菜单树：见 §8.2 完整菜单树（seed 写系统管理 1 目录 + 12 页面 + 3 按钮；迁移补工作台/订单/codegen/oauth2 菜单）
+- 菜单树：见 §8.2 完整菜单树（seed 写系统管理 1 目录 + 12 页面 + 3 按钮；迁移补工作台/订单/codegen/oauth2/social 菜单）
 - 末尾：全部菜单绑 admin 角色 → `RebuildPolicies` → `AddRoleForUser`
 - 种子 client：`alexgo-admin`（公开、授权码+password+refresh、account_types=system）、`alexgo-app`（机密、password+refresh、account_types=member）
 - **没有任何 SQL 版 roles/tenants 种子**——租户需在后台手动创建
@@ -504,6 +505,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 - **协议端点**（RFC 6749）：授权码 + PKCE、四种 grant 的 token 端点、userinfo、图形验证码。
 - **统一登录门面** `UnifiedLogin`：captcha → 按 account_type 路由 system/member 凭据校验 → 签发 → 恰一次登录审计——是 member 登录、vben SSO 的公共入口。
 - **客户端管理**：client CRUD（admin 端）。
+- **第三方登录（`social/` 子包，微信一期）**：微信小程序/网页授权 code 换令牌的三分支登录、第三方/手机号绑定与解绑、租户级渠道配置管理——详见 §6.7。
 
 装配要点（`modules/system/oauth2/module.go`）：CaptchaService（Redis，`auth.captcha.enabled` 默认 false）、ClientRepository、AuthorizeCodeRepository、ClientService（secret bcrypt 比对）、AuthorizeCodeService（授权码 TTL **2min**、CAS 单次消费 + PKCE S256）、TokenService（四 grant 状态机，**第一步恒 client 认证**）。
 
@@ -551,6 +553,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 - `oauth2_client`（全局，无 tenant_id/deleted）：client_id、secret_hash、grant_types、redirect_uris、account_types、status；`AllowsGrant/AllowsAccountType/AllowsRedirect` 判定方法。
 - `oauth2_authorize_code`：code（`uk_oauth2_code`）、client、owner、scope、code_challenge(+method)、revoked；`OwnerTenantID` 映射 `column:tenant_id` 规避租户插件。
 - 迁移 3 个 up + 种子 client `alexgo-admin` / `alexgo-app`（+ dev 回调 `localhost:5666/callback`）。
+- 第三方登录两表 `system_social_app`（租户级渠道配置）/ `system_member_identity`（第三方身份绑定），子包 `social/`、迁移 `20261021000001_social_tables`——字段与唯一键详见 §6.7。
 
 ### 6.5 对外关系
 
@@ -562,8 +565,88 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | 路由 | 组件 | 功能 | 权限码 |
 | --- | --- | --- | --- |
 | `/oauth2/clients` | `views/system/Oauth2ClientsPage.vue` | 客户端列表 + 新建/编辑/删除（client_id/grant_types/账号类型/启停） | 菜单 `oauth2:client`；按钮 `:create/:update/:delete` |
+| `/social/apps` | `views/system/SocialAppsPage.vue` | 第三方登录渠道配置（平台筛选 + 新建/编辑/删除；表单 platform 下拉 `wechat_mp`/`wechat_web` + appid + secret（编辑留空=保留）+ status） | 菜单 `social:app`；按钮 `:create/:update/:delete` |
 
 登录相关静态页见 §8.3（`/auth/login` 走 PKCE、`/callback` 换 token）。
+
+### 6.7 第三方登录 social 子包（微信一期补录 2026-10-21）
+
+`modules/system/oauth2/social/`——微信小程序 / 网页授权第三方登录（设计：
+[`superpowers/specs/2026-10-21-social-login-wechat-design.md`](superpowers/specs/2026-10-21-social-login-wechat-design.md)）。
+**不经 `UnifiedLogin`**（无本地凭据可校验）：controller → `SocialService` → `token.Issuer`（`ClientID="alexgo-app"`、
+`user_type=member`）；`UnifiedLogin` 与 `member_user` 表**零改动**，social 无独立模块开关（随 `oauth2.FxModule` 整体挂载）。
+
+**子包分层**（adapter / service / controller / appconfig / model / repository 六层文件）：
+
+| 层 | 文件 | 职责 |
+| --- | --- | --- |
+| adapter | `adapter.go`、`wechat_mp.go`、`wechat_web.go` | `PlatformAdapter{Platform(), Exchange(ctx, app, code)}` 接口 + `AdapterRegistry`（装配期构造、运行期只读，重复注册 panic）；`wechat_mp` 走 `sns/jscode2session`、`wechat_web` 走 `sns/oauth2/access_token`（HTTP 10s 超时），平台 errcode 只记服务端日志不上抛（统一映射 30302） |
+| service | `service.go` | `SocialService`：登录三分支 + 签发 + 恰一次审计、绑定/手机号合并/解绑（见下） |
+| appconfig | `appconfig.go` | `AppConfigService`：渠道配置 CRUD 规则（平台须已注册适配器、appid/secret 必填 10002、`(tid,platform)` 查重、编辑 secret 留空=保留旧值、租户与 ID 归位在 service） |
+| controller | `controller/app.go`、`controller/admin.go` | app 五端点（`claims()` 解析 Bearer 自鉴权，与 scorecard app 端同构）+ admin 四端点（casbin `social:app`）；只依赖 `LoginBinder`/`AppConfiger` 接口，测试可 stub |
+| model | `model.go` | `SocialApp`（`system_social_app`）/ `MemberIdentity`（`system_member_identity`）；`SocialApp.Secret` 带 `json:"-"`（admin 响应恒不回显） |
+| repository | `repository.go` | 12 方法；**读写恒显式 `tenant_id` 过滤**（gormplugin 对 tid=0 沉默不注入，不依赖插件兜底），读 miss 一律 `gorm.ErrRecordNotFound`；两处写入走 `IgnoreTenant` + 显式 `TenantID`（漏传即落错租户） |
+
+**登录三分支**（`SocialService.Login` → `resolveAndIssue`，spec §3）：
+
+1. `(tenant, platform, openid)` 命中绑定行 → 验会员存活（Members 未接线 / 软删 / `status!=1` → 30002）→ 签发；
+2. 未命中且 `unionid` 非空 → 同 `(tenant, unionid)` 命中 → **补建绑定行**（唯一键竞态：归属同一会员则幂等继续，绑他人则回传插入错误）→ 签发；**空串 unionid 不参与同人匹配**（SQL 层防）；
+3. 都没有 → 账号额度闸门（`AccountLimitChecker`，缺席跳过）→ 创建**空壳会员**（mobile/password 空；昵称清洗去 `:` 防 casbin 子策略撞名提权，空昵称占位「微信用户+openid 尾 4」）+ 绑定行 → 签发。
+
+签发恒 `token.Issuer.Issue(ClientID="alexgo-app", UserType=member)`；**成功恰一次**写 `login_logs`（msg `social: 微信小程序登录 openid=…` / `social: 微信网页授权登录 openid=…`），失败路径不记审计（第三方登录无凭据可审）、`Auditor` 未接线时静默跳过。
+
+**九端点**（app 五 + admin 四，见 spec §5）：
+
+| 方法 | 路径 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/app/social/wechat/mp/login` | 公开 | body `{code}` → `LoginResult{token, refresh_token, expires_in}`（小程序 code2session） |
+| POST | `/api/app/social/wechat/web/login` | 公开 | 同上（网页授权 snsapi） |
+| POST | `/api/app/member/auth/bind-social` | Bearer | `{platform, code}` 绑第三方；已绑自己幂等、已绑他人 30303（不迁移） |
+| POST | `/api/app/member/auth/bind-mobile` | Bearer | `{mobile}` 绑手机号；已有号 30304；号码被占仅**空壳**自动合并（identity 全改指目标 + 当前空壳软删），非空壳 30305 |
+| DELETE | `/api/app/member/auth/social/:platform` | Bearer | 解绑；无该绑定幂等；解绑后将无任何登录方式（无密码且无其他平台绑定）→ 30306 |
+| GET | `/api/admin/social/apps` | casbin `social:app` | 分页列渠道（`?page&size&platform`，`resp.Page` 信封、size≤100，`platform==""` 全平台，**secret 不回显**） |
+| POST | `/api/admin/social/apps` | casbin `social:app` | 新建（平台须已注册适配器 / 必填 10002 / `(tid,platform)` 查重） |
+| PUT | `/api/admin/social/apps/:id` | casbin `social:app` | 更新；body secret 留空=保留旧值、带值=轮换；路径 id 优先于 body |
+| DELETE | `/api/admin/social/apps/:id` | casbin `social:app` | 删除（按 `(tid, id)`） |
+
+app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `claims()` 自鉴权（Bearer 校验 member 身份后**把 token 内 tenant 写回请求 ctx**，伪造 `X-Tenant-ID` 无法跨租户，不走 casbin）。admin 四条走 `/api/admin` 组 + casbin 前缀 **`social:app`** → `["/api/admin/social/apps", ".../apps/*"]`（`permission_routes.go`，见 §9.1）。
+失败映射：签发链路故障（`ErrIssuance` / `ErrAuthenticatorMissing`）→ **HTTP 503** + code `50000` `auth service unavailable`（与 member 登录同口径，不冒充 401）；3030x 业务码 → 统一信封（3xxxx 段 HTTP 400）。
+
+**错误码 30301–30306**（`pkg/errors/code.go`）：
+
+| 码 | 出站文案（registry） | 语义 |
+| --- | --- | --- |
+| `30301` | 该租户未配置此登录渠道（或已停用） | `system_social_app` 无 (tid,platform) 行或 `status!=1` |
+| `30302` | 第三方授权换取失败 | code 无效/过期/平台接口错（errcode 只记日志） |
+| `30303` | 该第三方身份已绑定其他账号 | bind-social 冲突，不迁移绑定 |
+| `30304` | 当前账号已绑定手机号 | 不允许改绑 |
+| `30305` | 手机号已被占用，当前账号不满足自动合并条件 | 非空壳（有密码或已有手机号）拒绝自动合并 |
+| `30306` | 解绑后将失去唯一登录方式 | 解绑守门防锁死 |
+
+**两表**（迁移 `modules/system/oauth2/migrations/20261021000001_social_tables`，up/down 对称，`IF NOT EXISTS` 幂等）：
+
+- `system_social_app` 租户级渠道配置：`tenant_id`+`platform` 唯一（`uk_social_app_tenant_platform`）、`appid`、**secret 明文存储**（调平台 API 必须明文；`json:"-"` 保证任何 admin 响应不回显）、`status`（1 启用 0 停用）、create/update_time。
+- `system_member_identity` 第三方身份绑定：`(tenant_id, platform, openid)` 唯一（`uk_identity_tenant_platform_openid`）+ `(tenant_id, unionid)` 普通索引、`member_user_id` 指向 `member_user`、**无 `deleted` 列**（解绑即硬删）。
+
+菜单种子（system 迁移 `20261021000002_social_app_menu`，全部 `NOT EXISTS` 幂等守卫，仿 `20261011000003_oauth2_client_menu`）：目录「渠道配置」`/social`（perm `social`，sort 92，挂系统管理下、fresh 库父不存在落根）→ 页面 `/social/apps`（perm `social:app`，component `views/system/SocialAppsPage`）→ 按钮 `social:app:create/:update/:delete` → 绑 admin；权限码前缀必须已在 `permissionRoutes` 注册否则是死权限（403）。
+
+**adapter 扩展点（新增平台 = 新 adapter 文件 + 新路由 + registry 注册，service 零改动）**：
+
+1. 新增平台实现文件（如 `douyin.go`，实现 `PlatformAdapter`）；
+2. `NewAdapterRegistry()` 内 `Register(...)` 加一行（重复平台注册 = 装配期 panic，启动即暴露）；
+3. 新增登录路由一行——一期两条登录路由**不参数化**（`/social/wechat/{mp,web}/login` 硬编码，body 契约将来可能分化；绑定/解绑已按 `platform` 参数化，无需改动）。
+
+`system_social_app.platform` 枚举留位（`wechat_mp`/`wechat_web`，douyin/alipay 后续加值）；`SocialService`、绑定/解绑、admin 渠道 CRUD 均零改动。
+
+**micro 形态**：social 是 oauth2 子包、随 `oauth2.FxModule` 整体挂载——micro 下**随 oauth2 进 member-server**（`modules/member/cmd` 直接引 `oauth2.FxModule`，system 不在本进程）。`SocialDeps` 三个依赖均 `optional:"true"`：
+
+- **`MemberStore`**（`GetByID/GetByMobile/Create/Update`，由 `member/module.go` 把 `MemberRepository` 映射供给，无 import 循环——social 只 import `member/model`）：member-server 有 member 模块即接线；**缺席装配**（仅 system 进程）三分支与绑定/解绑的会员读写处一律 `ErrAuthenticatorMissing` → controller 映射 503；
+- **`Auditor`**（system `AuditService` → `oauth2svc.LoginAuditor`）：member-server 无 system 模块 → nil → 成功登录不写审计；
+- **`Limit`**（`tenant.AccountLimitChecker`）：mono 由 system `TenantService` 映射，member-server 用 `tenant.NewAccountLimitChecker` DB 窄实现补齐（空壳注册的额度闸门）。
+
+**前端**：`views/system/SocialAppsPage.vue` + `src/api/admin.ts` social 段（`listSocialAppsPage`/`createSocialApp`/`updateSocialApp`/`deleteSocialApp`，走 `requestClient` 统一信封），见 §6.6/§9.2；C 端 app（非本仓库前端）接入两条公开登录与三条绑定端点。
+
+**明确不做（一期）**：短信验证码、抖音/支付宝实现、unionid 之外的跨平台同人、用户侧绑定列表查询页、app 端解绑/绑定审计（`OperateLog` 中间件只覆盖 admin 端，留二期）、secret 加密存储、`/api/oauth2` 协议端点联邦化（social 登录是 app 私有端点，不是 RFC6749 联邦）。
 
 ---
 
@@ -640,7 +723,12 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 │  ├─ [按钮] 代登录    perm="system:online:impersonate"
 │  ├─ [按钮] 登录鉴权   perm="system:auth:profile"
 │  ├─ [按钮] 租户管理    perm="system:tenant:manage"
-│  └─ [按钮] 会员管理    perm="member:user:manage"
+│  ├─ [按钮] 会员管理    perm="member:user:manage"
+│  └─ 渠道配置        /social              perm="social"  sort=92
+│     └─ 渠道配置      /social/apps         views/system/SocialAppsPage    perm="social:app"
+│        ├─ [按钮] 新建   perm="social:app:create"
+│        ├─ [按钮] 编辑   perm="social:app:update"
+│        └─ [按钮] 删除   perm="social:app:delete"
 ├─ Scorecard         /scorecard            perm="scorecard"  sort=80
 │  ├─ Rooms          /scorecard/rooms      views/scorecard/ScorecardRoomsPage     perm="scorecard:room"
 │  ├─ Records        /scorecard/records    views/scorecard/ScorecardRecordsPage   perm="scorecard:record"
@@ -658,7 +746,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 ```
 
 - 按钮（type=button）不进路由/菜单，只贡献权限码。
-- `/codegen`、`/oauth2` 目录 parent_id 用 `COALESCE(系统管理 id, 0)`——**迁移先于 seed 执行的全新库会落到根级**，以实际库为准。
+- `/codegen`、`/oauth2`、`/social` 目录 parent_id 用 `COALESCE(系统管理 id, 0)`——**迁移先于 seed 执行的全新库会落到根级**，以实际库为准。
 - `/scorecard` 目录与 3 页面是迁移种子的**英文占位名**（`Scorecard`/`Rooms`/`Records`/`Friends`，system 迁移 `20261020000001_scorecard_menus.up.sql`，parent_id=0 直挂根级），后台菜单管理可改中文；房间详情子页 `/scorecard/rooms/detail` **不在菜单**，走前端 externalRoutes 静态注册（见 §11.8）。
 
 ### 8.3 静态核心路由（不走权限）
@@ -682,7 +770,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `core/user.ts` | vben 契约 | `getUserInfoApi` |
 | `core/menu.ts` | vben 契约 | `getAllMenusApi` |
 | `core/oauth2.ts` | oauth2 协议端点 | `authorizeLoginApi`、`exchangeTokenApi`——**裸 fetch 不走拦截器**（因 RFC6749 信封/302 语义） |
-| `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户/在线用户（list/kick/impersonate） 全套函数 + TS 类型 |
+| `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户/在线用户（list/kick/impersonate）/渠道配置 social（list/create/update/delete，见 §6.7） 全套函数 + TS 类型 |
 | `infra.ts` | infra | codegen 11 函数 + 文件存储（`uploadFile` multipart、`getFile` 等，见 §4.7）+ `saveBlob`（委托 `downloadFileFromBlob`）+ 类型 |
 | `scorecard.ts` | scorecard admin 监管 | `getRoomsApi` / `getRoomDetailApi` / `closeRoomApi` / `getRecordsApi` / `getFriendsApi` + 3 类型（app 端 18 接口由微信小程序侧接入，本仓库不封装，见 §11） |
 
@@ -700,7 +788,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 20 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 21 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -719,6 +807,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `infra:codegen` | `/api/admin/infra/codegen`, `/api/admin/infra/codegen/*` |
 | `infra:file` | `/api/admin/infra/file`, `/api/admin/infra/file/*` |
 | `oauth2:client` | `/api/admin/oauth2/clients`, `/api/admin/oauth2/clients/*` |
+| `social:app` | `/api/admin/social/apps`, `/api/admin/social/apps/*` |
 | `member:user` | `/api/admin/member/users`, `/api/admin/member/users/*` |
 | `order:order` | `/api/admin/order/orders`, `/api/admin/order/orders/*` |
 | `scorecard:room` | `/api/admin/scorecard/rooms`, `/api/admin/scorecard/rooms/*` |
@@ -742,12 +831,13 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `system:online:impersonate` | SystemOnlineUsersPage | 代登录按钮 |
 | `order:order:*` | OrderOrdersPage | 新建订单 |
 | `oauth2:client:create/:update/:delete` | Oauth2ClientsPage | 客户端增改删（分按钮） |
+| `social:app:create/:update/:delete` | SocialAppsPage | 渠道配置增改删（分按钮） |
 | `infra:codegen` | codegen/index.vue | 生成/字段配置/编辑/预览/下载 |
 | `infra:codegen:import` | 同上 | 导入表 |
 | `infra:codegen:sync` | 同上 | 同步 |
 | `infra:codegen:delete` | 同上 | 删除 |
 
-仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`system:online:list`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
+仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`/`social`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`system:online:list`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
 
 ### 9.3 注意事项
 
