@@ -85,7 +85,7 @@ modules/system/repository/online_repo.go（新）＋ pkg/token（既有 Issuer�
 
 ### Impersonate
 1. 前端 modal 选会员 → `POST /api/admin/system/online/impersonate {user_id}`
-2. 查 `member_user`（`deleted=0`）→ 不存在 → 30201
+2. 查 `member_user`（`deleted=0` 且 `status=1` 启用）→ 不存在/已停用 → 30201（文案「目标会员不存在或不可用」；给停用会员签 token 等于绕过登录状态门）
 3. 目标租户停用检查与正常登录同款（`Issue` 内部已做，失败按其错误透传）
 4. `token.Issuer.Issue(ctx, IssueParams{UserID: 目标, UserType: UserTypeMember, TenantID: 目标租户, ClientID: "impersonate-admin"})`——`IssueParams.ClientID` 字段既有，零 pkg 改动
 5. 写 `login_logs`：`username=会员名, user_id=会员id, ip/user_agent=当前管理员请求, success=1, message="代登录: 管理员{admin_id}/{admin_name} → 会员{member_id}/{member_name}"`
