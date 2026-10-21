@@ -503,7 +503,8 @@ make new-module NAME=demo ENTITIES=item ARGS="-dry-run"   # 干跑，确认计�
     只能拿接口出参自行调用（除响应体外无第二处副本）。
   - **审计去 login_logs 查**：每次代登录写一条登录日志，message 形如
     `代登录: 管理员{id}/{name} → 会员{id}/{name}`（IP/UA 记请求侧）——后台
-    系统管理 → 登录日志（`GET /api/admin/system/logs/login?limit=`）按 `代登录:` 前缀搜即可对账；
+    系统管理 → 登录日志（`GET /api/admin/system/logs/login?limit=`，列表暂无搜索框）
+    在 message 列按 `代登录:` 前缀目视/浏览器查找对账；
     token 落在 `system_oauth2_access_token` 行（`client_id=impersonate-admin` 可辨识；
     当前踢人端点仅管管理员会话，member 行 → 30203，撤销手段不在本期范围）。
   - 目标会员不存在 / 已删除 / 已停用 → **30201**「目标会员不存在或不可用」

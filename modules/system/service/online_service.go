@@ -11,7 +11,8 @@ import (
 	"alexGo-cloud/pkg/token"
 )
 
-// ImpersonateClientID 代登录签发的专用 client_id：token 行可辨识、可审计、可单独踢。
+// ImpersonateClientID 代登录签发的专用 client_id：token 行可辨识、可审计；
+// 本期踢人端点仅管管理员会话（member 行 Kick → 30203，撤销手段不在本期范围）。
 const ImpersonateClientID = "impersonate-admin"
 
 // OnlineSessionVO 列表行（token 明文不出接口，只给行 id）。

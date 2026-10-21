@@ -119,3 +119,57 @@ func TestOauth2Seed_PermsRegistered(t *testing.T) {
 		t.Error("oauth2 菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
 	}
 }
+
+// 终审 I1：plan Review Focus #5 假设「既有机制自动兜底新键」——对 system:online
+// 为假（既有两处扫描只认 codegen/oauth2 文件名）。钉死三链路的路由侧：
+// ① permissionRoutes["system:online"] 两模式齐全；② online_user_menus 迁移里
+// 出现的每个 system:online:* 权限码，其前缀均已注册——码与键漂移即红。
+func TestPermissionRoutes_SystemOnlineRegistered(t *testing.T) {
+	patterns, ok := permissionRoutes["system:online"]
+	if !ok {
+		t.Fatal(`permissionRoutes 缺 "system:online"（在线用户页会 403）`)
+	}
+	want := []string{"/api/admin/system/online", "/api/admin/system/online/*"}
+	for _, w := range want {
+		found := false
+		for _, p := range patterns {
+			if p == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("system:online 缺路由模式 %q, got %v", w, patterns)
+		}
+	}
+}
+
+// 扫在线用户菜单种子 SQL：出现的 system:online:* 权限码前缀必须都已注册路由——
+// 否则种子产生的页面/按钮在 Casbin 无 policy，admin 403。
+// 正则要求 system:online: 前缀：LIKE 'system:online%' 与目录字面量天然排除。
+func TestOnlineSeed_PermsRegistered(t *testing.T) {
+	migPath := filepath.Join("..", "migrations")
+	entries, err := os.ReadDir(migPath)
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	permRe := regexp.MustCompile(`'(system:online:[a-z0-9_:]+)'`)
+	checked := 0
+	for _, e := range entries {
+		if !strings.Contains(e.Name(), "online_user_menus") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(migPath, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range permRe.FindAllStringSubmatch(string(b), -1) {
+			checked++
+			if _, ok := permissionRoutes[permPrefix(m[1])]; !ok {
+				t.Errorf("%s 中权限码 %q 前缀 %q 未注册路由", e.Name(), m[1], permPrefix(m[1]))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("在线用户菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
+	}
+}

@@ -36,8 +36,8 @@ func newOnlineTestEnv(t *testing.T) (OnlineService, *gorm.DB, *token.Service) {
 	for _, ddl := range []string{
 		`CREATE TABLE tenants (id INTEGER PRIMARY KEY, status INTEGER NOT NULL DEFAULT 1, deleted INTEGER NOT NULL DEFAULT 0)`,
 		`INSERT INTO tenants (id, status) VALUES (1, 1), (2, 1), (3, 0)`,
-		`CREATE TABLE system_users (id INTEGER PRIMARY KEY, username TEXT, dept_id INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)`,
-		`INSERT INTO system_users (id, username, dept_id) VALUES (9, 'alice', 7), (10, 'bob', 0), (88, 'ghost', 0)`,
+		`CREATE TABLE system_users (id INTEGER PRIMARY KEY, username TEXT, dept_id INTEGER NOT NULL DEFAULT 0, tenant_id INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO system_users (id, username, dept_id, tenant_id) VALUES (9, 'alice', 7, 1), (10, 'bob', 0, 1), (88, 'ghost', 0, 1)`,
 		`UPDATE system_users SET deleted = 1 WHERE id = 88`,
 		// OnlineSession 是列表投影（不带 refresh_token/scopes/deleted），AutoMigrate 建出的表
 		// 缺这三列：token.Issue 必写 refresh_token/scopes，ListAdmin 过滤需 deleted。
@@ -111,6 +111,28 @@ func TestOnlineService_List_OnlyAdminAndAlive(t *testing.T) {
 	}
 	if !sawGhost {
 		t.Error("deleted user row (uid=88) missing from page 1")
+	}
+}
+
+// 终审 C1：tid=0（种子平台管理员的真实路径，gormplugin 明文不注入）按普通租户
+// 收口为 tenant-0——列表只含 tenant-0 行，不得全量放行。
+func TestOnlineService_List_Tid0_PlatformScopedToTenantZero(t *testing.T) {
+	svc, _, ts := newOnlineTestEnv(t)
+	mustIssueOnline(t, ts, 0, 9, token.UserTypeAdmin) // tenant-0 管理员会话（可见）
+	mustIssueOnline(t, ts, 2, 10, token.UserTypeAdmin) // tenant-2 管理员会话（不得出现）
+
+	vos, total, err := svc.List(ctxTid(0), 1, 10)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if total != 1 {
+		t.Errorf("total = %d, want 1 (仅 tenant-0)", total)
+	}
+	if len(vos) != 1 {
+		t.Fatalf("len(vos) = %d, want 1", len(vos))
+	}
+	if vos[0].UserID != 9 {
+		t.Errorf("vos[0].UserID = %d, want 9 (tenant-0 行)", vos[0].UserID)
 	}
 }
 
@@ -255,6 +277,17 @@ func TestOnlineService_Impersonate_CrossTenantMemberRejected(t *testing.T) {
 	op := &auth.Claims{UserID: 9, TenantID: 1, UserType: 1}
 	if err := mustImpersonateErr(svc, ctxTid(1), op, 504); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
 		t.Errorf("cross-tenant member err = %v, want 30201", err)
+	}
+}
+
+// 终审 C1：tid=0（平台管理员路径，插件不注入）对 tenant-1 会员代登录必须 30201，
+// 不得为任意租户会员签发 token。
+func TestOnlineService_Impersonate_Tid0_CrossTenantRejected(t *testing.T) {
+	svc, db, _ := newOnlineTestEnv(t)
+	seedMember(t, db, 506, 1, 1, false) // tenant-1 的启用会员
+	op := &auth.Claims{UserID: 9, TenantID: 0, UserType: 1}
+	if err := mustImpersonateErr(svc, ctxTid(0), op, 506); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
+		t.Errorf("tid=0 cross-tenant member err = %v, want 30201", err)
 	}
 }
 

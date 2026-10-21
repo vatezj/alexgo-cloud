@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/pkg/repo"
+	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
 
@@ -40,9 +41,9 @@ type MemberBrief struct {
 func (MemberBrief) TableName() string { return "member_user" }
 
 type OnlineRepository interface {
-	// ListAdmin 本租户未过期管理员会话分页（gormplugin 自动追加 tenant_id）。
+	// ListAdmin 本租户未过期管理员会话分页（显式 tenant_id 过滤，见实现注释）。
 	ListAdmin(ctx context.Context, page, size int) ([]*OnlineSession, int64, error)
-	// GetByID 按行 id 点查（含过期行——踢过期行等价清理）；跨租户经插件过滤后查无。
+	// GetByID 按行 id 点查（含过期行——踢过期行等价清理）；跨租户显式过滤后查无。
 	GetByID(ctx context.Context, id uint64) (*OnlineSession, error)
 	// GetMemberForImpersonate 代登录目标点查（含已删/停用行，交 service 判定）。
 	GetMemberForImpersonate(ctx context.Context, userID uint64) (*MemberBrief, error)
@@ -57,8 +58,13 @@ func NewOnlineRepository(db *gorm.DB) OnlineRepository {
 func (r *onlineRepo) ListAdmin(ctx context.Context, page, size int) ([]*OnlineSession, int64, error) {
 	// 禁止 JOIN：gormplugin 追加的非限定 tenant_id 在 JOIN system_users 时列名歧义。
 	// 先分页 token 行（Count 只数本表，准确），再按页内 user_id 批量补 username。
+	// 租户隔离显式收口（终审 C1，裁定「tid=0 按普通租户」）：gormplugin 对 tid=0
+	// 不注入（plugin.go：平台/未解析保持历史行为），而生产主路径恰是种子管理员
+	// tid=0——不显式过滤则跨租户裸奔。tid≠0 时插件再注入同款条件，重复无害，
+	// 不为去重绕开插件（隔离下限与仓库显式过滤双层，照 order_repo.List 口径）。
+	tid := tenant.TenantIDFromContext(ctx)
 	q := r.db.WithContext(ctx).Model(&OnlineSession{}).
-		Where("user_type = ? AND expires_time > ? AND deleted = ?", 1, time.Now(), false).
+		Where("tenant_id = ? AND user_type = ? AND expires_time > ? AND deleted = ?", tid, 1, time.Now(), false).
 		Order("id DESC")
 	rows, total, err := repo.Paginate[*OnlineSession](ctx, q, page, size)
 	if err != nil || len(rows) == 0 {
@@ -76,12 +82,14 @@ func (r *onlineRepo) ListAdmin(ctx context.Context, page, size int) ([]*OnlineSe
 		ID       uint64 `gorm:"column:id"`
 		Username string `gorm:"column:username"`
 	}
+	// 补查同款显式 tenant_id（匿名结构体无 TenantID 字段，插件不接管本查询）：
+	// id IN 已由 token 行租户收敛，显式过滤是一致性防御（终审 C1）。
 	if err := r.db.WithContext(ctx).Model(&struct {
 		ID       uint64 `gorm:"column:id"`
 		Username string `gorm:"column:username"`
 	}{}).Table("system_users").
 		Select("id, username").
-		Where("id IN ? AND deleted = 0", ids).
+		Where("tenant_id = ? AND id IN ? AND deleted = 0", tid, ids).
 		Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
@@ -96,8 +104,12 @@ func (r *onlineRepo) ListAdmin(ctx context.Context, page, size int) ([]*OnlineSe
 }
 
 func (r *onlineRepo) GetByID(ctx context.Context, id uint64) (*OnlineSession, error) {
+	// 租户显式过滤（终审 C1，同 ListAdmin 注释）：tid=0 插件不注入，
+	// 跨租户按 id 直踢必须查无 → 30203。
+	tid := tenant.TenantIDFromContext(ctx)
 	var row OnlineSession
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tid, id).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil // 查无/跨租户：交 service 判 30203
 	}
@@ -108,8 +120,12 @@ func (r *onlineRepo) GetByID(ctx context.Context, id uint64) (*OnlineSession, er
 }
 
 func (r *onlineRepo) GetMemberForImpersonate(ctx context.Context, userID uint64) (*MemberBrief, error) {
+	// 租户显式过滤（终审 C1，同 ListAdmin 注释）：tid=0 插件不注入，
+	// 跨租户会员代登录必须查无 → 30201（否则直调 API 即可绕过 modal 的本租户筛选）。
+	tid := tenant.TenantIDFromContext(ctx)
 	var m MemberBrief
-	err := r.db.WithContext(ctx).Where("id = ?", userID).First(&m).Error
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tid, userID).First(&m).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
