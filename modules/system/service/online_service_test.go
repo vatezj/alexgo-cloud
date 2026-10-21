@@ -10,7 +10,9 @@ import (
 
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
+	"alexGo-cloud/pkg/auth"
 	"alexGo-cloud/pkg/config"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/tenant/gormplugin"
 	"alexGo-cloud/pkg/token"
@@ -106,5 +108,71 @@ func TestOnlineService_List_OnlyAdminAndAlive(t *testing.T) {
 			}
 		}
 	}
-	_ = sawGhost
+	if !sawGhost {
+		t.Error("deleted user row (uid=88) missing from page 1")
+	}
+}
+
+func TestOnlineService_Kick_OK(t *testing.T) {
+	svc, _, ts := newOnlineTestEnv(t)
+	issued := mustIssueOnline(t, ts, 1, 9, token.UserTypeAdmin)
+	op := &auth.Claims{UserID: 99, Username: "root", TenantID: 1, UserType: 1}
+	// 找到该 token 的行 id
+	var row repository.OnlineSession
+	_ = row
+	// 经 List 拿行 id（token 明文不进 service API）
+	vos, _, err := svc.List(ctxTid(1), 1, 100)
+	if err != nil || len(vos) != 1 {
+		t.Fatalf("List() = %d rows, err %v", len(vos), err)
+	}
+	if err := svc.Kick(ctxTid(1), op, vos[0].ID); err != nil {
+		t.Fatalf("Kick() error = %v", err)
+	}
+	if _, err := ts.Validate(ctxTid(1), issued.AccessToken); err == nil {
+		t.Error("kicked token must fail Validate immediately")
+	}
+	// 踢完列表空
+	_, total, _ := svc.List(ctxTid(1), 1, 10)
+	if total != 0 {
+		t.Errorf("total after kick = %d, want 0", total)
+	}
+}
+
+func TestOnlineService_Kick_Self(t *testing.T) {
+	svc, _, ts := newOnlineTestEnv(t)
+	mustIssueOnline(t, ts, 1, 9, token.UserTypeAdmin)
+	vos, _, _ := svc.List(ctxTid(1), 1, 10)
+	op := &auth.Claims{UserID: 9, TenantID: 1, UserType: 1}
+	err := svc.Kick(ctxTid(1), op, vos[0].ID)
+	if !errs.Is(err, errs.CodeCannotKickSelf) {
+		t.Errorf("Kick(self) err = %v, want 30202", err)
+	}
+}
+
+func TestOnlineService_Kick_CrossTenant(t *testing.T) {
+	svc, _, ts := newOnlineTestEnv(t)
+	mustIssueOnline(t, ts, 2, 10, token.UserTypeAdmin) // tid=2 的会话
+	// tid=1 视角：List 看不见；按 id 直踢也必须 30203（插件过滤 → GetByID 查无）
+	// 先用 tid=2 自己 List 拿真实行 id
+	vos, _, err := svc.List(ctxTid(2), 1, 10)
+	if err != nil || len(vos) != 1 {
+		t.Fatalf("List(tid=2) = %d, err %v", len(vos), err)
+	}
+	op := &auth.Claims{UserID: 9, TenantID: 1, UserType: 1}
+	if err := svc.Kick(ctxTid(1), op, vos[0].ID); !errs.Is(err, errs.CodeSessionNotFound) {
+		t.Errorf("cross-tenant Kick err = %v, want 30203", err)
+	}
+}
+
+func TestOnlineService_Kick_RaceDeleted(t *testing.T) {
+	svc, db, ts := newOnlineTestEnv(t)
+	mustIssueOnline(t, ts, 1, 9, token.UserTypeAdmin)
+	vos, _, _ := svc.List(ctxTid(1), 1, 10)
+	if err := db.WithContext(ctxTid(1)).Exec(`DELETE FROM system_oauth2_access_token WHERE id = ?`, vos[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	op := &auth.Claims{UserID: 99, TenantID: 1, UserType: 1}
+	if err := svc.Kick(ctxTid(1), op, vos[0].ID); !errs.Is(err, errs.CodeSessionNotFound) {
+		t.Errorf("race Kick err = %v, want 30203", err)
+	}
 }

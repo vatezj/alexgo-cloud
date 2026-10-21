@@ -61,9 +61,24 @@ func (s *onlineService) List(ctx context.Context, page, size int) ([]*OnlineSess
 	return vos, total, nil
 }
 
-// Kick / Impersonate：Task 2/3 实现。接口三方法本任务即声明完毕。
+// Kick 踢人：按行 id 吊销。禁止踢自己（防把自己锁外面）；非管理员会话/查无/跨租户 → 30203。
 func (s *onlineService) Kick(ctx context.Context, operator *auth.Claims, sessionID uint64) error {
-	return errors.New("online: Kick not implemented")
+	row, err := s.repo.GetByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.UserID == 0 {
+		return errs.New(errs.CodeSessionNotFound, nil)
+	}
+	// user_type=1（管理员）之外的行不在本页范围——以「补名查得到 system_users」
+	// 不足以判类型，故依赖 Task 1 已投影的 UserType 列。
+	if row.UserType != token.UserTypeAdmin {
+		return errs.New(errs.CodeSessionNotFound, nil)
+	}
+	if operator.UserID == row.UserID {
+		return errs.New(errs.CodeCannotKickSelf, nil)
+	}
+	return s.issuer.Revoke(ctx, row.AccessToken)
 }
 
 func (s *onlineService) Impersonate(ctx context.Context, operator *auth.Claims, ip, userAgent string, targetUserID uint64) (*token.Issued, error) {
@@ -71,4 +86,3 @@ func (s *onlineService) Impersonate(ctx context.Context, operator *auth.Claims, 
 }
 
 var _ = model.LoginLog{} // audit 接口消费方，Task 3 用；先钉 import 防 Task 3 改头部
-var _ = errs.Is          // 错误码判定（30201/30202/30203），Task 2/3 用；先钉 import
