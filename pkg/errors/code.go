@@ -71,6 +71,19 @@ const (
 	CodeCannotKickSelf Code = 30202
 	// CodeSessionNotFound online：在线会话不存在（或已非管理员会话）。
 	CodeSessionNotFound Code = 30203
+	// ---- 303xx 第三方登录（social） ----
+	// CodeSocialAppNotConfigured social：该租户未配置此登录渠道（或已停用）。
+	CodeSocialAppNotConfigured Code = 30301
+	// CodeSocialExchangeFailed social：第三方授权换取失败。
+	CodeSocialExchangeFailed Code = 30302
+	// CodeSocialIdentityBound social：该第三方身份已绑定其他账号。
+	CodeSocialIdentityBound Code = 30303
+	// CodeSocialMobileBound social：当前账号已绑定手机号。
+	CodeSocialMobileBound Code = 30304
+	// CodeSocialMergeRefused social：手机号已被占用，当前账号不满足自动合并条件。
+	CodeSocialMergeRefused Code = 30305
+	// CodeSocialUnbindLast social：解绑后将失去唯一登录方式。
+	CodeSocialUnbindLast Code = 30306
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
@@ -117,6 +130,13 @@ var registry = map[Code]string{
 	CodeImpersonateMemberNotFound: "目标会员不存在或不可用",
 	CodeCannotKickSelf:            "不能踢出自己的会话",
 	CodeSessionNotFound:           "会话不存在",
+
+	CodeSocialAppNotConfigured: "该租户未配置此登录渠道（或已停用）",
+	CodeSocialExchangeFailed:   "第三方授权换取失败",
+	CodeSocialIdentityBound:    "该第三方身份已绑定其他账号",
+	CodeSocialMobileBound:      "当前账号已绑定手机号",
+	CodeSocialMergeRefused:     "手机号已被占用，当前账号不满足自动合并条件",
+	CodeSocialUnbindLast:       "解绑后将失去唯一登录方式",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 }

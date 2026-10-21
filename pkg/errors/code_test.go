@@ -25,6 +25,12 @@ func TestRegistryNoDuplicateAndAllHaveMsg(t *testing.T) {
 		CodeMobileTaken,
 		CodeFileNotFound, CodeFileTypeNotAllowed, CodeFileTooLarge,
 		CodeExportTooManyRows,
+		CodeSocialAppNotConfigured, // 30301
+		CodeSocialExchangeFailed,   // 30302
+		CodeSocialIdentityBound,    // 30303
+		CodeSocialMobileBound,      // 30304
+		CodeSocialMergeRefused,     // 30305
+		CodeSocialUnbindLast,       // 30306
 		CodeInternal,
 	} {
 		if _, ok := registry[c]; !ok {
