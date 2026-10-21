@@ -173,3 +173,24 @@ func TestOnlineSeed_PermsRegistered(t *testing.T) {
 		t.Error("在线用户菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
 	}
 }
+
+// Task 9：social:app 渠道配置路由前缀必须注册——否则渠道配置页在 Casbin
+// 无 policy，admin 403（brief 用例逐字）。
+func TestPermissionRoutes_SocialAppRegistered(t *testing.T) {
+	patterns, ok := permissionRoutes["social:app"]
+	if !ok {
+		t.Fatal(`permissionRoutes 缺 "social:app"（渠道配置页会 403）`)
+	}
+	want := []string{"/api/admin/social/apps", "/api/admin/social/apps/*"}
+	for _, w := range want {
+		found := false
+		for _, p := range patterns {
+			if p == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("social:app 缺路由模式 %q, got %v", w, patterns)
+		}
+	}
+}

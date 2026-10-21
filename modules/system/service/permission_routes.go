@@ -39,10 +39,12 @@ var permissionRoutes = map[string][]string{
 	"system:notice":    {"/api/admin/system/notices", "/api/admin/system/notices/*"},
 	"system:log":       {"/api/admin/system/logs/login", "/api/admin/system/logs/operate"},
 	"system:online":    {"/api/admin/system/online", "/api/admin/system/online/*"},
-	"system:auth":      {"/api/admin/system/auth/profile", "/api/admin/system/auth/refresh", "/api/admin/system/auth/logout"},
-	"system:tenant":    {"/api/admin/system/tenants", "/api/admin/system/tenants/*"},
-	"member:user":      {"/api/admin/member/users", "/api/admin/member/users/*"},
-	"order:order":      {"/api/admin/order/orders", "/api/admin/order/orders/*"},
+	// 微信第三方登录一期（Task 9）：admin 渠道配置页（spec §5）。
+	"social:app":    {"/api/admin/social/apps", "/api/admin/social/apps/*"},
+	"system:auth":   {"/api/admin/system/auth/profile", "/api/admin/system/auth/refresh", "/api/admin/system/auth/logout"},
+	"system:tenant": {"/api/admin/system/tenants", "/api/admin/system/tenants/*"},
+	"member:user":   {"/api/admin/member/users", "/api/admin/member/users/*"},
+	"order:order":   {"/api/admin/order/orders", "/api/admin/order/orders/*"},
 }
 
 // permPrefix 取 permission 的前两段作为路由分组键："system:user:list" → "system:user"。

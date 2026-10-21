@@ -10,6 +10,7 @@ import (
 	"alexGo-cloud/modules/system/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
 	"alexGo-cloud/modules/system/oauth2/social"
+	socialctl "alexGo-cloud/modules/system/oauth2/social/controller"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -36,6 +37,14 @@ var FxModule = fx.Module("oauth2",
 		social.NewSocialRepository,
 		social.NewAdapterRegistry,
 		social.NewSocialService,
+		// Task 9：微信第三方登录一期控制器。两控制器按接口依赖
+		// （LoginBinder/AppConfiger，测试可 stub），fx 按具体类型产出，
+		// 故先做接口映射（入口 ifaceOptions 同款模式）。
+		func(s *social.SocialService) socialctl.LoginBinder { return s },
+		social.NewAppConfigService,
+		func(s *social.AppConfigService) socialctl.AppConfiger { return s },
+		socialctl.NewAppController,
+		socialctl.NewAdminController,
 		controller.NewProtocolController,
 		admin.NewClientController,
 		fx.Annotate(
@@ -47,17 +56,20 @@ var FxModule = fx.Module("oauth2",
 )
 
 type oauth2Module struct {
-	proto   *controller.ProtocolController
-	clients *admin.ClientController
+	proto       *controller.ProtocolController
+	clients     *admin.ClientController
+	socialApp   *socialctl.AppController
+	socialAdmin *socialctl.AdminController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
-func NewModule(proto *controller.ProtocolController, clients *admin.ClientController) server.Module {
-	return &oauth2Module{proto: proto, clients: clients}
+func NewModule(proto *controller.ProtocolController, clients *admin.ClientController,
+	socialApp *socialctl.AppController, socialAdmin *socialctl.AdminController) server.Module {
+	return &oauth2Module{proto: proto, clients: clients, socialApp: socialApp, socialAdmin: socialAdmin}
 }
 
 // RegisterRoutes 入参是 /api group（见 server/http.go，infra 同款），
-// 故路径写相对前缀 /oauth2/*。
+// 故路径写相对前缀 /oauth2/*、/social/* 等。
 func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 	m.proto.Register(r)
 	g := r.Group("/admin/oauth2")
@@ -65,4 +77,19 @@ func (m *oauth2Module) RegisterRoutes(r *gin.RouterGroup) {
 	g.POST("/clients", m.clients.Create)
 	g.PUT("/clients/:id", m.clients.Update)
 	g.DELETE("/clients/:id", m.clients.Delete)
+
+	// 微信第三方登录一期（Task 9）：app 五端点（login 公开 + bind Bearer 自鉴权）、
+	// admin 四端点（casbin social:app，见 permissionRoutes）。
+	app := r.Group("/app")
+	app.POST("/social/wechat/mp/login", m.socialApp.LoginMP)
+	app.POST("/social/wechat/web/login", m.socialApp.LoginWeb)
+	app.POST("/member/auth/bind-social", m.socialApp.BindSocial)
+	app.POST("/member/auth/bind-mobile", m.socialApp.BindMobile)
+	app.DELETE("/member/auth/social/:platform", m.socialApp.UnbindSocial)
+
+	soc := r.Group("/admin/social")
+	soc.GET("/apps", m.socialAdmin.List)
+	soc.POST("/apps", m.socialAdmin.Create)
+	soc.PUT("/apps/:id", m.socialAdmin.Update)
+	soc.DELETE("/apps/:id", m.socialAdmin.Delete)
 }
