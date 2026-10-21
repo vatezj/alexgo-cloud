@@ -142,19 +142,19 @@ Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateL
 
 ### 3.1 功能
 
-RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色管理、菜单管理（权限码的唯一数据源）、部门/岗位/字典/系统参数/通知公告（含附件，走 infra 文件子域见 §4.7）、登录与操作日志、租户管理、统一登录的 system 账号凭据校验、refresh/logout、vben 前端契约 5 端点。
+RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色管理、菜单管理（权限码的唯一数据源）、部门/岗位/字典/系统参数/通知公告（含附件，走 infra 文件子域见 §4.7）、登录与操作日志、租户管理、统一登录的 system 账号凭据校验、refresh/logout、在线会话监管（列表/踢人/代登录，见 §3.7）、vben 前端契约 5 端点。
 
 装配要点（`modules/system/module.go`）：
 
-- **Repository**：User/Dept/Post/Dict/Config/Notice/Audit/Role/Menu/UserRole/RoleMenu/Tenant 十二类
-- **Service**：`PermissionService`（RBAC 核心：UserRoles/UserMenus/UserPermCodes/UserRoutes + casbin 策略重建）、`RoleService`（type=1 内置角色禁删）、`MenuService`（删除后全量重建策略）、`TenantService`（账号额度闸门 `AccountLimitChecker`，供 member）、`DataScopeLoader`（供中间件）、`AuditService`（同时映射为操作日志 recorder 与 oauth2 登录 auditor）、`UserAuthenticator`/`JWTGenerator`（供 oauth2 统一登录）、`AuthService`（refresh/logout）
+- **Repository**：User/Dept/Post/Dict/Config/Notice/Audit/Role/Menu/UserRole/RoleMenu/Tenant/Online 十三类
+- **Service**：`PermissionService`（RBAC 核心：UserRoles/UserMenus/UserPermCodes/UserRoutes + casbin 策略重建）、`RoleService`（type=1 内置角色禁删）、`MenuService`（删除后全量重建策略）、`TenantService`（账号额度闸门 `AccountLimitChecker`，供 member）、`DataScopeLoader`（供中间件）、`AuditService`（同时映射为操作日志 recorder 与 oauth2 登录 auditor）、`UserAuthenticator`/`JWTGenerator`（供 oauth2 统一登录）、`AuthService`（refresh/logout）、`OnlineService`（在线会话列表/踢人/代登录，见 §3.7）
 - **后台任务**：启动 seeder；token 过期清扫 ticker（每小时 `SweepExpired`）
 - **gRPC**：`TokenServiceImpl`（`IssueToken/RefreshToken/RevokeToken`）进 `group:"grpc_registrars"`，仅 micro 模式监听；独立入口 `modules/system/cmd/grpc_main.go`
 
 ### 3.2 权限
 
 - 全站 casbin 前缀表 `permissionRoutes` 定义在本模块 `service/permission_routes.go`，但**保护的是所有模块**的 admin 路由（含 `infra:codegen`、`infra:file`、`oauth2:client`、`member:user`、`order:order`、`scorecard:room`/`scorecard:record`/`scorecard:friend`）。
-- 本模块权限前缀 11 组：`system:user` / `role` / `menu` / `dept` / `post` / `dict` / `config` / `notice` / `log` / `auth` / `tenant`，各自映射 `/api/admin/system/<资源>` 及 `/*`。
+- 本模块权限前缀 12 组：`system:user` / `role` / `menu` / `dept` / `post` / `dict` / `config` / `notice` / `log` / `online` / `auth` / `tenant`，各自映射 `/api/admin/system/<资源>` 及 `/*`。
 - 菜单/按钮种子（seed.go）：
 
 | 类型 | 权限码 | 菜单 |
@@ -172,11 +172,14 @@ RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色�
 | menu | `system:log:operate` | 操作日志 `/system/operates` |
 | menu（迁移回补） | `system:tenant:*` | 租户管理 `/system/tenants` |
 | menu（seed 回补） | `system:notice:mine` | 我的通知 `/system/notices/mine` |
+| menu（迁移回补） | `system:online:list` | 在线用户 `/system/online-users` |
 | button | `system:auth:profile` | 登录鉴权按钮 |
 | button | `system:tenant:manage` | 租户管理按钮（前端未用） |
 | button | `member:user:manage` | 会员管理按钮（顺带为 member 补，前端无页面） |
+| button（迁移回补） | `system:online:kick` | 在线用户页「踢出」按钮 |
+| button（迁移回补） | `system:online:impersonate` | 在线用户页「代登录」按钮 |
 
-### 3.3 后端端点（58 条）
+### 3.3 后端端点（61 条）
 
 #### 用户 / 鉴权 — `/api/admin/system`
 
@@ -233,6 +236,14 @@ RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色�
 | POST | `/tenants` | TenantController.Create | 新建（account_limit 0→-1 表示不限） |
 | PUT | `/tenants/:id` | TenantController.Update | 更新名称/域名/状态/额度 |
 | DELETE | `/tenants/:id` | TenantController.Delete | 软删租户 |
+
+#### 在线用户 — `/api/admin/system`
+
+| 方法 | 路径 | handler | 说明 |
+| --- | --- | --- | --- |
+| GET | `/online` | OnlineController.List | 本租户**未过期管理员**会话分页（查 `system_oauth2_access_token`；出行 id/用户名/user_id/client_id/签发/过期，**明文 token 不出接口**） |
+| DELETE | `/online/:id` | OnlineController.Kick | 按行 id 吊销（`Revoke` 即删行）；禁踢自己 30202、查无/跨租户/非管理员 30203（语义见 §3.7） |
+| POST | `/online/impersonate` | OnlineController.Impersonate | 代登录到会员：入参 `{user_id}` → 出参 `{access_token, refresh_token, expires_in}`（`client_id=impersonate-admin`，见 §3.7） |
 
 #### app 端 — `/api/app/system`（公开，不走 casbin）
 
@@ -295,8 +306,43 @@ RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色�
 | `/system/logins` | `SystemLoginLogsPage.vue` | 登录日志只读（limit=100） | 无（靠菜单可见性） |
 | `/system/operates` | `SystemOperateLogsPage.vue` | 操作日志只读 | 无 |
 | `/system/tenants` | `SystemTenantsPage.vue` | 租户新建/编辑/删除 | `system:tenant:*` |
+| `/system/online-users` | `SystemOnlineUsersPage.vue` | 在线会话列表（踢人 Popconfirm、代登录 modal 选会员） | `system:online:kick`、`system:online:impersonate`（两按钮；页面可见性靠菜单 `system:online:list`） |
 
 > 前端"编辑"按钮缺失的根因：`src/api/admin.ts` 未封装 `PUT /depts|/posts|/dict/*|/configs|/notices`（后端有端点）。
+
+### 3.7 在线用户与代登录（P1-3 补录 2026-10-21）
+
+在线会话监管子域（设计：
+[`superpowers/specs/2026-10-21-online-user-impersonate-design.md`](superpowers/specs/2026-10-21-online-user-impersonate-design.md)；
+端点见 §3.3，操作见 [usage.md §6.5](usage.md)）。菜单「系统管理 → 在线用户」`/system/online-users`
+（迁移 `20261021000001_online_user_menus.up.sql` 种子，页面 + 踢人/代登录两按钮）。
+
+- **权限**：casbin 前缀 `system:online` → `["/api/admin/system/online", ".../online/*"]`（见 §9.1）；
+  权限码三枚——`system:online:list`（菜单可见性）、`system:online:kick` / `system:online:impersonate`
+  （页内两按钮，`v-access` 逐字匹配）。
+- **列表范围**：只列**本租户、未过期、`user_type=1`（管理员）**的 access token 行
+  （`system_oauth2_access_token`，分页 `id DESC`；表无 IP/UA 列，`username` 按页补查 `system_users`）。
+  `is_impersonated` 由 `client_id=impersonate-admin` 推得——代登录签的是 **member** token，
+  不在本列表范围，故管理员行恒 false（保留字段供范围扩展）。
+- **踢人**：`DELETE /online/:id` 按行 id 调 `issuer.Revoke`（删 access_token 行，明文不出接口；
+  踢过期行等价清理）。**禁踢自己**（防把自己锁在外面）；查无 / 跨租户 / 非管理员行 → 30203。
+- **代登录**：`POST /online/impersonate` `{user_id}` → 点查 `member_user`（须存在、未删、`status=1` 启用）→
+  以 `client_id=impersonate-admin` 签 member token（`IssueParams.ClientID` 既有字段，零 pkg 改动）→
+  出参 `{access_token, refresh_token, expires_in}`；**同时写 `login_logs` 审计**，
+  message 形如 `代登录: 管理员{id}/{name} → 会员{id}/{name}`（IP/UA 取请求侧）。
+- **错误码**（`pkg/errors/code.go`，3xxxx 段 → HTTP 400）：
+
+| 码 | 出站文案（registry） | 语义 |
+| --- | --- | --- |
+| `30201` | `目标会员不存在或不可用` | 目标会员不存在/已删除/已停用（给停用账号签 token = 绕过登录状态门） |
+| `30202` | `不能踢出自己的会话` | 禁踢自己 |
+| `30203` | `会话不存在` | 查无 / 跨租户 / 已非管理员会话（覆盖 refresh 轮换、sweep 删除的竞态兜底） |
+
+- **前端**：`src/api/admin.ts` 的 `listOnlineApi` / `kickOnlineApi` / `impersonateApi` +
+  `views/system/SystemOnlineUsersPage.vue`（antd Table 真分页 20/页；代登录 modal 选会员 → 确认 → toast，
+  **token 不回显、不落盘**——接口返回令牌对，页面不展示、不写存储、不切换当前浏览器身份）。
+- **明确不做**：会员在线列表、IP/UA 列与展示（仅代登录写进 login_logs）、浏览器侧身份切换 UI、
+  token 表扩列（last_seen 回写会放大 Validate 热点路径）、oauth2 协议级 introspect/revoke 端点、跨 gRPC 踢人。
 
 ---
 
@@ -589,6 +635,9 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 │  ├─ 操作日志       /system/operates      SystemOperateLogsPage            perm="system:log:operate"
 │  ├─ 租户管理       /system/tenants       SystemTenantsPage                perm="system:tenant:*"
 │  ├─ 我的通知       /system/notices/mine  SystemMyNoticesPage              perm="system:notice:mine"
+│  ├─ 在线用户       /system/online-users  SystemOnlineUsersPage            perm="system:online:list"
+│  ├─ [按钮] 踢人      perm="system:online:kick"
+│  ├─ [按钮] 代登录    perm="system:online:impersonate"
 │  ├─ [按钮] 登录鉴权   perm="system:auth:profile"
 │  ├─ [按钮] 租户管理    perm="system:tenant:manage"
 │  └─ [按钮] 会员管理    perm="member:user:manage"
@@ -633,7 +682,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `core/user.ts` | vben 契约 | `getUserInfoApi` |
 | `core/menu.ts` | vben 契约 | `getAllMenusApi` |
 | `core/oauth2.ts` | oauth2 协议端点 | `authorizeLoginApi`、`exchangeTokenApi`——**裸 fetch 不走拦截器**（因 RFC6749 信封/302 语义） |
-| `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户 全套函数 + TS 类型 |
+| `admin.ts` | system + order | 用户/角色/菜单/部门/岗位/字典/参数/公告/日志/订单/OAuth2 client/租户/在线用户（list/kick/impersonate） 全套函数 + TS 类型 |
 | `infra.ts` | infra | codegen 11 函数 + 文件存储（`uploadFile` multipart、`getFile` 等，见 §4.7）+ `saveBlob`（委托 `downloadFileFromBlob`）+ 类型 |
 | `scorecard.ts` | scorecard admin 监管 | `getRoomsApi` / `getRoomDetailApi` / `closeRoomApi` / `getRecordsApi` / `getFriendsApi` + 3 类型（app 端 18 接口由微信小程序侧接入，本仓库不封装，见 §11） |
 
@@ -651,7 +700,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 19 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 20 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -664,6 +713,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `system:config` | `/api/admin/system/configs`, `.../configs/*` |
 | `system:notice` | `/api/admin/system/notices`, `.../notices/*` |
 | `system:log` | `/api/admin/system/logs/login`, `.../logs/operate` |
+| `system:online` | `/api/admin/system/online`, `/api/admin/system/online/*` |
 | `system:auth` | `/api/admin/system/auth/profile`, `.../auth/refresh`, `.../auth/logout` |
 | `system:tenant` | `/api/admin/system/tenants`, `.../tenants/*` |
 | `infra:codegen` | `/api/admin/infra/codegen`, `/api/admin/infra/codegen/*` |
@@ -688,6 +738,8 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `system:config:*` | SystemConfigsPage | 新建/删除参数 |
 | `system:notice:*` | SystemNoticesPage | 新建/删除公告 |
 | `system:tenant:*` | SystemTenantsPage | 新建/编辑/删除租户 |
+| `system:online:kick` | SystemOnlineUsersPage | 踢出会话按钮 |
+| `system:online:impersonate` | SystemOnlineUsersPage | 代登录按钮 |
 | `order:order:*` | OrderOrdersPage | 新建订单 |
 | `oauth2:client:create/:update/:delete` | Oauth2ClientsPage | 客户端增改删（分按钮） |
 | `infra:codegen` | codegen/index.vue | 生成/字段配置/编辑/预览/下载 |
@@ -695,7 +747,7 @@ member 登录 → oauth2.UnifiedLogin.Login → MemberAuthenticator.Authenticate
 | `infra:codegen:sync` | 同上 | 同步 |
 | `infra:codegen:delete` | 同上 | 删除 |
 
-仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
+仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`system:online:list`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
 
 ### 9.3 注意事项
 

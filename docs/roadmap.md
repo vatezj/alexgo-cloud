@@ -11,7 +11,7 @@
 | 层 | 主题 | 完成度 |
 | --- | --- | --- |
 | P0 | 基座开箱短板（收尾欠账） | 4/4 ✅ 全清（codegen M3/M7、通知已读、M4 跟进票） |
-| P1 | 常用管理能力 | 3/5 |
+| P1 | 常用管理能力 | 4/5 |
 | P2 | 深水区（可缓） | 0/5 |
 | 工程收尾 | 零散隐患 | 2/3 ✅ |
 
@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | P1-1 | **文件存储** | `pkg/storage`：本地盘驱动 + 统一上传 API（`/api/admin/infra/file`）。解锁：公告附件、头像、codegen 导入产物、Excel 导出落地 | ✅ |
 | P1-2 | **Excel 导入导出** | 用户/会员/订单列表导出（export 落地：`pkg/excel` + 三域 `/export` 端点 + 前端两按钮；导入留小票） | ✅ |
-| P1-3 | **在线用户 + 代登录** | 在线会话列表（查 `system_oauth2_access_token`）、踢人（Revoke）、impersonate 端点；对照 yudao 在线用户页 | 无 |
+| P1-3 | **在线用户 + 代登录** | 在线会话列表（查 `system_oauth2_access_token`）、踢人（Revoke）、impersonate 端点；对照 yudao 在线用户页 | ✅ `fbaebd4` |
 | P1-4 | **API 文档** | swagger 注解 + 聚合页（或从 gin routes 生成）；减少 `docs/usage.md` 手维护漂移 | 无 |
 | P1-5 | **HTTP 基座规范化** | 统一信封 {code,msg,data} + 五位错误码 + Paginate[T] + DateTime + AccessLog/Recovery（spec：`docs/superpowers/specs/2026-10-15-http-foundation-design.md`） | ✅ |
 

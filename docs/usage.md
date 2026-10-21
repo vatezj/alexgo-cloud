@@ -21,7 +21,7 @@
   - 五位错误码分段见 `pkg/errors/code.go`：1xxxx 参数、2xxxx 认证授权、3xxxx 业务规则、5xxxx 系统。
   - 豁免清单（勿改）：`/api/oauth2/*` 协议端点用 RFC 6749 信封 `{"error","error_description"}`、
     `/health*`、`/metrics`、`/debug/pprof/**`。
-- **文件与导出**：文件上传/下载见 §3，Excel 导出见 §4；新建模块脚手架见 §5；scorecard 打牌记账运维见 §6。
+- **文件与导出**：文件上传/下载见 §3，Excel 导出见 §4；新建模块脚手架见 §5；scorecard 打牌记账运维见 §6；在线用户与代登录见 §6.5。
 
 ---
 
@@ -480,3 +480,31 @@ make new-module NAME=demo ENTITIES=item ARGS="-dry-run"   # 干跑，确认计�
      （超集幂等 DELETE，覆盖 7 个 path）→ 把 `schema_migrations_system` 的 `version`
      回退到 `20261016000002` 且 `dirty=0`（以实际库为准）→ `make migrate` 重跑 up，
      按 `NOT EXISTS` 重插 3 页形态；重启进程让 seed 重建策略并绑 admin。
+
+### 6.5 在线用户与代登录（系统管理 → 在线用户）
+
+端点、权限码与错误码见 [modules.md §3.7](modules.md)；本节只记操作。
+
+- **入口与范围**：系统管理 → 在线用户（`/system/online-users`，菜单权限码 `system:online:list`
+  控可见性）。列表 = **本租户未过期的管理员会话**（查 `system_oauth2_access_token`，20 条/页、
+  按签发倒序），列：ID / 用户名 / 用户ID / 客户端（`client_id`）/ 签发时间 / 过期时间。
+  会员会话**不进本页**（明确不做「会员在线列表」）；IP/UA 不在列表展示（token 表无这两列）。
+- **踢人**：行尾「踢出」（权限码 `system:online:kick`）→ Popconfirm 确认 →
+  `DELETE /api/admin/system/online/:id`。踢出即删 token 行、**会话立即失效**（对方下一次请求 401），
+  toast「已踢出，该会话立即失效」；**不能踢自己**（30202），
+  会话不存在 / 跨租户 / 非管理员会话报 30203。
+- **代登录**：行尾「代登录」（权限码 `system:online:impersonate`）→ modal 内按昵称/手机过滤选会员
+  （拉 `GET /api/admin/member/users` 前 50 条后本地过滤，单选）→ 确认 →
+  `POST /api/admin/system/online/impersonate` `{user_id}` → toast「代登录成功，会话已生效
+  （可在登录日志审计）」，modal 关闭、列表刷新。
+  - **token 不回显、不落盘**：接口返回 `{access_token, refresh_token, expires_in}`，但页面
+    **不展示**、不写 localStorage / sessionStorage、**不切换当前浏览器身份**——本期语义是
+    「替会员签一枚令牌 + 记审计」；浏览器侧身份切换 UI 留后续小票。要用这枚 token，
+    只能拿接口出参自行调用（除响应体外无第二处副本）。
+  - **审计去 login_logs 查**：每次代登录写一条登录日志，message 形如
+    `代登录: 管理员{id}/{name} → 会员{id}/{name}`（IP/UA 记请求侧）——后台
+    系统管理 → 登录日志（`GET /api/admin/system/logs/login?limit=`）按 `代登录:` 前缀搜即可对账；
+    token 落在 `system_oauth2_access_token` 行（`client_id=impersonate-admin` 可辨识；
+    当前踢人端点仅管管理员会话，member 行 → 30203，撤销手段不在本期范围）。
+  - 目标会员不存在 / 已删除 / 已停用 → **30201**「目标会员不存在或不可用」
+    （给停用账号签 token 等于绕过登录状态门）。
