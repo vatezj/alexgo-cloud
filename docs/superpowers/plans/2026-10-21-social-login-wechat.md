@@ -841,7 +841,7 @@ Expected: FAIL（NewSocialService undefined）
 
 ```go
 func (s *SocialService) Login(ctx context.Context, platform, code, ip, ua string) (*oauth2svc.LoginResult, error) {
-	tid, _ := tenant.TenantIDFromContext(ctx)
+	tid := tenant.TenantIDFromContext(ctx)
 	ad, ok := s.adapters.Get(platform)
 	if !ok {
 		return nil, errs.New(errs.CodeSocialAppNotConfigured, nil)
@@ -984,7 +984,7 @@ func (s *SocialService) BindSocial(ctx context.Context, memberID uint64, platfor
 		return errs.New(errs.CodeParamInvalid, nil) // 未知平台是用户输入
 	}
 	ad, _ := s.adapters.Get(platform)
-	tid, _ := tenant.TenantIDFromContext(ctx)
+	tid := tenant.TenantIDFromContext(ctx)
 	app, err := s.repo.GetApp(ctx, tid, platform)
 	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && app.Status != 1) {
 		return errs.New(errs.CodeSocialAppNotConfigured, err) // 未配置/停用
@@ -1023,7 +1023,7 @@ func (s *SocialService) BindMobile(ctx context.Context, memberID uint64, mobile 
 	if s.members == nil {
 		return oauth2svc.ErrAuthenticatorMissing
 	}
-	tid, _ := tenant.TenantIDFromContext(ctx)
+	tid := tenant.TenantIDFromContext(ctx)
 	me, err := s.members.GetByID(ctx, tid, memberID)
 	if err != nil || me.Deleted {
 		return errs.New(errs.CodeUserNotFound, err)
@@ -1055,7 +1055,7 @@ func (s *SocialService) UnbindSocial(ctx context.Context, memberID uint64, platf
 	if !s.adapters.Exists(platform) {
 		return errs.New(errs.CodeParamInvalid, nil)
 	}
-	tid, _ := tenant.TenantIDFromContext(ctx)
+	tid := tenant.TenantIDFromContext(ctx)
 	list, err := s.repo.ListIdentities(ctx, tid, memberID)
 	if err != nil {
 		return err
