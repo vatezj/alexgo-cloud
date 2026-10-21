@@ -398,7 +398,7 @@ export interface Tenant {
   status: number; // 1 启用 0 停用
   account_limit: number; // -1 不限（Create 时 0 也会归一为 -1）
   package_id: number; // 展示字段，Update 载荷不含它
-  expire_time: string | null; // 展示字段，Update 载荷不含它
+  expire_time: null | string; // 展示字段，Update 载荷不含它
   created_at: string;
   updated_at: string;
 }
@@ -452,4 +452,48 @@ export function saveExportBlob(blob: Blob, base: string) {
   const p = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   saveBlob(blob, `${base}_${stamp}.xlsx`);
+}
+
+// ---- 在线用户（P1-3） ----
+export interface OnlineSession {
+  id: number;
+  user_id: number;
+  username: string;
+  client_id: string;
+  is_impersonated: boolean;
+  issued_at: string;
+  expires_at: string;
+}
+
+export function listOnlineApi(params: Record<string, any>) {
+  return requestClient.get<{ list: OnlineSession[]; total: number }>(
+    '/admin/system/online',
+    { params },
+  );
+}
+
+export function kickOnlineApi(id: number): Promise<void> {
+  return requestClient.delete(`/admin/system/online/${id}`);
+}
+
+export function impersonateApi(userId: number) {
+  return requestClient.post<{
+    access_token: string;
+    expires_in: number;
+    refresh_token: string;
+  }>('/admin/system/online/impersonate', { user_id: userId });
+}
+
+export interface MemberBrief {
+  id: number;
+  nickname: string;
+  mobile: string;
+  status: number;
+}
+
+export function listMemberUsersApi(params: Record<string, any>) {
+  return requestClient.get<{ list: MemberBrief[]; total: number }>(
+    '/admin/member/users',
+    { params },
+  );
 }
