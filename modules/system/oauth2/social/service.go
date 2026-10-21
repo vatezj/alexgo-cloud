@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -265,4 +266,123 @@ func lastN(s string, n int) string {
 		return s
 	}
 	return s[len(s)-n:]
+}
+
+// mobileRe 大陆手机号格式（Task 7 首次引入，BindMobile 入参校验）。
+var mobileRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
+
+// BindSocial 把当前登录会员绑定一个第三方身份（spec §5 绑定）：
+// 未知平台 10001（用户输入）→ 渠道未配置/停用 30301 → code 换身份 30302
+// → 已绑自己幂等 nil / 已绑他人 30303（不迁移）→ 落绑定行。
+func (s *SocialService) BindSocial(ctx context.Context, memberID uint64, platform, code string) error {
+	if !s.adapters.Exists(platform) {
+		return errs.New(errs.CodeParamInvalid, nil) // 未知平台是用户输入
+	}
+	ad, _ := s.adapters.Get(platform)
+	tid := tenant.TenantIDFromContext(ctx)
+	app, err := s.repo.GetApp(ctx, tid, platform)
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && app.Status != 1) {
+		return errs.New(errs.CodeSocialAppNotConfigured, err) // 未配置/停用
+	}
+	if err != nil {
+		return err
+	}
+	if code == "" {
+		return errs.New(errs.CodeParamMissing, nil)
+	}
+	ident, err := ad.Exchange(ctx, app, code)
+	if err != nil {
+		log.Printf("social: bind exchange failed platform=%s: %v", platform, err)
+		return errs.New(errs.CodeSocialExchangeFailed, err)
+	}
+	idn, err := s.repo.GetIdentity(ctx, tid, platform, ident.OpenID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if idn != nil {
+		if idn.MemberUserID == memberID {
+			return nil // 已绑自己 → 幂等成功
+		}
+		return errs.New(errs.CodeSocialIdentityBound, nil) // 已绑他人，不迁移
+	}
+	return s.repo.CreateIdentity(ctx, &MemberIdentity{
+		TenantID: tid, MemberUserID: memberID,
+		Platform: platform, OpenID: ident.OpenID, UnionID: ident.UnionID,
+	})
+}
+
+// BindMobile 绑定手机号（spec §5）：格式 10001 → 会员不存在 30002 → 已有手机号
+// 30304（不允许改绑）→ 号码空闲直接落库；号码被占仅空壳（无手机号且无密码）自动
+// 合并：identity 全部改指目标 → 当前空壳软删；非空壳 30305 拒绝（Review Focus #4）。
+func (s *SocialService) BindMobile(ctx context.Context, memberID uint64, mobile string) error {
+	if !mobileRe.MatchString(mobile) {
+		return errs.New(errs.CodeParamInvalid, nil)
+	}
+	if s.members == nil {
+		return oauth2svc.ErrAuthenticatorMissing
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	me, err := s.members.GetByID(ctx, tid, memberID)
+	if err != nil || me.Deleted {
+		return errs.New(errs.CodeUserNotFound, err)
+	}
+	if me.Mobile != "" {
+		return errs.New(errs.CodeSocialMobileBound, nil) // 已绑定，不允许改绑
+	}
+	taken, err := s.members.GetByMobile(ctx, tid, mobile)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		me.Mobile = mobile
+		return s.members.Update(ctx, me)
+	}
+	if err != nil {
+		return err
+	}
+	// mobile 已被占用 → 仅空壳自动合并（Review Focus #4）
+	isShell := me.Mobile == "" && me.Password == ""
+	if !isShell {
+		return errs.New(errs.CodeSocialMergeRefused, nil)
+	}
+	if _, err := s.repo.ReassignIdentities(ctx, tid, me.ID, taken.ID); err != nil {
+		return err // 显式 tenant 过滤：跨租户 identity 不改指
+	}
+	me.Deleted = true // 空壳软删；业务数据不迁移（空壳刚注册无业务数据）
+	return s.members.Update(ctx, me)
+}
+
+// UnbindSocial 解绑第三方身份（spec §5）：无该平台绑定幂等 nil；守门 30306——
+// 解绑后必须仍剩至少一种登录方式（有密码或其他平台 identity），否则拒绝防锁死
+// （Review Focus #7）。
+func (s *SocialService) UnbindSocial(ctx context.Context, memberID uint64, platform string) error {
+	if !s.adapters.Exists(platform) {
+		return errs.New(errs.CodeParamInvalid, nil)
+	}
+	tid := tenant.TenantIDFromContext(ctx)
+	list, err := s.repo.ListIdentities(ctx, tid, memberID)
+	if err != nil {
+		return err
+	}
+	var target bool
+	others := 0
+	for _, idn := range list {
+		if idn.Platform == platform {
+			target = true
+		} else {
+			others++
+		}
+	}
+	if !target {
+		return nil // 幂等：没有该平台绑定
+	}
+	if s.members == nil {
+		return oauth2svc.ErrAuthenticatorMissing
+	}
+	me, err := s.members.GetByID(ctx, tid, memberID)
+	if err != nil {
+		return errs.New(errs.CodeUserNotFound, err)
+	}
+	if me.Password == "" && others == 0 {
+		return errs.New(errs.CodeSocialUnbindLast, nil) // Review Focus #7：防锁死
+	}
+	_, err = s.repo.DeleteIdentity(ctx, tid, memberID, platform)
+	return err
 }

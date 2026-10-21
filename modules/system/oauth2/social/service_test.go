@@ -391,3 +391,305 @@ func TestLogin_MembersNil_ErrAuthenticatorMissing(t *testing.T) {
 		t.Fatalf("err = %v, want ErrAuthenticatorMissing", err)
 	}
 }
+
+// === Task 7：绑定 / 手机号合并 / 解绑守门（brief Step 1 用例逐字）===
+
+func TestBindSocial_PlatformUnknown_10001(t *testing.T) {
+	e := newLoginEnv(t, 1)
+
+	err := e.defaultSvc().BindSocial(e.ctx, 100, "qq", "code-1")
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("err = %v, want CodeParamInvalid(10001)", err)
+	}
+	if e.adp.calls != 0 {
+		t.Errorf("Exchange 调用 = %d, want 0（未知平台不耗 code 配额）", e.adp.calls)
+	}
+}
+
+func TestBindSocial_NotConfigured_30301(t *testing.T) {
+	e := newLoginEnv(t, 1) // 无 SocialApp 行
+
+	err := e.defaultSvc().BindSocial(e.ctx, 100, PlatformWechatMP, "code-1")
+	if !errs.Is(err, errs.CodeSocialAppNotConfigured) {
+		t.Fatalf("err = %v, want CodeSocialAppNotConfigured(30301)", err)
+	}
+	if e.adp.calls != 0 {
+		t.Errorf("Exchange 调用 = %d, want 0（未配置不耗 code 配额）", e.adp.calls)
+	}
+}
+
+func TestBindSocial_ExchangeErr_30302(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedApp(t, PlatformWechatMP, 1)
+	e.adp.err = errors.New("wechat: 40029 invalid code")
+
+	err := e.defaultSvc().BindSocial(e.ctx, 100, PlatformWechatMP, "bad-code")
+	if !errs.Is(err, errs.CodeSocialExchangeFailed) {
+		t.Fatalf("err = %v, want CodeSocialExchangeFailed(30302)", err)
+	}
+	if e.adp.calls != 1 {
+		t.Errorf("Exchange 调用 = %d, want 1", e.adp.calls)
+	}
+	var n int64
+	if err := e.db.Model(&MemberIdentity{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("绑定行数 = %d, want 0（换取失败不落行）", n)
+	}
+}
+
+func TestBindSocial_AlreadyBoundSelf_Idempotent(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedApp(t, PlatformWechatMP, 1)
+	e.seedIdentity(t, PlatformWechatMP, "OID", "U", 100)
+	e.adp.idn = &Identity{OpenID: "OID", UnionID: "U"}
+
+	if err := e.defaultSvc().BindSocial(e.ctx, 100, PlatformWechatMP, "code-1"); err != nil {
+		t.Fatalf("已绑自己应幂等 nil, got %v", err)
+	}
+	var n int64
+	if err := e.db.Model(&MemberIdentity{}).
+		Where("tenant_id = ? AND platform = ? AND openid = ?", tid, PlatformWechatMP, "OID").
+		Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("绑定行数 = %d, want 1（不重复插行）", n)
+	}
+}
+
+func TestBindSocial_BoundOther_30303(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedApp(t, PlatformWechatMP, 1)
+	e.seedIdentity(t, PlatformWechatMP, "OID", "", 200)
+	e.adp.idn = &Identity{OpenID: "OID"}
+
+	err := e.defaultSvc().BindSocial(e.ctx, 100, PlatformWechatMP, "code-1")
+	if !errs.Is(err, errs.CodeSocialIdentityBound) {
+		t.Fatalf("err = %v, want CodeSocialIdentityBound(30303)", err)
+	}
+	idn, gerr := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID")
+	if gerr != nil || idn.MemberUserID != 200 {
+		t.Errorf("绑定行 = %+v err=%v, want member=200（30303 不迁移）", idn, gerr)
+	}
+}
+
+func TestBindSocial_Unbound_Binds(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedApp(t, PlatformWechatMP, 1)
+	e.adp.idn = &Identity{OpenID: "NEW", UnionID: "U"}
+
+	if err := e.defaultSvc().BindSocial(e.ctx, 100, PlatformWechatMP, "code-1"); err != nil {
+		t.Fatalf("BindSocial: %v", err)
+	}
+	idn, err := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "NEW")
+	if err != nil {
+		t.Fatalf("绑定行未落库: %v", err)
+	}
+	if idn.MemberUserID != 100 || idn.TenantID != tid || idn.UnionID != "U" {
+		t.Errorf("绑定行 = %+v, want member=100 tenant=1 unionid=U", idn)
+	}
+}
+
+func TestBindMobile_FormatInvalid_10001(t *testing.T) {
+	e := newLoginEnv(t, 1)
+	e.seedMember(t, 100, nil)
+
+	err := e.defaultSvc().BindMobile(e.ctx, 100, "123")
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("err = %v, want CodeParamInvalid(10001)", err)
+	}
+}
+
+func TestBindMobile_AlreadyHasMobile_30304(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, func(u *membermodel.MemberUser) { u.Mobile = "13800000000" })
+
+	err := e.defaultSvc().BindMobile(e.ctx, 100, "13900000000")
+	if !errs.Is(err, errs.CodeSocialMobileBound) {
+		t.Fatalf("err = %v, want CodeSocialMobileBound(30304)", err)
+	}
+	u, gerr := e.mem.GetByID(e.ctx, tid, 100)
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	if u.Mobile != "13800000000" {
+		t.Errorf("mobile = %q, want 原号不变（30304 不改绑）", u.Mobile)
+	}
+}
+
+func TestBindMobile_Free_SetsMobile(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, func(u *membermodel.MemberUser) { u.Password = "bcrypt-hash" })
+
+	if err := e.defaultSvc().BindMobile(e.ctx, 100, "13900139000"); err != nil {
+		t.Fatalf("BindMobile: %v", err)
+	}
+	u, err := e.mem.GetByID(e.ctx, tid, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Mobile != "13900139000" {
+		t.Errorf("mobile = %q, want 13900139000", u.Mobile)
+	}
+	if u.Deleted {
+		t.Error("手机号空闲绑定成功不应软删")
+	}
+	byMobile, berr := e.mem.GetByMobile(e.ctx, tid, "13900139000")
+	if berr != nil || byMobile.ID != 100 {
+		t.Errorf("GetByMobile = %+v err=%v, want id=100", byMobile, berr)
+	}
+}
+
+func TestBindMobile_Taken_NonShell_30305(t *testing.T) { // Review Focus #4：非空壳（有手机号或密码）拒绝
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, func(u *membermodel.MemberUser) { u.Password = "bcrypt-hash" }) // 非空壳：有密码
+	e.seedMember(t, 200, func(u *membermodel.MemberUser) { u.Mobile = "13900139000" })
+	e.seedIdentity(t, PlatformWechatMP, "OID", "", 100)
+
+	err := e.defaultSvc().BindMobile(e.ctx, 100, "13900139000")
+	if !errs.Is(err, errs.CodeSocialMergeRefused) {
+		t.Fatalf("err = %v, want CodeSocialMergeRefused(30305)", err)
+	}
+	// 不误伤：未软删、identity 不改指、目标手机号不动
+	me, merr := e.mem.GetByID(e.ctx, tid, 100)
+	if merr != nil {
+		t.Fatal(merr)
+	}
+	if me.Deleted {
+		t.Error("30305 拒绝后当前账号不应软删")
+	}
+	idn, ierr := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID")
+	if ierr != nil || idn.MemberUserID != 100 {
+		t.Errorf("identity = %+v err=%v, want member=100（拒绝不迁移）", idn, ierr)
+	}
+	target, terr := e.mem.GetByID(e.ctx, tid, 200)
+	if terr != nil || target.Mobile != "13900139000" {
+		t.Errorf("目标 = %+v err=%v, want 手机号不变", target, terr)
+	}
+}
+
+func TestBindMobile_Taken_Shell_Merges(t *testing.T) {
+	// 空壳 me(无 mobile 无 password, 有 identity wechat_mp) + 目标 member 有 mobile
+	//   → Reassign: me 的 identity 全指目标；me.Deleted=true
+	//   → 跨租户同 member_user_id 的 identity 不被改指（seed tid=2 对照行）
+	//   → 软删后 GetByMobile(tid, mobile) 只回目标行
+	const tid = uint64(1)
+	const otherTid = uint64(2)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, nil) // 空壳：Mobile="" Password=""
+	e.seedMember(t, 200, func(u *membermodel.MemberUser) { u.Mobile = "13900139000" })
+	e.seedIdentity(t, PlatformWechatMP, "OID", "", 100)
+	// 跨租户对照行：同 member_user_id、tid=2
+	if err := e.repo.CreateIdentity(ctxTid(otherTid), &MemberIdentity{
+		TenantID: otherTid, MemberUserID: 100, Platform: PlatformWechatMP, OpenID: "OID-T2",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := e.defaultSvc().BindMobile(e.ctx, 100, "13900139000"); err != nil {
+		t.Fatalf("空壳合并应成功: %v", err)
+	}
+	// tid=1 identity 改指目标
+	idn, err := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID")
+	if err != nil || idn.MemberUserID != 200 {
+		t.Errorf("identity = %+v err=%v, want member=200（改指目标）", idn, err)
+	}
+	// 跨租户对照行不被改指（显式 tenant 过滤）
+	other, oerr := e.repo.GetIdentity(ctxTid(otherTid), otherTid, PlatformWechatMP, "OID-T2")
+	if oerr != nil || other.MemberUserID != 100 {
+		t.Errorf("跨租户行 = %+v err=%v, want member=100（不改指）", other, oerr)
+	}
+	// 空壳软删
+	me, merr := e.mem.GetByID(e.ctx, tid, 100)
+	if merr != nil {
+		t.Fatal(merr)
+	}
+	if !me.Deleted {
+		t.Error("合并后空壳应软删 me.Deleted=true")
+	}
+	// 软删后 GetByMobile 只回目标行
+	byMobile, berr := e.mem.GetByMobile(e.ctx, tid, "13900139000")
+	if berr != nil || byMobile.ID != 200 {
+		t.Errorf("GetByMobile = %+v err=%v, want 只回目标 id=200", byMobile, berr)
+	}
+	// 目标行未被误伤
+	target, terr := e.mem.GetByID(e.ctx, tid, 200)
+	if terr != nil || target.Deleted || target.Mobile != "13900139000" {
+		t.Errorf("目标 = %+v err=%v, want 存活且手机号不变", target, terr)
+	}
+}
+
+func TestBindMobile_MembersNil_ErrAuthenticatorMissing(t *testing.T) {
+	e := newLoginEnv(t, 1)
+
+	err := e.svc(nil, nil).BindMobile(e.ctx, 100, "13900139000")
+	if !errors.Is(err, oauth2svc.ErrAuthenticatorMissing) {
+		t.Fatalf("err = %v, want ErrAuthenticatorMissing", err)
+	}
+}
+
+func TestUnbind_NoIdentity_Idempotent(t *testing.T) {
+	e := newLoginEnv(t, 1)
+	e.seedMember(t, 100, nil)
+
+	if err := e.defaultSvc().UnbindSocial(e.ctx, 100, PlatformWechatMP); err != nil {
+		t.Fatalf("无该平台绑定解绑应幂等 nil, got %v", err)
+	}
+}
+
+func TestUnbind_HasPassword_Allows(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, func(u *membermodel.MemberUser) { u.Password = "bcrypt-hash" })
+	e.seedIdentity(t, PlatformWechatMP, "OID", "", 100)
+
+	if err := e.defaultSvc().UnbindSocial(e.ctx, 100, PlatformWechatMP); err != nil {
+		t.Fatalf("有密码应允许解绑: %v", err)
+	}
+	if _, err := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID"); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Errorf("解绑后 err = %v, want ErrRecordNotFound", err)
+	}
+}
+
+func TestUnbind_OtherPlatformRemains_Allows(t *testing.T) {
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, nil) // 无密码，但另有一平台绑定
+	e.seedIdentity(t, PlatformWechatMP, "OID-MP", "", 100)
+	e.seedIdentity(t, PlatformWechatWeb, "OID-WEB", "", 100)
+
+	if err := e.defaultSvc().UnbindSocial(e.ctx, 100, PlatformWechatMP); err != nil {
+		t.Fatalf("尚有其他平台可解绑: %v", err)
+	}
+	if _, err := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID-MP"); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Errorf("被解绑行 err = %v, want ErrRecordNotFound", err)
+	}
+	rest, err := e.repo.ListIdentities(e.ctx, tid, 100)
+	if err != nil || len(rest) != 1 || rest[0].Platform != PlatformWechatWeb {
+		t.Errorf("剩余绑定 = %+v err=%v, want 仅 wechat_web", rest, err)
+	}
+}
+
+func TestUnbind_LastLoginMethod_30306(t *testing.T) { // Review Focus #7：Password=="" 且 identities 只剩本平台
+	const tid = uint64(1)
+	e := newLoginEnv(t, tid)
+	e.seedMember(t, 100, nil) // 无密码
+	e.seedIdentity(t, PlatformWechatMP, "OID", "", 100)
+
+	err := e.defaultSvc().UnbindSocial(e.ctx, 100, PlatformWechatMP)
+	if !errs.Is(err, errs.CodeSocialUnbindLast) {
+		t.Fatalf("err = %v, want CodeSocialUnbindLast(30306)", err)
+	}
+	if _, gerr := e.repo.GetIdentity(e.ctx, tid, PlatformWechatMP, "OID"); gerr != nil {
+		t.Errorf("30306 守门拒绝后绑定行不得删除: %v", gerr)
+	}
+}
