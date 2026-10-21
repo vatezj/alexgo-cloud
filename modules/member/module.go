@@ -10,6 +10,7 @@ import (
 	"alexGo-cloud/modules/member/repository"
 	"alexGo-cloud/modules/member/service"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/social"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -31,6 +32,9 @@ var FxModule = fx.Module("member",
 	fx.Provide(
 		func(svc service.MemberService) service.BriefProvider { return svc },
 	),
+	// 第三方登录会员窄接口映射（Task 6）：social.SocialService 按 MemberStore 消费。
+	// 无 import 循环：social 只 import member/model；micro system 进程无本 Provide → optional 为 nil。
+	fx.Provide(func(r repository.MemberRepository) social.MemberStore { return r }),
 	fx.Provide(
 		fx.Annotate(
 			NewModule,

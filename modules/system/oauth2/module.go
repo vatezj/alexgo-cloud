@@ -9,6 +9,7 @@ import (
 	"alexGo-cloud/modules/system/oauth2/controller/admin"
 	"alexGo-cloud/modules/system/oauth2/repository"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
+	"alexGo-cloud/modules/system/oauth2/social"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -29,6 +30,12 @@ var FxModule = fx.Module("oauth2",
 		oauth2svc.NewAuthorizeCodeService,
 		oauth2svc.NewUnifiedLogin,
 		oauth2svc.NewTokenService,
+		// 第三方登录（微信一期，Task 6）：仓储/适配器注册表/登录门面。
+		// SocialDeps.Members 由 member 模块映射（member/module.go）；
+		// system 微服务进程无 member 模块 → optional 为 nil。
+		social.NewSocialRepository,
+		social.NewAdapterRegistry,
+		social.NewSocialService,
 		controller.NewProtocolController,
 		admin.NewClientController,
 		fx.Annotate(
