@@ -3,6 +3,7 @@ package social
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,7 +36,13 @@ func (m *WechatMP) Exchange(ctx context.Context, app *SocialApp, code string) (*
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wechat mp code2session: %w", err)
+		// client.Do 失败时错误是 *url.Error，其 Error() 含完整 URL（含 secret 查询参数）；
+		// 只保留内层 Err，防止 secret 随 error 文本泄入日志（内层可 unwrap 时保持 %w 语义）。
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return nil, fmt.Errorf("wechat mp code2session: request failed (network): %w", urlErr.Err)
+		}
+		return nil, fmt.Errorf("wechat mp code2session: request failed (network): %v", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

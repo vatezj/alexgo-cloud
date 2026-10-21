@@ -2,6 +2,7 @@ package social
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,6 +42,30 @@ func TestWechatWeb_ExchangeErrcode(t *testing.T) {
 	web := &WechatWeb{baseURL: srv.URL, client: srv.Client()}
 	if _, err := web.Exchange(context.Background(), &SocialApp{AppID: "a", Secret: "s"}, "bad"); err == nil {
 		t.Error("errcode≠0 应返回 error（Review Focus #2）")
+	}
+}
+
+// 终审 Important：client.Do 失败时 *url.Error 文本含完整 URL（含 secret），
+// 修复后错误只保留内层网络错误，不得出现 secret 值或完整 query URL。
+func TestWechatWeb_ExchangeTransportErrorNoSecretLeak(t *testing.T) {
+	const secret = "super-secret-Web-XYZ"
+	web := &WechatWeb{
+		baseURL: "https://api.weixin.qq.com",
+		client:  &http.Client{Transport: errTransport{err: errors.New("dial tcp: connection refused")}},
+	}
+	_, err := web.Exchange(context.Background(), &SocialApp{AppID: "my-app", Secret: secret}, "code-1")
+	if err == nil {
+		t.Fatal("传输层失败应返回 error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, secret) {
+		t.Errorf("error 泄露 secret: %s", msg)
+	}
+	if strings.Contains(msg, "secret=") {
+		t.Errorf("error 含 query 参数: %s", msg)
+	}
+	if !strings.Contains(msg, "request failed (network)") {
+		t.Errorf("error 应标明 network 失败: %s", msg)
 	}
 }
 

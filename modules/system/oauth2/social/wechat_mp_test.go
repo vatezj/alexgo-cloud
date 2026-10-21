@@ -2,11 +2,18 @@ package social
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// errTransport 恒定返回传输层错误，模拟 DNS/连接失败。
+// http.Client 会把它包成 *url.Error（含完整请求 URL），用于验证错误文本不泄 secret。
+type errTransport struct{ err error }
+
+func (e errTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, e.err }
 
 func newMP(t *testing.T, handler http.HandlerFunc) (*WechatMP, *httptest.Server) {
 	t.Helper()
@@ -53,5 +60,30 @@ func TestWechatMP_ExchangeEmptyOpenID(t *testing.T) {
 	})
 	if _, err := mp.Exchange(context.Background(), &SocialApp{AppID: "a", Secret: "s"}, "c"); err == nil {
 		t.Error("空 openid 应返回 error")
+	}
+}
+
+// 终审 Important：client.Do 失败时 *url.Error 文本含完整 URL（含 secret），
+// 修复后错误只保留内层网络错误，不得出现 secret 值或完整 query URL。
+func TestWechatMP_ExchangeTransportErrorNoSecretLeak(t *testing.T) {
+	const secret = "super-secret-MP-XYZ"
+	mp := &WechatMP{
+		baseURL: "https://api.weixin.qq.com",
+		client:  &http.Client{Transport: errTransport{err: errors.New("dial tcp: connection refused")}},
+	}
+	_, err := mp.Exchange(context.Background(), &SocialApp{AppID: "my-app", Secret: secret}, "code-1")
+	if err == nil {
+		t.Fatal("传输层失败应返回 error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, secret) {
+		t.Errorf("error 泄露 secret: %s", msg)
+	}
+	if strings.Contains(msg, "secret=") {
+		t.Errorf("error 含 query 参数: %s", msg)
+	}
+	// 保留网络故障诊断信息
+	if !strings.Contains(msg, "request failed (network)") {
+		t.Errorf("error 应标明 network 失败: %s", msg)
 	}
 }
