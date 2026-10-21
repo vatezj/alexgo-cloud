@@ -2,7 +2,7 @@
 
 > 日期：2026-10-21
 > 状态：已与用户逐节确认（方案 A + 四决策 + 六节设计）
-> 范围：租户级渠道配置（`social_app`）、微信小程序 code2session 登录、微信网页授权登录、第三方身份绑定（`member_identity`）、绑定/解绑/手机号合并、admin 渠道配置页与菜单种子、adapter 可扩展接口（抖音/支付宝留位）
+> 范围：租户级渠道配置（`system_social_app`）、微信小程序 code2session 登录、微信网页授权登录、第三方身份绑定（`system_member_identity`）、绑定/解绑/手机号合并、admin 渠道配置页与菜单种子、adapter 可扩展接口（抖音/支付宝留位）
 > 不在范围：支付、模板/订阅消息、短信验证码、抖音/支付宝具体实现、unionid 之外的跨平台同人、用户侧"已绑定渠道"管理页、解绑审计日志
 
 ## 背景与目标
@@ -39,7 +39,7 @@ modules/system/oauth2/social/（新子包）
   wechat_web.go              网页授权 code → access_token 实现
   service.go                 SocialLoginService：登录/绑定/解绑/合并
   ▼
-modules/system/oauth2/social/repository.go（social_app / member_identity 读写）
+modules/system/oauth2/social/repository.go（system_social_app / system_member_identity 读写）
 modules/member（既有）：member_user 自动注册 / bind-mobile 写入
 pkg/token（既有）：token.Issuer.Issue 签发 member token
 ```
@@ -75,7 +75,7 @@ modules/system/oauth2/social/controller/admin.go + service（同一 SocialServic
 
 ## 2. 数据模型
 
-### `social_app`（租户级渠道配置，走租户插件隔离）
+### `system_social_app`（租户级渠道配置，走租户插件隔离；表名带 `system_` 前缀，Go 类型 `SocialApp`）
 
 | 字段 | 说明 |
 |---|---|
@@ -86,7 +86,7 @@ modules/system/oauth2/social/controller/admin.go + service（同一 SocialServic
 
 唯一键 `(tenant_id, platform)`：每租户每平台一份。
 
-### `member_identity`（第三方身份绑定，走租户插件隔离）
+### `system_member_identity`（第三方身份绑定，走租户插件隔离；表名带 `system_` 前缀，Go 类型 `MemberIdentity`）
 
 | 字段 | 说明 |
 |---|---|
@@ -104,18 +104,18 @@ modules/system/oauth2/social/controller/admin.go + service（同一 SocialServic
 
 ```
 code → adapter.Exchange(code) → {openid, unionid, nickname, avatar}
-  1) 查 member_identity (tid, platform, openid) 命中
+  1) 查 system_member_identity (tid, platform, openid) 命中
        → member 存在且未删、status=1 → Issue 签发 → login_logs 审计 → 返回 token 对
        → member 已删/停用 → 拒绝（400，不静默注册新号）
   2) 未命中且 unionid != ""
-       → 按 (tid, unionid) 查任一 member_identity
+       → 按 (tid, unionid) 查任一 system_member_identity
        → 命中 → 补绑本平台 identity 行（member_user_id 沿用）→ 签发 → 审计
   3) 都没有 → 自动注册 member_user 空壳（Nickname 平台给什么用什么，缺省空串；
        status=1 启用；不向平台额外索取用户信息——微信已匿名化，一期不接 getUserProfile）
        → 写 identity → 签发 → 审计
 ```
 
-租户解析：登录请求经现有 Tenant 中间件（头 / 域名），拿 tid 查 `social_app`（platform 精确、status=1）——**未配置 / 停用直接 30301 报错**。租户未配置时 adapter 不执行、不消耗平台配额；天然不会串租户 appid。
+租户解析：登录请求经现有 Tenant 中间件（头 / 域名），拿 tid 查 `system_social_app`（platform 精确、status=1）——**未配置 / 停用直接 30301 报错**。租户未配置时 adapter 不执行、不消耗平台配额；天然不会串租户 appid。
 
 `Exchange` 失败（code 过期 / 平台接口错误）统一映射 30302，**不区分**平台细分错误（一期不透传平台 errcode，防信息泄露；平台原始错误只记日志）。
 
@@ -126,7 +126,7 @@ code → adapter.Exchange(code) → {openid, unionid, nickname, avatar}
 ```go
 type PlatformAdapter interface {
     Platform() string
-    // Exchange 用 code 换平台身份；app/secret 由 service 查 social_app 后传入。
+    // Exchange 用 code 换平台身份；app/secret 由 service 查 system_social_app 后传入。
     Exchange(ctx context.Context, app *SocialApp, code string) (*Identity, error)
 }
 
@@ -157,7 +157,7 @@ Bearer 登录态 → body `{mobile}`。**与现有注册同口径，不引入短
 - mobile 未被占用 → 写入当前账号 `member_user.mobile`。
 - mobile 已被另一 member 占用 → **合并**：
   - 仅当当前账号是**空壳**（`mobile == ""` 且 `password == ""`，即 social 自动注册产物）才自动合并；
-  - 合并动作：本账号全部 `member_identity` 行 `member_user_id` 改指目标 member → 当前空壳 `member_user` 软删（`deleted=1`）→ 完成。**业务数据不迁移**——空壳刚注册无业务数据，此前提使合并不触碰 scorecard 等模块；将来若有逃逸，收紧空壳判定即可。
+  - 合并动作：本账号全部 `system_member_identity` 行 `member_user_id` 改指目标 member → 当前空壳 `member_user` 软删（`deleted=1`）→ 完成。**业务数据不迁移**——空壳刚注册无业务数据，此前提使合并不触碰 scorecard 等模块；将来若有逃逸，收紧空壳判定即可。
   - 当前账号非空壳（有手机号或密码，即用户自己注册过的）→ 30305 拒绝，提示人工处理。
 
 ### 解绑（`DELETE /api/app/member/auth/social/:platform`）
