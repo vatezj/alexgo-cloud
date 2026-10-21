@@ -83,6 +83,10 @@ var FxModule = fx.Module("system",
 		// AuthDeps 经 HTTPServerParams(optional) 消费；member 端不提供该实现。
 		service.NewDataScopeLoader,
 		func(l *service.DataScopeLoader) tenant.ScopeLoader { return l },
+		// P1-3 在线用户 + 代登录。
+		repository.NewOnlineRepository,
+		service.NewOnlineService,
+		admin.NewOnlineController,
 		// T11：TokenService 的 gRPC Registrar（As 版本单条，同时满足组注册）。
 		tokenServiceRegistrar,
 	),
@@ -147,6 +151,7 @@ type systemModule struct {
 	auditCtrl  *admin.AuditController
 	appCtrl    *app.AppController
 	tenantCtrl *admin.TenantController
+	onlineCtrl *admin.OnlineController
 	vbenCtrl   *vben.Controller
 }
 
@@ -160,6 +165,7 @@ func NewSystemModule(
 	auditCtrl *admin.AuditController,
 	appCtrl *app.AppController,
 	tenantCtrl *admin.TenantController,
+	onlineCtrl *admin.OnlineController,
 	vbenCtrl *vben.Controller,
 ) server.Module {
 	return &systemModule{
@@ -172,6 +178,7 @@ func NewSystemModule(
 		auditCtrl:  auditCtrl,
 		appCtrl:    appCtrl,
 		tenantCtrl: tenantCtrl,
+		onlineCtrl: onlineCtrl,
 		vbenCtrl:   vbenCtrl,
 	}
 }
@@ -231,6 +238,10 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	adminGroup.POST("/tenants", m.tenantCtrl.Create)
 	adminGroup.PUT("/tenants/:id", m.tenantCtrl.Update)
 	adminGroup.DELETE("/tenants/:id", m.tenantCtrl.Delete)
+	// P1-3 在线用户：静态段 /online/impersonate 与参数段 /online/:id 不同 method，无 gin 冲突。
+	adminGroup.GET("/online", m.onlineCtrl.List)
+	adminGroup.DELETE("/online/:id", m.onlineCtrl.Kick)
+	adminGroup.POST("/online/impersonate", m.onlineCtrl.Impersonate)
 
 	appGroup := r.Group("/app/system")
 	appGroup.POST("/auth/login", m.appCtrl.Login)

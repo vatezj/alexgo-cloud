@@ -38,6 +38,7 @@ var permissionRoutes = map[string][]string{
 	"system:config":    {"/api/admin/system/configs", "/api/admin/system/configs/*"},
 	"system:notice":    {"/api/admin/system/notices", "/api/admin/system/notices/*"},
 	"system:log":       {"/api/admin/system/logs/login", "/api/admin/system/logs/operate"},
+	"system:online":    {"/api/admin/system/online", "/api/admin/system/online/*"},
 	"system:auth":      {"/api/admin/system/auth/profile", "/api/admin/system/auth/refresh", "/api/admin/system/auth/logout"},
 	"system:tenant":    {"/api/admin/system/tenants", "/api/admin/system/tenants/*"},
 	"member:user":      {"/api/admin/member/users", "/api/admin/member/users/*"},
