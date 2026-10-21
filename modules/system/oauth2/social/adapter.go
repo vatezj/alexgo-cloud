@@ -25,23 +25,24 @@ type AdapterRegistry struct {
 	byPlatform map[string]PlatformAdapter
 }
 
-// NewAdapterRegistry 构造并预注册微信实现。
-// 当前仅 wechat_mp（wechat_web 由 Task 5 落地后在此补齐注册）。
+// NewAdapterRegistry 构造并预注册微信两平台实现（wechat_mp + wechat_web）。
 func NewAdapterRegistry() *AdapterRegistry {
 	r := &AdapterRegistry{byPlatform: make(map[string]PlatformAdapter)}
-	r.Register(NewWechatMP())
+	r.Register(NewWechatMP(), NewWechatWeb())
 	return r
 }
 
-// Register 注册适配器；平台重复注册是装配期编程错误，直接 panic。
-func (r *AdapterRegistry) Register(a PlatformAdapter) {
+// Register 注册一个或多个适配器；平台重复注册是装配期编程错误，直接 panic。
+func (r *AdapterRegistry) Register(as ...PlatformAdapter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p := a.Platform()
-	if _, dup := r.byPlatform[p]; dup {
-		panic("social: adapter already registered: " + p)
+	for _, a := range as {
+		p := a.Platform()
+		if _, dup := r.byPlatform[p]; dup {
+			panic("social: adapter already registered: " + p)
+		}
+		r.byPlatform[p] = a
 	}
-	r.byPlatform[p] = a
 }
 
 // Get 按平台取适配器，miss 返回 (nil, false)。
