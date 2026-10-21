@@ -75,6 +75,7 @@
     "vitest",
     "vnode",
     "vueuse",
+    "wechat",
     "yxxx"
   ],
   "ignorePaths": [

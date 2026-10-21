@@ -497,3 +497,46 @@ export function listMemberUsersApi(params: Record<string, any>) {
     { params },
   );
 }
+
+// ---- 社交登录渠道配置（微信一期） ----
+export interface SocialApp {
+  id: number;
+  tenant_id: number;
+  platform: string; // wechat_mp | wechat_web
+  appid: string;
+  status: number; // 1 启用 0 停用
+  create_time: string;
+  update_time: string;
+  // secret 恒不回显（后端 json:"-"）——故接口不声明该字段
+}
+
+export interface SocialAppPayload {
+  platform: string;
+  appid: string;
+  secret?: string; // 明文；编辑留空=保留旧值（后端 Update 语义）
+  status: number;
+}
+
+// 服务端真分页（resp.Page 信封 data:{list,total,page,size}）；platform=='' 全平台视图。
+export function listSocialAppsPage(params: {
+  page: number;
+  platform?: string;
+  size: number;
+}) {
+  return requestClient.get<{ list: SocialApp[]; total: number }>(
+    '/admin/social/apps',
+    { params },
+  );
+}
+
+export function createSocialApp(payload: SocialAppPayload) {
+  return requestClient.post<SocialApp>('/admin/social/apps', payload);
+}
+
+export function updateSocialApp(id: number, payload: SocialAppPayload) {
+  return requestClient.put<SocialApp>(`/admin/social/apps/${id}`, payload);
+}
+
+export function deleteSocialApp(id: number): Promise<void> {
+  return requestClient.delete(`/admin/social/apps/${id}`);
+}
