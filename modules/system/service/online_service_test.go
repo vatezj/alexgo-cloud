@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,5 +175,98 @@ func TestOnlineService_Kick_RaceDeleted(t *testing.T) {
 	op := &auth.Claims{UserID: 99, TenantID: 1, UserType: 1}
 	if err := svc.Kick(ctxTid(1), op, vos[0].ID); !errs.Is(err, errs.CodeSessionNotFound) {
 		t.Errorf("race Kick err = %v, want 30203", err)
+	}
+}
+
+func seedMember(t *testing.T, db *gorm.DB, id uint64, tid uint64, status int, deleted bool) {
+	t.Helper()
+	d := 0
+	if deleted {
+		d = 1
+	}
+	// member_user 由 MemberBrief AutoMigrate 产出，无 create_time/update_time 列（brief 原 SQL 需适配）。
+	if err := db.Exec(
+		`INSERT INTO member_user (id, nickname, status, deleted, tenant_id) VALUES (?, ?, ?, ?, ?)`,
+		id, "会员"+string(rune('0'+id%10)), status, d, tid).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOnlineService_Impersonate_OK(t *testing.T) {
+	svc, db, ts := newOnlineTestEnv(t)
+	seedMember(t, db, 501, 1, 1, false)
+	op := &auth.Claims{UserID: 9, Username: "root", TenantID: 1, UserType: 1}
+	issued, err := svc.Impersonate(ctxTid(1), op, "127.0.0.1", "test-ua", 501)
+	if err != nil {
+		t.Fatalf("Impersonate() error = %v", err)
+	}
+	claims, err := ts.Validate(ctxTid(1), issued.AccessToken)
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if claims.UserID != 501 || claims.UserType != token.UserTypeMember || claims.TenantID != 1 {
+		t.Errorf("claims = %+v", claims)
+	}
+	// token 行 client_id 可辨
+	var row repository.OnlineSession
+	if err := db.WithContext(ctxTid(1)).Where("access_token = ?", issued.AccessToken).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.ClientID != ImpersonateClientID {
+		t.Errorf("client_id = %q, want %q", row.ClientID, ImpersonateClientID)
+	}
+	// login_logs 审计行
+	var log model.LoginLog
+	if err := db.Where("user_id = ?", 501).Order("id DESC").First(&log).Error; err != nil {
+		t.Fatalf("login log not written: %v", err)
+	}
+	if log.IP != "127.0.0.1" || log.UserAgent != "test-ua" || log.Success != 1 {
+		t.Errorf("login log = %+v", log)
+	}
+	if !strings.Contains(log.Message, "root") || !strings.Contains(log.Message, "501") {
+		t.Errorf("login log message = %q, want operator+target", log.Message)
+	}
+}
+
+func TestOnlineService_Impersonate_MissingOrDisabled(t *testing.T) {
+	svc, db, _ := newOnlineTestEnv(t)
+	seedMember(t, db, 502, 1, 0, false) // 停用
+	seedMember(t, db, 503, 1, 1, true)  // 已删
+	op := &auth.Claims{UserID: 9, TenantID: 1, UserType: 1}
+	if err := mustImpersonateErr(svc, ctxTid(1), op, 501); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
+		t.Errorf("missing member err = %v, want 30201", err)
+	}
+	if err := mustImpersonateErr(svc, ctxTid(1), op, 502); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
+		t.Errorf("disabled member err = %v, want 30201", err)
+	}
+	if err := mustImpersonateErr(svc, ctxTid(1), op, 503); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
+		t.Errorf("deleted member err = %v, want 30201", err)
+	}
+}
+
+func mustImpersonateErr(svc OnlineService, ctx context.Context, op *auth.Claims, uid uint64) error {
+	_, err := svc.Impersonate(ctx, op, "", "", uid)
+	return err
+}
+
+func TestOnlineService_Impersonate_CrossTenantMemberRejected(t *testing.T) {
+	svc, db, _ := newOnlineTestEnv(t)
+	seedMember(t, db, 504, 2, 1, false) // tid=2 的会员
+	op := &auth.Claims{UserID: 9, TenantID: 1, UserType: 1}
+	if err := mustImpersonateErr(svc, ctxTid(1), op, 504); !errs.Is(err, errs.CodeImpersonateMemberNotFound) {
+		t.Errorf("cross-tenant member err = %v, want 30201", err)
+	}
+}
+
+func TestOnlineService_Impersonate_DisabledTenant(t *testing.T) {
+	svc, db, _ := newOnlineTestEnv(t)
+	seedMember(t, db, 505, 3, 1, false) // tid=3 租户停用（夹具 tenants 3=status 0）
+	op := &auth.Claims{UserID: 9, TenantID: 3, UserType: 1}
+	_, err := svc.Impersonate(ctxTid(3), op, "", "", 505)
+	if err == nil {
+		t.Fatal("disabled tenant must fail")
+	}
+	if errs.Is(err, errs.CodeImpersonateMemberNotFound) || errs.Is(err, errs.CodeSessionNotFound) || errs.Is(err, errs.CodeCannotKickSelf) {
+		t.Errorf("tenant-disabled err = %v, want transparent non-3020x", err)
 	}
 }

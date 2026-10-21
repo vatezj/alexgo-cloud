@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"alexGo-cloud/modules/system/model"
 	"alexGo-cloud/modules/system/repository"
@@ -81,8 +81,35 @@ func (s *onlineService) Kick(ctx context.Context, operator *auth.Claims, session
 	return s.issuer.Revoke(ctx, row.AccessToken)
 }
 
+// Impersonate 代登录到会员：签 member token（client_id=impersonate-admin）+ login_logs 审计。
+// 停用会员拒签（30201）——给停用账号发 token 等于绕过登录状态门；停用租户由 Issue 内部拒（透传）。
 func (s *onlineService) Impersonate(ctx context.Context, operator *auth.Claims, ip, userAgent string, targetUserID uint64) (*token.Issued, error) {
-	return nil, errors.New("online: Impersonate not implemented")
+	m, err := s.repo.GetMemberForImpersonate(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil || m.Deleted || m.Status != 1 {
+		return nil, errs.New(errs.CodeImpersonateMemberNotFound, nil)
+	}
+	issued, err := s.issuer.Issue(ctx, token.IssueParams{
+		UserID:   m.ID,
+		UserType: token.UserTypeMember,
+		TenantID: m.TenantID,
+		ClientID: ImpersonateClientID,
+	})
+	if err != nil {
+		return nil, err // 租户停用等内部错误透传（与正常登录一致）
+	}
+	if err := s.audit.CreateLogin(ctx, &model.LoginLog{
+		TenantID:  m.TenantID,
+		Username:  m.Nickname,
+		UserID:    m.ID,
+		IP:        ip,
+		UserAgent: userAgent,
+		Success:   1,
+		Message:   fmt.Sprintf("代登录: 管理员%d/%s → 会员%d/%s", operator.UserID, operator.Username, m.ID, m.Nickname),
+	}); err != nil {
+		return nil, err
+	}
+	return issued, nil
 }
-
-var _ = model.LoginLog{} // audit 接口消费方，Task 3 用；先钉 import 防 Task 3 改头部
