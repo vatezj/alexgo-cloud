@@ -22,6 +22,7 @@ var FxModule = fx.Module("member",
 		repository.NewMemberRepository,
 		service.NewMemberService,
 		app.NewAuthController,
+		app.NewMeController,
 		admin.NewUserController,
 	),
 	// member 凭据校验窄接口映射：统一登录（Task 8）按 oauth2svc.MemberAuthenticator 消费。
@@ -53,12 +54,13 @@ var FxModule = fx.Module("member",
 
 type memberModule struct {
 	authCtrl *app.AuthController
+	meCtrl   *app.MeController
 	userCtrl *admin.UserController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
-func NewModule(authCtrl *app.AuthController, userCtrl *admin.UserController) server.Module {
-	return &memberModule{authCtrl: authCtrl, userCtrl: userCtrl}
+func NewModule(authCtrl *app.AuthController, meCtrl *app.MeController, userCtrl *admin.UserController) server.Module {
+	return &memberModule{authCtrl: authCtrl, meCtrl: meCtrl, userCtrl: userCtrl}
 }
 
 // RegisterRoutes 挂载 member 路由。入参是 /api group（见 server/http.go），
@@ -69,6 +71,8 @@ func (m *memberModule) RegisterRoutes(r *gin.RouterGroup) {
 	appGroup.POST("/auth/login", m.authCtrl.Login)
 	appGroup.POST("/auth/refresh", m.authCtrl.Refresh)
 	appGroup.POST("/auth/logout", m.authCtrl.Logout)
+	appGroup.GET("/me", m.meCtrl.Me)
+	appGroup.PUT("/me", m.meCtrl.UpdateMe)
 
 	adminGroup := r.Group("/admin/member")
 	adminGroup.GET("/users", m.userCtrl.List)

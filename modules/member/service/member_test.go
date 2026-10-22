@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/member/model"
 	oauth2svc "alexGo-cloud/modules/system/oauth2/service"
+	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
 )
@@ -398,6 +400,89 @@ func TestAuthenticate_Disabled(t *testing.T) {
 		t.Fatalf("停用应 ErrUserDisabled, got %v", err)
 	}
 }
+
+// newProfileRepo 造一行资料完整的会员（tid=0，ID=1，CreatedAt 固定）供 Me/UpdateMe 用例。
+func newProfileRepo(t *testing.T, nickname, avatar string, deleted bool) *memRepo {
+	t.Helper()
+	repo := newMemRepo()
+	if err := repo.Create(context.Background(), &model.MemberUser{
+		TenantID: 0, Mobile: "13800000000", Nickname: nickname, Avatar: avatar,
+		Status: 1, Deleted: deleted,
+		CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// Me：建行后按 uid 取资料，nickname/avatar/created_at 齐。
+func TestMe_ReturnsProfile(t *testing.T) {
+	svc := NewMemberService(newProfileRepo(t, "tester", "a1", false), &fakeIssuer{}, nil)
+	got, err := svc.Me(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Me() error = %v", err)
+	}
+	if got.UserID != 1 || got.Nickname != "tester" || got.Avatar != "a1" {
+		t.Errorf("profile = %+v", got)
+	}
+	if got.CreatedAt.IsZero() || got.CreatedAt != time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) {
+		t.Errorf("CreatedAt = %v, want 2026-01-02T03:04:05Z", got.CreatedAt)
+	}
+}
+
+// Me：软删行 → 用户不存在（errs.CodeUserNotFound）。
+func TestMe_NotFound_Deleted(t *testing.T) {
+	svc := NewMemberService(newProfileRepo(t, "tester", "a1", true), &fakeIssuer{}, nil)
+	_, err := svc.Me(context.Background(), 1)
+	if !errs.Is(err, errs.CodeUserNotFound) {
+		t.Fatalf("Me(deleted) err = %v, want CodeUserNotFound", err)
+	}
+}
+
+// UpdateMe：只传 nickname → avatar 不变，返回最新资料。
+func TestUpdateMe_NicknameOnly(t *testing.T) {
+	repo := newProfileRepo(t, "tester", "a1", false)
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
+	got, err := svc.UpdateMe(context.Background(), 1, ptr("新昵称"), nil)
+	if err != nil {
+		t.Fatalf("UpdateMe(nickname) error = %v", err)
+	}
+	if got.Nickname != "新昵称" || got.Avatar != "a1" {
+		t.Errorf("profile = %+v, want nickname=新昵称 avatar=a1(不变)", got)
+	}
+	// 落库行同步。
+	if row, err := repo.GetByID(context.Background(), 0, 1); err != nil || row.Avatar != "a1" || row.Nickname != "新昵称" {
+		t.Errorf("row = %+v err=%v", row, err)
+	}
+}
+
+// UpdateMe：只传 avatar → nickname 不变（avatar 可单独改/清）。
+func TestUpdateMe_AvatarOnly(t *testing.T) {
+	repo := newProfileRepo(t, "tester", "a1", false)
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
+	got, err := svc.UpdateMe(context.Background(), 1, nil, ptr("a2"))
+	if err != nil {
+		t.Fatalf("UpdateMe(avatar) error = %v", err)
+	}
+	if got.Nickname != "tester" || got.Avatar != "a2" {
+		t.Errorf("profile = %+v, want nickname=tester(不变) avatar=a2", got)
+	}
+}
+
+// UpdateMe：nickname 提供且为空串 → 参数校验失败（10001），不落库。
+func TestUpdateMe_EmptyNickname_Rejected(t *testing.T) {
+	repo := newProfileRepo(t, "tester", "a1", false)
+	svc := NewMemberService(repo, &fakeIssuer{}, nil)
+	_, err := svc.UpdateMe(context.Background(), 1, ptr(""), nil)
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("UpdateMe(empty nickname) err = %v, want CodeParamInvalid", err)
+	}
+	if row, rerr := repo.GetByID(context.Background(), 0, 1); rerr != nil || row.Nickname != "tester" {
+		t.Errorf("被拒后不得落库: row=%+v err=%v", row, rerr)
+	}
+}
+
+func ptr(s string) *string { return &s }
 
 // Export 透传 ctx 租户到 ListAll（插件层钉在 repo 测试；此处钉 service 取数路径）。
 func TestExport_FiltersByTenant(t *testing.T) {

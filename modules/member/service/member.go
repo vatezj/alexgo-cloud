@@ -49,6 +49,21 @@ type MemberService interface {
 	Export(ctx context.Context) ([]*model.MemberUser, error)
 	// GetBriefs 按 id 批量取会员公开摘要（跨模块窄只读；BriefProvider 消费面，见 brief.go）。
 	GetBriefs(ctx context.Context, ids []uint64) ([]UserBrief, error)
+	// Me 当前登录会员资料（app 端 GET /app/member/me；json 键名 user_id/nickname/avatar/created_at）。
+	Me(ctx context.Context, userID uint64) (*ProfileResult, error)
+	// UpdateMe 部分更新资料（PUT /app/member/me）：指针语义（nil=不改），
+	// nickname 提供且为空串 → CodeParamInvalid；avatar 单独可清。
+	UpdateMe(ctx context.Context, userID uint64, nickname, avatar *string) (*ProfileResult, error)
+}
+
+// ProfileResult app 端个人资料视图（GET/PUT /app/member/me 的 data）。
+// json 键名 user_id/nickname/avatar/created_at 逐字钉死——小程序前端按此消费；
+// 刻意不复用 model.MemberUser（避免 mobile/status/tenant_id 等敏感列外泄）。
+type ProfileResult struct {
+	UserID    uint64    `json:"user_id"`
+	Nickname  string    `json:"nickname"`
+	Avatar    string    `json:"avatar"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type memberService struct {
@@ -211,4 +226,42 @@ func (s *memberService) GetBriefs(ctx context.Context, ids []uint64) ([]UserBrie
 		out = append(out, UserBrief{ID: u.ID, Nickname: u.Nickname, Avatar: u.Avatar, Status: u.Status})
 	}
 	return out, nil
+}
+
+// toProfile 映射资料视图（敏感列不进 ProfileResult）。
+func toProfile(u *model.MemberUser) *ProfileResult {
+	return &ProfileResult{UserID: u.ID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt}
+}
+
+// Me 当前登录会员资料：按 ctx 租户 + userID 直取（GetByID 含软删行——
+// 与 social 分支同口径：Deleted → 用户不存在，不泄露"曾存在"）。
+func (s *memberService) Me(ctx context.Context, userID uint64) (*ProfileResult, error) {
+	u, err := s.repo.GetByID(ctx, tenant.TenantIDFromContext(ctx), userID)
+	if err != nil || u.Deleted {
+		return nil, errs.New(errs.CodeUserNotFound, err)
+	}
+	return toProfile(u), nil
+}
+
+// UpdateMe 部分更新资料：指针语义（nil=不改；avatar 空串=清空）；
+// nickname 提供且为空串 → 10001（资料不允许无昵称，与 Register 缺省占位不同——
+// 用户主动清空是无效操作而非"恢复默认"）。查行口径与 Me 一致（软删 → 用户不存在）。
+func (s *memberService) UpdateMe(ctx context.Context, userID uint64, nickname, avatar *string) (*ProfileResult, error) {
+	if nickname != nil && *nickname == "" {
+		return nil, errs.New(errs.CodeParamInvalid, fmt.Errorf("nickname must not be empty"))
+	}
+	u, err := s.repo.GetByID(ctx, tenant.TenantIDFromContext(ctx), userID)
+	if err != nil || u.Deleted {
+		return nil, errs.New(errs.CodeUserNotFound, err)
+	}
+	if nickname != nil {
+		u.Nickname = *nickname
+	}
+	if avatar != nil {
+		u.Avatar = *avatar
+	}
+	if err := s.repo.Update(ctx, u); err != nil {
+		return nil, err
+	}
+	return toProfile(u), nil
 }
