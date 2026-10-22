@@ -19,7 +19,28 @@
     },
     // #endif
     {
+      "path": "pages/friends/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/login/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/manual/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/records/index",
       "type": "page",
       "style": {
         "navigationStyle": "custom"

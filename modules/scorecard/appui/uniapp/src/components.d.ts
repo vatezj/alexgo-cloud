@@ -11,6 +11,7 @@ declare module 'vue' {
     GlobalLoading: typeof import('./components/GlobalLoading.vue')['default']
     GlobalToast: typeof import('./components/GlobalToast.vue')['default']
     PrivacyPopup: typeof import('./components/PrivacyPopup.vue')['default']
+    ScorecardPlayCard: typeof import('./components/scorecard/PlayCard.vue')['default']
     WdConfigProvider: typeof import('@wot-ui/ui/components/wd-config-provider/wd-config-provider.vue')['default']
     WdDialog: typeof import('@wot-ui/ui/components/wd-dialog/wd-dialog.vue')['default']
     WdInput: typeof import('@wot-ui/ui/components/wd-input/wd-input.vue')['default']
