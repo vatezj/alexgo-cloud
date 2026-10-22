@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
@@ -14,6 +15,27 @@ import (
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
+
+// TestRun_MigrateOnlyReturns 票9：--migrate-only 必须在迁移 Invoke 执行完后
+// 自停（Start→Stop 即退），不得像 Run() 那样阻塞等退出信号。
+func TestRun_MigrateOnlyReturns(t *testing.T) {
+	ran := false
+	app := fx.New(fx.Invoke(func() { ran = true }), fx.NopLogger)
+
+	done := make(chan struct{})
+	go func() {
+		run(app, true)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("migrate-only 模式必须自停，5s 内未返回（疑似仍走 Run 阻塞）")
+	}
+	if !ran {
+		t.Fatal("migrate-only 必须执行 Invoke（迁移入口挂在 Invoke 上）")
+	}
+}
 
 // TestMember_GraphValidates 正向干跑：member-server 装配图完整
 // （dig dry-run：不执行构造器/Invoke，不需要配置文件与 DB）。

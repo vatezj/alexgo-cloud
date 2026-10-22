@@ -3,12 +3,35 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"go.uber.org/fx"
 
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/token"
 )
+
+// TestRun_MigrateOnlyReturns 票9：--migrate-only 必须在迁移 Invoke 执行完后
+// 自停（Start→Stop 即退），不得像 Run() 那样阻塞等退出信号——否则
+// make migrate / K8s Job 挂死不退。
+func TestRun_MigrateOnlyReturns(t *testing.T) {
+	ran := false
+	app := fx.New(fx.Invoke(func() { ran = true }), fx.NopLogger)
+
+	done := make(chan struct{})
+	go func() {
+		run(app, true)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("migrate-only 模式必须自停，5s 内未返回（疑似仍走 Run 阻塞）")
+	}
+	if !ran {
+		t.Fatal("migrate-only 必须执行 Invoke（迁移入口挂在 Invoke 上）")
+	}
+}
 
 // TestMono_GraphValidates 正向干跑：mono 模式（默认，非 micro）装配
 // system+order+member 全量依赖图完整（dig dry-run：不执行构造器/Invoke，

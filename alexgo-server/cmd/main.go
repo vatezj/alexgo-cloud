@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"time"
@@ -68,7 +69,28 @@ func main() {
 	}
 
 	// fx.New(...) 会构建依赖图并按 Lifecycle 启动；Run() 会阻塞直到接收到退出信号。
-	fx.New(options(cfg, *migrateOnly)...).Run()
+	run(fx.New(options(cfg, *migrateOnly)...), *migrateOnly)
+}
+
+// run 按模式启动：migrate-only 走 Start→Stop 即退（迁移挂在 fx.Invoke，
+// Start 期执行完即返回——CI/CD Job、make migrate 才不会挂死）；
+// 否则 Run 阻塞至退出信号（HTTP 服务形态）。
+func run(app *fx.App, migrateOnly bool) {
+	if !migrateOnly {
+		app.Run()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), fx.DefaultTimeout)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		if logger.Log != nil {
+			logger.Log.Fatal("migrate-only start failed", zap.Error(err))
+		}
+		panic(err)
+	}
+	if err := app.Stop(context.Background()); err != nil && logger.Log != nil {
+		logger.Log.Error("migrate-only stop failed", zap.Error(err))
+	}
 }
 
 // options 装配入口 fx 清单（正/反向干跑测试复用同一清单，防止测试与入口漂移）。
