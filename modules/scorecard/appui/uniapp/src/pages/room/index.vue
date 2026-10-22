@@ -30,22 +30,30 @@ definePage({
   },
 })
 
-const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
 
-/** query.roomId → number（非法/缺失返回0）。 */
+/**
+ * query.roomId → number（非法/缺失返回0）。
+ * 读 router.currentRoute 而非 useRoute() 副本：后者的 reactive 拷贝依赖 watcher flush，
+ * 应用内跳转的 onShow 时机仍是上一路由的 query；currentRoute 由全局 mixin 在 onLoad
+ * 同步写入（先于组件 onShow），任何读取时机都是本页 query（R1 Important）。
+ */
 const routeRoomId = computed(() => {
-  const raw = route.query.roomId
+  const raw = router.currentRoute.value.query.roomId
   const str = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
   const n = Number(str)
   return Number.isInteger(n) && n > 0 ? n : 0
 })
 
-/** 本次房间 id：query 优先，兜底 store / lastRoomId（回访直达）。 */
-const currentRoomId = routeRoomId.value || roomStore.roomId || authStore.lastRoomId
+/**
+ * 本次房间 id：query 优先，兜底 store / lastRoomId（回访直达）。
+ * 必须惰性求值（computed）：@wot-ui/router 的 currentRoute 在 setup 之后（onLoad/onShow）
+ * 才同步本页 query，setup 时同步读到的是上一路由的值（R1 Important）。
+ */
+const currentRoomId = computed(() => routeRoomId.value || roomStore.roomId || authStore.lastRoomId)
 
 const polling = useRoomPolling(currentRoomId)
 
@@ -102,7 +110,7 @@ function goBack() {
 
 /** 支出页（Task 8 落地前为占位页）：toUserId 空 = 预选空。 */
 function goExpense(toUserId?: number) {
-  const query: Record<string, string> = { roomId: String(currentRoomId) }
+  const query: Record<string, string> = { roomId: String(currentRoomId.value) }
   if (toUserId)
     query.toUserId = String(toUserId)
   router.push({ path: '/pages/expense/index', query })
@@ -146,7 +154,7 @@ async function loadPopupLogs(append: boolean) {
   popupLoading.value = true
   try {
     const page = append ? popupPage.value + 1 : 1
-    const res = await fetchLogs(currentRoomId, { page, size: LOG_PAGE_SIZE })
+    const res = await fetchLogs(currentRoomId.value, { page, size: LOG_PAGE_SIZE })
     popupPage.value = page
     popupTotal.value = res.total
     popupLogs.value = append ? [...popupLogs.value, ...res.list] : res.list
@@ -177,19 +185,19 @@ watch(
   () => snapshot.value?.status,
   (status) => {
     if (status != null && status !== 0)
-      router.replaceAll({ path: '/pages/settle/index', query: { roomId: String(currentRoomId) } })
+      router.replaceAll({ path: '/pages/settle/index', query: { roomId: String(currentRoomId.value) } })
   },
 )
 
 onShow(() => {
-  if (!currentRoomId) {
+  if (!currentRoomId.value) {
     toast.error('房间信息缺失')
     router.replaceAll({ path: '/pages/index/index' })
     return
   }
   // lastRoomId / store.roomId 同步（继续上局 & 回访兜底）
-  authStore.lastRoomId = currentRoomId
-  roomStore.roomId = currentRoomId
+  authStore.lastRoomId = currentRoomId.value
+  roomStore.roomId = currentRoomId.value
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
   void polling.refresh().catch(toastApiError)

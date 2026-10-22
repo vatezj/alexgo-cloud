@@ -32,29 +32,37 @@ definePage({
   },
 })
 
-const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const dialog = useDialog()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
 
-/** query.roomId → number（非法/缺失返回0）。 */
+/**
+ * query.roomId → number（非法/缺失返回0）。
+ * 读 router.currentRoute 而非 useRoute() 副本：后者的 reactive 拷贝依赖 watcher flush，
+ * 应用内跳转的 onShow 时机仍是上一路由的 query；currentRoute 由全局 mixin 在 onLoad
+ * 同步写入（先于组件 onShow），任何读取时机都是本页 query（R1 Important）。
+ */
 const routeRoomId = computed(() => {
-  const raw = route.query.roomId
+  const raw = router.currentRoute.value.query.roomId
   const str = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
   const n = Number(str)
   return Number.isInteger(n) && n > 0 ? n : 0
 })
 
-/** 本次房间 id：query 优先，兜底 store / lastRoomId（回访直达）。 */
-const currentRoomId = routeRoomId.value || roomStore.roomId || authStore.lastRoomId
+/**
+ * 本次房间 id：query 优先，兜底 store / lastRoomId（回访直达）。
+ * 必须惰性求值（computed）：@wot-ui/router 的 currentRoute 在 setup 之后（onLoad/onShow）
+ * 才同步本页 query，setup 时同步读到的是上一路由的值（R1 Important）。
+ */
+const currentRoomId = computed(() => routeRoomId.value || roomStore.roomId || authStore.lastRoomId)
 
 const polling = useRoomPolling(currentRoomId)
 
 /** 本房快照（store 可能持有其它房快照，按 id 过滤）。 */
 const snapshot = computed(() =>
-  roomStore.snapshot && roomStore.snapshot.id === currentRoomId ? roomStore.snapshot : null,
+  roomStore.snapshot && roomStore.snapshot.id === currentRoomId.value ? roomStore.snapshot : null,
 )
 const myUserId = computed(() => authStore.user?.user_id ?? 0)
 const members = computed(() => snapshot.value?.members ?? [])
@@ -65,10 +73,16 @@ const roomCodeText = computed(() => {
 })
 const roundText = computed(() => `${roomCodeText.value} · ${snapshot.value?.round_no ?? 0} 局`)
 
-/** 房主且本局仍进行中：可「结束牌局」。 */
-const canSettle = computed(() => status.value === 0 && myUserId.value > 0 && snapshot.value?.creator_id === myUserId.value)
-/** 进行中可退房（任何身份；房主退房后端自动结算）。 */
-const canLeave = computed(() => status.value === 0)
+/** 房主且本局仍进行中：快照在场 + status===0 + creator 是我（快照未载入 fail-closed 不渲染）。 */
+const canSettle = computed(() => {
+  const snap = snapshot.value
+  return !!snap && snap.status === 0 && myUserId.value > 0 && snap.creator_id === myUserId.value
+})
+/** 进行中可退房（任何身份；房主退房后端自动结算）：快照在场且 status===0（fail-closed）。 */
+const canLeave = computed(() => {
+  const snap = snapshot.value
+  return !!snap && snap.status === 0
+})
 
 const statusText = computed(() => {
   if (status.value === 0)
@@ -136,20 +150,21 @@ const acting = ref(false)
 async function onLeave() {
   if (acting.value)
     return
-  try {
-    await dialog.confirm({
-      title: '退房确认',
-      msg: '确认退出本房间？房主退房将自动结束本局。',
-      confirmButtonText: '确认退房',
-      cancelButtonText: '再想想',
-    })
-  }
-  catch {
-    return
-  }
+  // 锁在 confirm 之前：弹窗停留期间再点不重入（R1 Minor 2）
   acting.value = true
   try {
-    await leave(currentRoomId)
+    try {
+      await dialog.confirm({
+        title: '退房确认',
+        msg: '确认退出本房间？房主退房将自动结束本局。',
+        confirmButtonText: '确认退房',
+        cancelButtonText: '再想想',
+      })
+    }
+    catch {
+      return
+    }
+    await leave(currentRoomId.value)
     roomStore.clearSnapshot()
     toast.success('已退房')
     router.replaceAll({ path: '/pages/index/index' })
@@ -166,20 +181,21 @@ async function onLeave() {
 async function onSettle() {
   if (acting.value)
     return
-  try {
-    await dialog.confirm({
-      title: '结束牌局',
-      msg: '结束后本局转为已结算、只读展示。确认结束？',
-      confirmButtonText: '结束牌局',
-      cancelButtonText: '再想想',
-    })
-  }
-  catch {
-    return
-  }
+  // 锁在 confirm 之前：弹窗停留期间再点不重入（R1 Minor 2）
   acting.value = true
   try {
-    await settle(currentRoomId)
+    try {
+      await dialog.confirm({
+        title: '结束牌局',
+        msg: '结束后本局转为已结算、只读展示。确认结束？',
+        confirmButtonText: '结束牌局',
+        cancelButtonText: '再想想',
+      })
+    }
+    catch {
+      return
+    }
+    await settle(currentRoomId.value)
     await polling.refresh()
     toast.success('已结算')
   }
@@ -224,7 +240,7 @@ async function loadPopupLogs(append: boolean) {
   popupLoading.value = true
   try {
     const page = append ? popupPage.value + 1 : 1
-    const res = await fetchLogs(currentRoomId, { page, size: LOG_PAGE_SIZE })
+    const res = await fetchLogs(currentRoomId.value, { page, size: LOG_PAGE_SIZE })
     popupPage.value = page
     popupTotal.value = res.total
     popupLogs.value = append ? [...popupLogs.value, ...res.list] : res.list
@@ -251,12 +267,12 @@ function onPopupScrollEnd() {
 /* ── 生命周期 ── */
 
 onShow(() => {
-  if (!currentRoomId) {
+  if (!currentRoomId.value) {
     toast.error('房间信息缺失')
     router.replaceAll({ path: '/pages/index/index' })
     return
   }
-  roomStore.roomId = currentRoomId
+  roomStore.roomId = currentRoomId.value
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
   // 快照兜底：无论 store 是否已有本房快照，onShow 都立即拉一次（H5 直达/刷新场景）

@@ -27,34 +27,43 @@ definePage({
   },
 })
 
-const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
 
-/** query.roomId → number（非法/缺失返回0）。 */
+/**
+ * query.roomId → number（非法/缺失返回0）。
+ * 读 router.currentRoute 而非 useRoute() 副本：后者的 reactive 拷贝依赖 watcher flush，
+ * 应用内跳转的 onShow 时机仍是上一路由的 query；currentRoute 由全局 mixin 在 onLoad
+ * 同步写入（先于组件 onShow），任何读取时机都是本页 query（R1 Important）。
+ */
 const routeRoomId = computed(() => {
-  const raw = route.query.roomId
+  const raw = router.currentRoute.value.query.roomId
   const str = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
   const n = Number(str)
   return Number.isInteger(n) && n > 0 ? n : 0
 })
 
-/** query.toUserId → 预选记分对象（非法/缺失返回0，不预选）。 */
+/** query.toUserId → 预选记分对象（非法/缺失返回0，不预选）；同 routeRoomId 读 currentRoute。 */
 const routeToUserId = computed(() => {
-  const raw = route.query.toUserId
+  const raw = router.currentRoute.value.query.toUserId
   const str = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
   const n = Number(str)
   return Number.isInteger(n) && n > 0 ? n : 0
 })
 
-const roomId = routeRoomId.value
+/**
+ * 本次房间 id（query 优先链保持原样）。
+ * 必须惰性求值（computed）：@wot-ui/router 的 currentRoute 在 setup 之后（onLoad/onShow）
+ * 才同步本页 query，setup 时同步读到的是上一路由的值（R1 Important）。
+ */
+const roomId = computed(() => routeRoomId.value)
 
 const polling = useRoomPolling(roomId)
 
 const snapshot = computed(() =>
-  roomStore.snapshot && roomStore.snapshot.id === roomId ? roomStore.snapshot : null,
+  roomStore.snapshot && roomStore.snapshot.id === roomId.value ? roomStore.snapshot : null,
 )
 const myUserId = computed(() => authStore.user?.user_id ?? 0)
 const myNickname = computed(() => authStore.user?.nickname || '牌友')
@@ -101,7 +110,7 @@ function goBack() {
   if (getCurrentPages().length > 1)
     uni.navigateBack()
   else
-    router.replaceAll({ path: '/pages/room/index', query: { roomId: String(roomId) } })
+    router.replaceAll({ path: '/pages/room/index', query: { roomId: String(roomId.value) } })
 }
 
 /** query 预选：成员加载后校验「在房且非自己」才生效（过期/非法 query 静默忽略）。 */
@@ -146,7 +155,7 @@ async function onSubmit() {
   }
   submitting.value = true
   try {
-    const res = await expense(roomId, {
+    const res = await expense(roomId.value, {
       score: score.value,
       tea: teaAuto.value ? 0 : tea.value,
       to_user_id: toUserId.value,
@@ -172,7 +181,7 @@ async function onSubmit() {
 /* ── 生命周期 ── */
 
 onShow(() => {
-  if (!roomId) {
+  if (!roomId.value) {
     toast.error('房间信息缺失')
     router.replaceAll({ path: '/pages/index/index' })
     return
@@ -180,8 +189,8 @@ onShow(() => {
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
   // 快照兜底（H5 直达/刷新时 store 可能无本房快照）
-  if (roomStore.snapshot?.id !== roomId) {
-    fetchSnapshot(roomId)
+  if (roomStore.snapshot?.id !== roomId.value) {
+    fetchSnapshot(roomId.value)
       .then(snap => roomStore.setSnapshot(snap))
       .catch(toastApiError)
   }
