@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打牌记账小程序 · 牌面暗色 · 6 屏</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink-900:#14120F; --ink-700:#1E1B17; --ink-600:#2A2722;
+  --tile:#F2EDE3; --tile-shade:#E5DCC9;
+  --vermillion:#D23B22; --vermillion-hi:#E8734F; --vermillion-600:#B32D18;
+  --indigo:#3D5A96; --indigo-hi:#6B8BD0; --indigo-700:#2E456F;
+  --jet:#2A2722; --brass:#C9A24B; --brass-hi:#E0BC6A; --brass-lo:#8F6F2E;
+  --jade:#3E7D5A; --jade-hi:#5FA87F;
+  --on-ink:#EDE6D8; --dim:#9B917F;
+  --r-tile:12px; --r-md:14px; --r-lg:20px;
+  --shadow-tile:0 2px 0 rgba(0,0,0,.55), 0 12px 26px rgba(0,0,0,.45);
+  --pad-safe:50px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{background:#0b0b0c;font-family:'Noto Sans SC',system-ui,sans-serif;color:var(--on-ink)}
+.canvas-head{padding:36px 40px 8px;font-family:'Noto Serif SC',serif;font-size:22px;color:var(--brass);letter-spacing:.08em}
+.canvas-sub{padding:0 40px 28px;font-size:13px;color:#6b675f;max-width:1500px}
+.frames{display:flex;flex-wrap:wrap;gap:56px;padding:12px 40px 60px;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:12px}
+.frame-label{font-size:13px;color:#8a857c;letter-spacing:.04em}
+.frame-label b{color:var(--brass);font-weight:500;margin-right:8px}
+
+.screen{width:390px;height:844px;background:var(--ink-900);border-radius:38px;position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 30px 60px rgba(0,0,0,.55)}
+.screen.long{height:auto;min-height:844px;overflow:visible}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;font-size:14px;font-weight:500;flex:none}
+.sb-right{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(237,230,216,.35);z-index:5}
+.grow{flex:1;min-height:0}
+
+/* mini-program navbar */
+.nav{display:flex;align-items:center;justify-content:space-between;padding:6px 16px 10px;position:relative;flex:none}
+.nav .side{min-width:60px;display:flex;align-items:center;gap:6px}
+.nav .side.right{justify-content:flex-end}
+.ntitle{position:absolute;left:50%;transform:translateX(-50%);font-size:17px;font-weight:500;color:var(--on-ink);white-space:nowrap}
+.ntitle small{display:block;font-size:11px;color:var(--dim);text-align:center;font-weight:400;margin-top:1px}
+.navicon{font-size:19px;color:var(--on-ink);line-height:1;cursor:pointer}
+.capsule{width:88px;height:32px;border-radius:999px;border:1px solid rgba(237,230,216,.28);display:flex;align-items:center;background:rgba(237,230,216,.06)}
+.capsule .c{flex:1;text-align:center;font-size:14px;color:var(--on-ink);letter-spacing:1.5px;line-height:1}
+.capsule .sep{width:1px;height:17px;background:rgba(237,230,216,.28)}
+.capsule .c2{display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:13px;height:13px;border:2px solid var(--on-ink);border-radius:50%;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;background:var(--on-ink);border-radius:50%}
+
+/* type */
+.title-plaque{font-family:'Noto Serif SC',serif;font-weight:700;color:var(--brass);letter-spacing:.06em}
+.h2{font-family:'Noto Serif SC',serif;font-size:18px;font-weight:700;letter-spacing:.05em;color:var(--on-ink)}
+.body{font-size:15px;line-height:1.5}
+.label{font-size:13px;font-weight:500;color:var(--dim)}
+.cap{font-size:11px;color:var(--dim);line-height:1.5}
+.num{font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}
+.win-n{color:var(--brass)}
+.lose-n{color:var(--indigo-hi)}
+.hairline{height:1px;background:linear-gradient(90deg,var(--brass),transparent);opacity:.55}
+.section{padding:0 20px}
+.row{display:flex;align-items:center;justify-content:space-between}
+
+/* compliance banner */
+.comply{display:flex;gap:10px;align-items:flex-start;margin:0 16px;padding:11px 14px;background:rgba(210,59,34,.13);border:1px solid rgba(210,59,34,.4);border-radius:10px}
+.comply .spk{color:var(--vermillion-hi);font-size:15px;flex:none;line-height:1.4}
+.comply p{font-size:13px;line-height:1.5;color:var(--vermillion-hi)}
+.comply p b{color:#F0906F}
+.comply .x{margin-left:auto;color:var(--dim);font-size:15px;flex:none;cursor:pointer}
+
+/* tip strip */
+.tip{margin:10px 16px 0;padding:8px 12px;border-radius:8px;background:rgba(62,125,90,.16);border-left:3px solid var(--jade-hi);font-size:12px;line-height:1.55;color:var(--jade-hi)}
+.tip b{color:#7FC49E}
+
+/* tiles */
+.tile{background:var(--tile);border-radius:var(--r-tile);box-shadow:var(--shadow-tile);position:relative;overflow:hidden;color:var(--jet)}
+.tile-strip{height:14px;background:repeating-linear-gradient(45deg,rgba(20,18,15,.10) 0 1px,transparent 1px 7px),repeating-linear-gradient(-45deg,rgba(20,18,15,.08) 0 1px,transparent 1px 7px),var(--tile-shade);border-bottom:3px solid var(--suit,var(--jet))}
+.tile.win{outline:2px solid var(--brass);outline-offset:-2px}
+.seal{position:absolute;right:12px;bottom:12px;width:26px;height:26px;border:2px solid var(--vermillion);border-radius:5px;color:var(--vermillion);font-family:'Noto Serif SC',serif;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;transform:rotate(-10deg);opacity:.85;background:rgba(210,59,34,.06)}
+
+/* buttons */
+.btn{height:56px;border-radius:999px;border:none;cursor:pointer;font-family:'Noto Sans SC';font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+.btn.brass{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900);box-shadow:0 4px 0 var(--brass-lo),0 10px 18px rgba(0,0,0,.4)}
+.btn.bone{background:var(--tile);color:var(--jet);box-shadow:0 4px 0 #b9b0a0,0 10px 18px rgba(0,0,0,.4)}
+.btn.ghost{background:transparent;color:var(--on-ink);border:1.5px solid rgba(237,230,216,.32);font-size:15px;height:52px}
+.btn.ghost.sm{height:48px;font-size:14px}
+.pill{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 18px;border-radius:999px;border:1px solid rgba(237,230,216,.25);background:rgba(237,230,216,.05);color:var(--on-ink);font-size:14px}
+
+/* room: player seats */
+.seats{display:flex;justify-content:space-between;padding:16px 18px 12px}
+.seat{display:flex;flex-direction:column;align-items:center;gap:7px;width:74px}
+.seat .av{width:56px;height:56px;border-radius:50%;background:var(--ink-700);border:2px solid var(--seatc,rgba(237,230,216,.35));display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:500;color:var(--on-ink);box-shadow:inset 0 -4px 0 rgba(0,0,0,.35);position:relative}
+.seat .av.me{border-color:var(--vermillion);color:var(--vermillion)}
+.seat .av .badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--vermillion);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.seat .nm{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:74px}
+.seat .sc{font-family:'Oswald';font-weight:600;font-size:19px;line-height:1}
+.seat .cup{font-size:22px;color:var(--jade-hi);line-height:1}
+.seat.add .av{border-style:dashed;border-color:rgba(237,230,216,.3);color:var(--dim);font-size:24px;font-weight:300;box-shadow:none}
+
+/* voice pill */
+.voice{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:rgba(201,162,75,.14);border:1px solid rgba(201,162,75,.45);color:var(--brass);font-size:11px;font-weight:500}
+
+/* feed */
+.feed{padding:8px 16px 0;display:flex;flex-direction:column;gap:9px}
+.syspill{align-self:center;padding:5px 14px;border-radius:8px;background:var(--ink-600);color:var(--dim);font-size:12px}
+.toast{align-self:center;padding:5px 14px;border-radius:8px;background:rgba(62,125,90,.3);color:#9FD4B6;font-size:12px}
+.flow{display:flex;align-items:center;justify-content:space-between;background:var(--ink-700);border:1px solid rgba(237,230,216,.08);border-radius:10px;padding:11px 13px}
+.flow .who{font-size:13px;color:var(--on-ink)}
+.flow .who .amt-p{color:var(--indigo-hi);font-family:'Oswald';font-weight:600;margin-left:3px}
+.flow .who .amt-w{color:var(--brass);font-family:'Oswald';font-weight:600;margin-left:3px}
+.flow .who .arr{color:var(--dim);margin:0 6px}
+.adslot{border:1px dashed rgba(237,230,216,.25);border-radius:10px;padding:10px 13px;display:flex;gap:10px;align-items:center;background:rgba(237,230,216,.03)}
+.adslot .tag{flex:none;font-size:10px;color:var(--dim);border:1px solid rgba(237,230,216,.3);border-radius:4px;padding:1px 5px}
+.adslot .txt{font-size:12px;color:var(--dim);line-height:1.5}
+
+/* bottom room bar */
+.roombar{position:absolute;left:0;right:0;bottom:0;height:83px;background:var(--ink-700);border-top:1px solid rgba(237,230,216,.09);display:flex;padding:8px 0 34px;z-index:4}
+.roombar .rb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--dim);position:relative;cursor:pointer}
+.roombar .rb .ic{font-size:19px;line-height:1}
+.roombar .rb.main{color:var(--ink-900)}
+.roombar .rb.main .pillwrap{background:linear-gradient(180deg,var(--brass-hi),var(--brass));border-radius:999px;padding:6px 22px;font-weight:600;box-shadow:0 3px 0 var(--brass-lo)}
+.roombar .rb .dot-badge{position:absolute;top:0px;right:28%;min-width:16px;height:16px;border-radius:8px;background:var(--vermillion);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+
+/* modal */
+.mask{position:absolute;inset:0;background:rgba(0,0,0,.66);z-index:8;display:flex;align-items:center;justify-content:center}
+.modal{width:320px;background:var(--tile);border-radius:18px;color:var(--jet);padding:22px 22px 24px;position:relative;box-shadow:0 24px 60px rgba(0,0,0,.6);text-align:center}
+.modal .x{position:absolute;top:14px;right:16px;font-size:17px;color:#8a8172;cursor:pointer}
+.modal .mt{font-family:'Noto Serif SC',serif;font-size:18px;font-weight:700;letter-spacing:.04em}
+.modal .roomno{font-family:'Oswald';font-weight:700;font-size:44px;letter-spacing:.04em;color:var(--jet);margin:10px 0 4px}
+.modal .sub{font-size:12px;color:#8a8172}
+.qr{width:190px;height:190px;margin:16px auto 12px;background:var(--tile);border:1px solid #d8cfbc;border-radius:10px;position:relative;padding:12px}
+.qr-grid{position:absolute;inset:12px;background:repeating-conic-gradient(var(--jet) 0% 25%, var(--tile) 0% 50%) 0 0/14px 14px;opacity:.92}
+.qr .finder{position:absolute;width:38px;height:38px;border:7px solid var(--jet);background:var(--tile);z-index:2}
+.qr .finder::after{content:'';position:absolute;inset:6px;background:var(--jet)}
+.qr .f1{top:12px;left:12px}.qr .f2{top:12px;right:12px}.qr .f3{bottom:12px;left:12px}
+.qr .badge{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;background:linear-gradient(180deg,var(--brass-hi),var(--brass));border:3px solid var(--tile);display:flex;align-items:center;justify-content:center;gap:2px}
+.qr .mini-card{width:15px;height:21px;background:#fff;border:1.5px solid var(--jet);border-radius:2.5px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.qr .mini-card:nth-child(1){transform:rotate(-12deg)}.qr .mini-card:nth-child(3){transform:rotate(12deg)}
+.qr .mini-card.red{color:var(--vermillion)}
+.modal .cta{margin-top:8px}
+
+/* home */
+.profile{display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:18px}
+.profile .pav{width:76px;height:76px;border-radius:50%;background:var(--ink-700);border:3px solid var(--brass);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:500;color:var(--brass);box-shadow:inset 0 -5px 0 rgba(0,0,0,.35)}
+.profile .pnm{font-family:'Noto Serif SC',serif;font-size:19px;font-weight:700;letter-spacing:.05em}
+.stats{display:flex;justify-content:center;gap:0;margin-top:8px}
+.stat{flex:1;text-align:center;padding:4px 0}
+.stat .v{font-family:'Oswald';font-weight:600;font-size:34px;line-height:1.1}
+.stat .k{font-size:12px;color:var(--dim);margin-top:2px}
+.stat+.stat{border-left:1px solid rgba(237,230,216,.14)}
+.stripline{display:flex;justify-content:center;gap:10px;align-items:center;padding:13px 0 2px;font-size:13px;color:var(--dim);border-top:1px solid rgba(237,230,216,.1);margin-top:14px}
+.stripline b{color:var(--vermillion-hi);font-weight:600}
+.stripline .go{color:var(--brass);cursor:pointer;font-weight:500}
+.cta-grid{display:flex;gap:12px;padding:22px 20px 0}
+.quick{display:flex;gap:10px;padding:16px 20px 0}
+.quick .pill{flex:1;height:44px;padding:0;font-size:13px;gap:6px}
+.quick .pill svg{opacity:.75}
+.footpills{display:flex;gap:10px;justify-content:center;padding:0 20px var(--pad-safe)}
+.footpills .pill{height:36px;font-size:12.5px;color:var(--dim);border-color:rgba(237,230,216,.18)}
+
+/* expense */
+.field{padding:18px 20px 0}
+.field .flabel{font-size:14px;color:var(--dim);margin-bottom:10px}
+.inrow{display:flex;gap:12px;align-items:center}
+.inrow .iav{width:48px;height:48px;border-radius:50%;background:var(--ink-700);border:2px solid var(--brass);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--brass);flex:none}
+.inrow .iav.cup{border-color:var(--jade-hi);color:var(--jade-hi);font-size:20px}
+.inrow .inm{font-size:14px;width:56px;flex:none}
+.inrow input{flex:1;height:52px;border-radius:10px;background:var(--tile);border:none;padding:0 16px;font-family:'Oswald';font-size:22px;font-weight:600;color:var(--jet);box-shadow:inset 0 2px 0 rgba(0,0,0,.18)}
+.inrow input::placeholder{font-family:'Noto Sans SC';font-size:13px;font-weight:400;color:#9a9184}
+
+/* settle hero */
+.hero{padding:24px 20px 6px;text-align:center}
+.hero .vt{font-family:'Noto Serif SC',serif;font-size:30px;font-weight:700;letter-spacing:.1em;color:var(--brass)}
+.hero .big{font-family:'Oswald';font-weight:700;font-size:76px;line-height:1.05;color:var(--vermillion-hi);margin-top:8px;font-variant-numeric:tabular-nums}
+.hero .un{font-size:14px;color:var(--dim);margin-top:2px}
+.hero .un b{color:var(--on-ink);font-family:'Oswald';font-weight:600;font-size:17px}
+.hero .tale{margin-top:10px;font-size:14px;color:var(--dim)}
+.hero .tale b{color:var(--brass)}
+.unsec{padding:16px 20px 0}
+.unsec .st{font-family:'Noto Serif SC',serif;text-align:center;font-size:17px;font-weight:700;letter-spacing:.1em;margin-bottom:12px}
+.unrow{display:flex;align-items:center;gap:11px;background:var(--ink-700);border:1px solid rgba(237,230,216,.08);border-radius:10px;padding:12px 14px}
+.unrow .uav{width:34px;height:34px;border-radius:50%;background:var(--ink-600);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--dim);flex:none}
+.unrow .unm{font-size:14px}
+.unrow .us{font-size:12px;color:var(--dim);margin-left:2px}
+.unrow .uv{margin-left:auto;font-family:'Oswald';font-weight:600;font-size:20px;color:var(--indigo-hi)}
+.btngrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:16px 20px 0}
+
+/* manual */
+.man-sec{padding:16px 20px 0}
+.man-h{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.man-h .dot{width:9px;height:9px;border-radius:50%;background:var(--brass);flex:none}
+.man-h .t{font-family:'Noto Serif SC',serif;font-size:16px;font-weight:700;letter-spacing:.05em}
+.man-h .flag{margin-left:auto;font-size:11px;color:var(--jade-hi);border:1px solid rgba(95,168,127,.5);border-radius:4px;padding:1px 7px}
+.man-h .flag.dev{color:var(--brass);border-color:rgba(201,162,75,.5)}
+.man-b{font-size:12.5px;line-height:1.75;color:#C9C2B4;padding-left:18px}
+.man-b li{list-style:none;position:relative;margin-bottom:4px}
+.man-b li::before{content:'';position:absolute;left:-14px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--dim)}
+.man-b .red{color:var(--vermillion-hi);font-weight:500}
+.man-b .orange{color:var(--brass);font-weight:500}
+.man-b .grn{color:var(--jade-hi);font-weight:500}
+.man-b b{color:var(--on-ink);font-weight:500}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="canvas-head">打牌记账 · 小程序重设计 — 牌面暗色 · 6 屏</div>
+<div class="canvas-sub">依据 png/ 参考图结构 + 玩法手册(v5.3.1)规则 · 合规红线「不涉及金钱，禁止用于违法行为」全页保留 · 微信小程序胶囊栏适配 · 底部安全区 34pt</div>
+
+<div class="frames">
+
+<!-- ═══════ 01 首页 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>01</b>首页 · 我的牌桌</div>
+  <div class="screen">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">打牌记账</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="profile">
+      <div class="pav">A</div>
+      <div class="pnm">Alex星</div>
+    </div>
+
+    <div class="section">
+      <div class="stats">
+        <div class="stat"><div class="v win-n">12</div><div class="k">好友排名</div></div>
+        <div class="stat"><div class="v">1,860</div><div class="k">总积分</div></div>
+        <div class="stat"><div class="v win-n">58%</div><div class="k">胜率</div></div>
+      </div>
+      <div class="stripline">
+        <span>赢<b>14次</b></span><span>/</span><span>输<b>10次</b></span><span>/</span>
+        <span class="go">战绩 ›</span>
+      </div>
+    </div>
+
+    <div class="cta-grid">
+      <button class="btn brass" style="flex:1.15">我要开房</button>
+      <button class="btn ghost" style="flex:1;height:56px">扫码进房</button>
+    </div>
+
+    <div class="quick">
+      <div class="pill">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V11M10 20V5M16 20v-7M3 20h18"/></svg>好友排名
+      </div>
+      <div class="pill">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>战绩流水
+      </div>
+      <div class="pill">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>使用手册
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:24px">
+      <div class="h2" style="margin-bottom:10px">最近战绩</div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="flow">
+          <span class="who">10月8日 · 麻将 · 房间 7avw</span>
+          <span class="num win-n" style="font-size:17px">+180</span>
+        </div>
+        <div class="flow">
+          <span class="who">10月5日 · 掼蛋 · 房间 3k2s</span>
+          <span class="num lose-n" style="font-size:17px">−60</span>
+        </div>
+      </div>
+      <div class="cap" style="margin-top:8px">左滑房间记录可看流水 / 排行 / 删除</div>
+    </div>
+
+    <div class="adslot" style="margin-top:16px">
+      <span class="tag">广告</span>
+      <span class="txt">感谢使用与反馈！广告位已避开功能按钮，减少误入</span>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="footpills">
+      <span class="pill">客服</span>
+      <span class="pill">获取头像昵称</span>
+      <span class="pill">使用手册</span>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 02 房间页 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>02</b>房间 · 记分核心（含语音档 / 茶饭 / 广告位）</div>
+  <div class="screen">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">打牌记账 7avw 房间<small>无操作 2 小时自动关闭</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="comply">
+      <span class="spk">🔊</span>
+      <p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p>
+      <span class="x">×</span>
+    </div>
+
+    <div class="seats">
+      <div class="seat" style="--seatc:var(--indigo-hi)">
+        <div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span>
+      </div>
+      <div class="seat" style="--seatc:var(--brass)">
+        <div class="av me">A<span class="badge">1</span></div><span class="nm">Alex星</span><span class="sc win-n">+100</span>
+      </div>
+      <div class="seat" style="--seatc:var(--jade-hi)">
+        <div class="av"><span class="cup">☕</span></div><span class="nm">茶/饭(0)</span><span class="sc" style="color:var(--jade-hi)">0</span>
+      </div>
+      <div class="seat add">
+        <div class="av">＋</div><span class="nm">添加好友</span><span class="sc" style="color:var(--dim);font-size:13px">邀请</span>
+      </div>
+    </div>
+
+    <div class="row" style="padding:0 16px">
+      <div class="voice">🔈 语音 · 操作播放</div>
+      <span class="cap">点头像可设置 5 档循环</span>
+    </div>
+
+    <div class="tip">提示：<b>点击好友头像</b>可直接支出；<b>点击自己头像</b>设置开关、昵称、退出房间</div>
+
+    <div class="feed" style="padding-top:12px">
+      <div class="toast">09:42:01 刷新成功 · 网络良好</div>
+      <div class="flow">
+        <span class="who">微信用户643<span class="amt-p">−100</span><span class="arr">→</span>Alex星<span class="amt-w">+100</span></span>
+        <span class="cap">09:41</span>
+      </div>
+      <div class="adslot">
+        <span class="tag">广告</span>
+        <span class="txt">感谢使用与反馈！非收费工具，广告位已避开功能按钮，减少误入</span>
+      </div>
+      <div class="syspill">微信用户643 进入了房间</div>
+      <div class="syspill">Alex星 进入了房间</div>
+      <div class="flow">
+        <span class="who">Alex星<span class="amt-p">−50</span><span class="arr">→</span>茶/饭<span class="amt-w">+50</span></span>
+        <span class="cap">09:38 · 方式二</span>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="roombar">
+      <div class="rb main"><span class="pillwrap">💰 支出</span><span class="dot-badge">1</span></div>
+      <div class="rb"><span class="ic">🎧</span>客服</div>
+      <div class="rb"><span class="ic">🀄</span>我的</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 03 邀请弹框 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>03</b>邀请弹框 · 扫码进房</div>
+  <div class="screen">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">打牌记账 7avw 房间</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+    <!-- 背景（房间被遮罩） -->
+    <div class="comply" style="opacity:.4">
+      <span class="spk">🔊</span><p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p><span class="x">×</span>
+    </div>
+    <div class="seats" style="opacity:.4">
+      <div class="seat"><div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span></div>
+      <div class="seat"><div class="av me">A</div><span class="nm">Alex星</span><span class="sc win-n">+100</span></div>
+      <div class="seat"><div class="av">☕</div><span class="nm">茶/饭(0)</span><span class="sc">0</span></div>
+      <div class="seat add"><div class="av">＋</div><span class="nm">添加好友</span></div>
+    </div>
+
+    <div class="mask">
+      <div class="modal">
+        <span class="x">×</span>
+        <div class="mt">微信扫描二维码加入</div>
+        <div class="roomno">房号: 7avw</div>
+        <div class="sub">邀请好友扫描以下二维码加入房间</div>
+        <div class="qr">
+          <div class="qr-grid"></div>
+          <span class="finder f1"></span><span class="finder f2"></span><span class="finder f3"></span>
+          <div class="badge">
+            <span class="mini-card red">A♥</span>
+            <span class="mini-card">K♠</span>
+            <span class="mini-card red">Q♦</span>
+          </div>
+        </div>
+        <div class="sub">也可以通过“转发”让好友加入</div>
+        <button class="btn brass cta">转发给好友</button>
+      </div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 04 支出 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>04</b>支出 · 记分与茶饭</div>
+  <div class="screen">
+    <div class="sb"><span>18:31</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">支出</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="comply" style="margin-top:6px">
+      <span class="spk">⚠</span>
+      <p>“打牌记账”是<b>记账、计分工具，不涉及金钱，禁止用于违法行为</b></p>
+    </div>
+
+    <div class="field">
+      <div class="flabel">填写您需支出的分数：</div>
+      <div class="inrow">
+        <div class="iav">A</div>
+        <div class="inm">Alex星</div>
+        <input value="50" />
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="flabel">填写你需要支出的茶/饭：</div>
+      <div class="inrow">
+        <div class="iav cup">☕</div>
+        <div class="inm">茶/饭</div>
+        <input placeholder="赢的一方操作（方式二：可直接 DIY）" />
+      </div>
+      <div class="cap" style="margin-top:9px;line-height:1.7">方式一：抽取百分比 &gt; 0% 时，每次支出记账，赢方按比例另行记为茶饭<br>方式二：本页直接填写数值记为茶饭 · 房间茶/饭目标金额 &gt; 0 则开关开启</div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn brass">支出</button>
+      <div class="cap" style="text-align:center;margin-top:10px">只记分数，不涉及金钱 · 线下自行处理</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 05 结算 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>05</b>结算 · 战斗胜利</div>
+  <div class="screen">
+    <div class="sb"><span>23:05</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">结算</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="hero">
+      <div class="vt">战斗胜利</div>
+      <div class="big">总计:100</div>
+      <div class="un">未结 <b>(100)</b> · 房间 7avw</div>
+      <div class="tale">获得 <b>大神</b> 称号，今晚你买单！</div>
+    </div>
+
+    <div class="unsec">
+      <div class="st">未结算</div>
+      <div class="unrow">
+        <span class="uav">微</span>
+        <span class="unm">微信用户643<span class="us">他向你支付</span></span>
+        <span class="uv">−100</span>
+      </div>
+      <div class="cap" style="text-align:center;margin-top:10px">结算仅提供策略参考，可不按策略 · 均线下自行处理</div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn brass">生成我的结算策略</button>
+      <div class="btngrid" style="padding-left:0;padding-right:0">
+        <button class="btn ghost sm">直接退房</button>
+        <button class="btn ghost sm">查看房间结算单</button>
+        <button class="btn ghost sm">总分排行榜</button>
+        <button class="btn ghost sm">房间更多流水</button>
+        <button class="btn ghost sm">历史房间</button>
+        <button class="btn ghost sm">使用手册</button>
+      </div>
+      <div class="cap" style="text-align:center;margin-top:10px">结算后点个人头像退出房间 · 数据为零可直接退</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 06 使用手册 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>06</b>使用手册 · 玩法（v5.3.1）· 可滚动长页</div>
+  <div class="screen long">
+    <div class="sb"><span>18:32</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">打牌记账 · 使用手册<small>当前版本 5.3.1</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div style="padding:4px 20px 0;display:flex;gap:12px;align-items:center">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--ink-700);border:2px solid var(--brass);display:flex;align-items:center;justify-content:center;color:var(--brass);font-weight:500">A</div>
+      <div>
+        <div style="font-size:15px;font-weight:500">Alex星 <span class="cap" style="margin-left:6px">欢迎阅读</span></div>
+        <div class="cap">操作说明 · 细微技巧 · 隐藏功能点 · 反馈解决</div>
+      </div>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot" style="background:var(--vermillion)"></span><span class="t">重要提示</span></div>
+      <ul class="man-b">
+        <li class="red">“打牌记账”是记账、计分工具 — 不能涉及金钱，禁止用于违法行为</li>
+        <li>需要帮助：微信客服留言（人多请耐心等待，24h 内回复）</li>
+        <li><b>网络</b>：保持网络良好、电量充足、亮屏体验最佳（息屏会断小程序网络）；数据不实时可<b>下拉刷新</b>，或点右上角三点 → 重新进入小程序</li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot" style="background:var(--vermillion)"></span><span class="t">结算 · 退房 · 历史记录</span></div>
+      <ul class="man-b">
+        <li><b>结算</b>：仅提供策略参考，可不按策略，<span class="grn">均线下自行处理</span></li>
+        <li><b>退房</b>：只能自己退房，没有踢人；结算后点头像退出，数据为零可直接退；房间无操作 2 小时自动关闭</li>
+        <li><b>战绩</b>：首页点战绩 → 房间记录，<b>左滑</b>有流水 / 排行 / 删除；好友排名内页左滑可删除、拉黑，点图标可清零战绩</li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot"></span><span class="t">茶饭设置</span><span class="flag">完成</span></div>
+      <ul class="man-b">
+        <li>房间点茶/饭弹层配置：目标金额 + 抽取百分比；<span class="orange">目标金额 &gt; 0 则开关开启</span></li>
+        <li><span class="orange">方式一</span>：抽取百分比 &gt; 0% 时，每次支出记账，赢方按比例另行记为茶饭</li>
+        <li><span class="orange">方式二</span>：房间左下角支出按钮，直接 DIY 数值记为茶饭</li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot"></span><span class="t">房间语音</span></div>
+      <ul class="man-b">
+        <li>语音分三类：娱乐 / 流水 / 房间动态；点头像弹窗右侧喇叭图标，<b>5 档循环</b>：全部关闭 → 全部播放 → 娱乐关闭 → 流水关闭 → 操作播放</li>
+        <li>默认：<span class="grn">操作播放</span>（人员进出、结算）；开房人默认全开</li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot"></span><span class="t">好友排名</span><span class="flag">完成</span></div>
+      <ul class="man-b">
+        <li>内页左滑：删除好友、拉黑好友；可切换「不参与排名 / 加入排名」</li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot"></span><span class="t">添加广告说明</span></div>
+      <ul class="man-b">
+        <li>非收费工具，服务器成本高，增加广告投放带来体验损失敬请谅解；<span class="orange">广告位尽量避开功能按钮，减少误入</span></li>
+      </ul>
+    </div>
+
+    <div class="man-sec">
+      <div class="man-h"><span class="dot"></span><span class="t">功能优化</span></div>
+      <ul class="man-b">
+        <li>部分机型房间信息/广播停止更新：与 WiFi 长连接被断有关，建议 4G；房间支持下滑刷新、检查网络；锁屏久后进入会提示确认刷新</li>
+      </ul>
+    </div>
+
+    <div class="man-sec" style="padding-bottom:16px">
+      <div class="man-h"><span class="dot" style="background:var(--jade-hi)"></span><span class="t">需求反馈</span><span class="flag dev">开发中</span></div>
+      <ul class="man-b">
+        <li>战绩自定义统计：增加统计入口，可按月份 / 年份 / 具体记录统计</li>
+      </ul>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:8px 20px var(--pad-safe)">
+      <button class="btn bone">返回房间</button>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

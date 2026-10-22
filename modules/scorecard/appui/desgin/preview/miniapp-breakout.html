@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打牌记账 · 突破版 · 牌桌即界面</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink-900:#14120F; --ink-700:#1E1B17; --ink-600:#2A2722;
+  --felt:#12261E; --felt-deep:#0D1D17;
+  --tile:#F2EDE3; --tile-shade:#E5DCC9;
+  --vermillion:#D23B22; --vermillion-hi:#E8734F; --vermillion-600:#B32D18;
+  --indigo:#3D5A96; --indigo-hi:#6B8BD0; --indigo-700:#2E456F;
+  --jet:#2A2722; --brass:#C9A24B; --brass-hi:#E0BC6A; --brass-lo:#8F6F2E;
+  --jade:#3E7D5A; --jade-hi:#5FA87F;
+  --on-ink:#EDE6D8; --dim:#9B917F;
+  --r-tile:12px;
+  --shadow-tile:0 2px 0 rgba(0,0,0,.55), 0 12px 26px rgba(0,0,0,.45);
+  --pad-safe:50px;
+  --spot:radial-gradient(130% 75% at 50% -8%, rgba(201,162,75,.16), transparent 55%);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{background:#0b0b0c;font-family:'Noto Sans SC',system-ui,sans-serif;color:var(--on-ink)}
+.canvas-head{padding:36px 40px 8px;font-family:'Noto Serif SC',serif;font-size:22px;color:var(--brass);letter-spacing:.08em}
+.canvas-sub{padding:0 40px 28px;font-size:13px;color:#6b675f;max-width:1600px}
+.frames{display:flex;flex-wrap:wrap;gap:56px;padding:12px 40px 60px;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:12px}
+.frame-label{font-size:13px;color:#8a857c;letter-spacing:.04em}
+.frame-label b{color:var(--brass);font-weight:500;margin-right:8px}
+
+/* ── shell ── */
+.screen{width:390px;height:844px;background:var(--ink-900);background-image:var(--spot);border-radius:38px;position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 30px 60px rgba(0,0,0,.55)}
+.screen.long{height:auto;min-height:844px;overflow:visible}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;font-size:14px;font-weight:500;flex:none}
+.sb-right{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(237,230,216,.35);z-index:5}
+.grow{flex:1;min-height:0}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:6px 16px 8px;position:relative;flex:none}
+.nav .side{min-width:60px;display:flex;align-items:center}
+.nav .side.right{justify-content:flex-end}
+.ntitle{position:absolute;left:20px;font-size:17px;font-weight:500;color:var(--on-ink);white-space:nowrap;font-family:'Noto Serif SC',serif;letter-spacing:.06em}
+.ntitle small{display:block;font-size:10.5px;color:var(--dim);font-weight:400;letter-spacing:.02em;margin-top:2px;font-family:'Noto Sans SC'}
+.navicon{font-size:20px;color:var(--brass);line-height:1;cursor:pointer;font-family:'Noto Serif SC',serif}
+.capsule{width:88px;height:32px;border-radius:999px;border:1px solid rgba(237,230,216,.28);display:flex;align-items:center;background:rgba(237,230,216,.06)}
+.capsule .c{flex:1;text-align:center;font-size:14px;color:var(--on-ink);letter-spacing:1.5px;line-height:1}
+.capsule .sep{width:1px;height:17px;background:rgba(237,230,216,.28)}
+.capsule .c2{display:flex;align-items:center;justify-content:center}
+.capsule .ring{width:13px;height:13px;border:2px solid var(--on-ink);border-radius:50%;position:relative}
+.capsule .ring::after{content:'';position:absolute;inset:3px;background:var(--on-ink);border-radius:50%}
+
+/* ── type ── */
+.h2{font-family:'Noto Serif SC',serif;font-size:17px;font-weight:700;letter-spacing:.05em}
+.label{font-size:13px;font-weight:500;color:var(--dim)}
+.cap{font-size:11px;color:var(--dim);line-height:1.55}
+.num{font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}
+.win-n{color:var(--brass)} .lose-n{color:var(--indigo-hi)} .jade-n{color:var(--jade-hi)}
+.section{padding:0 20px}
+.row{display:flex;align-items:center;justify-content:space-between}
+.btn{height:56px;border-radius:999px;border:none;cursor:pointer;font-family:'Noto Sans SC';font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+.btn.brass{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900);box-shadow:0 4px 0 var(--brass-lo),0 10px 18px rgba(0,0,0,.4)}
+.btn.bone{background:var(--tile);color:var(--jet);box-shadow:0 4px 0 #b9b0a0,0 10px 18px rgba(0,0,0,.4)}
+.btn.ghost{background:rgba(237,230,216,.04);color:var(--on-ink);border:1.5px solid rgba(237,230,216,.28);font-size:14px;height:48px;border-radius:14px}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 16px;border-radius:999px;border:1px solid rgba(237,230,216,.25);background:rgba(237,230,216,.05);color:var(--on-ink);font-size:13.5px}
+
+/* ── compliance plaque ── */
+.comply{display:flex;gap:9px;align-items:center;margin:4px 16px 0;padding:9px 13px;background:rgba(210,59,34,.13);border:1px solid rgba(210,59,34,.45);border-radius:10px;position:relative}
+.comply::before{content:'';position:absolute;left:13px;right:13px;top:3px;bottom:3px;border:1px dashed rgba(210,59,34,.35);border-radius:7px;pointer-events:none}
+.comply .spk{color:var(--vermillion-hi);font-size:14px;flex:none}
+.comply p{font-size:12.5px;line-height:1.45;color:var(--vermillion-hi)}
+.comply p b{color:#F0906F}
+.comply .x{margin-left:auto;color:var(--dim);font-size:15px;flex:none}
+
+/* ── playing card frame ── */
+.pcard{background:var(--tile);border-radius:14px;box-shadow:var(--shadow-tile);position:relative;overflow:hidden;color:var(--jet)}
+.pcard .idx{position:absolute;font-family:'Oswald';font-weight:700;font-size:14px;line-height:1.05;color:var(--jet);text-align:center}
+.pcard .idx.tl{top:9px;left:9px}
+.pcard .idx.br{bottom:9px;right:9px;transform:rotate(180deg)}
+.pcard .idx .s{display:block;font-size:12px}
+.pcard .idx.red{color:var(--vermillion)}
+.pcard .strip{position:absolute;left:0;right:0;top:0;height:12px;background:repeating-linear-gradient(45deg,rgba(20,18,15,.10) 0 1px,transparent 1px 7px),repeating-linear-gradient(-45deg,rgba(20,18,15,.08) 0 1px,transparent 1px 7px),var(--tile-shade);border-bottom:2px solid var(--suit,var(--jet))}
+.seal{position:absolute;width:26px;height:26px;border:2px solid var(--vermillion);border-radius:5px;color:var(--vermillion);font-family:'Noto Serif SC',serif;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;transform:rotate(-10deg);opacity:.85;background:rgba(210,59,34,.06)}
+
+/* ── chips ── */
+.chip{width:56px;height:56px;border:none;border-radius:50%;position:relative;cursor:pointer;background:repeating-conic-gradient(from 8deg,var(--c-a) 0 18deg,var(--c-b) 18deg 36deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(0,0,0,.45),0 8px 14px rgba(0,0,0,.35);flex:none}
+.chip::before{content:'';position:absolute;inset:6px;border-radius:50%;background:var(--c-face);box-shadow:inset 0 2px 3px rgba(255,255,255,.25)}
+.chip span{position:relative;z-index:1;font-size:24px;font-weight:700;font-family:'Noto Sans SC';line-height:1}
+.chip.brass{--c-a:var(--brass-lo);--c-b:var(--brass);--c-face:radial-gradient(circle at 50% 38%,var(--brass-hi),var(--brass) 75%);color:var(--ink-900)}
+.chip.dark{--c-a:#3a362f;--c-b:#57524a;--c-face:radial-gradient(circle at 50% 38%,#2f2c27,var(--ink-600) 75%);color:var(--on-ink)}
+.chip.sm{width:46px;height:46px}.chip.sm span{font-size:20px}.chip.sm::before{inset:5px}
+.chip.xs{width:38px;height:38px}.chip.xs span{font-size:17px}.chip.xs::before{inset:4px}
+
+/* ═══════ 01 首页 · 扇面牌 ═══════ */
+.idcard{width:330px;height:172px;margin:14px auto 0;--suit:var(--vermillion)}
+.idcard .inner{display:flex;gap:16px;align-items:center;padding:26px 22px 20px 44px}
+.idcard .pav{width:74px;height:74px;border-radius:50%;background:var(--ink-700);border:3px solid var(--brass);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:500;color:var(--brass);box-shadow:inset 0 -5px 0 rgba(0,0,0,.35);flex:none}
+.idcard .nm{font-family:'Noto Serif SC',serif;font-size:21px;font-weight:700;letter-spacing:.05em}
+.idcard .sub{font-size:11px;color:#8a8172;margin-top:2px}
+.idcard .stats{display:flex;gap:16px;margin-top:10px}
+.idcard .st .v{font-family:'Oswald';font-weight:600;font-size:24px;line-height:1;color:var(--jet)}
+.idcard .st .v.g{color:var(--vermillion-600)}
+.idcard .st .k{font-size:10px;color:#8a8172;margin-top:3px}
+.stripline{display:flex;justify-content:center;gap:10px;align-items:center;padding:14px 0 0;font-size:13px;color:var(--dim)}
+.stripline b{color:var(--vermillion-hi);font-weight:600}
+.stripline .go{color:var(--brass);font-weight:500}
+.fan-cta{position:relative;height:106px;margin:20px 20px 0}
+.fan-cta .fc{position:absolute;left:0;right:0;height:56px;border-radius:999px;border:none;font-size:17px;font-weight:500;cursor:pointer;font-family:'Noto Sans SC';display:flex;align-items:center;justify-content:center}
+.fan-cta .back{top:42px;background:var(--ink-700);border:1.5px solid rgba(237,230,216,.4);color:var(--on-ink);transform:rotate(2.2deg);z-index:1}
+.fan-cta .front{top:0;background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900);box-shadow:0 4px 0 var(--brass-lo),0 14px 22px rgba(0,0,0,.45);transform:rotate(-1.6deg);z-index:2}
+.fan-quick{display:flex;justify-content:center;gap:12px;padding:26px 20px 0}
+.fan-quick .pill{height:40px;font-size:13px}
+.fan-quick .pill:nth-child(1){transform:rotate(-4deg)}
+.fan-quick .pill:nth-child(3){transform:rotate(4deg)}
+.flow{display:flex;align-items:center;justify-content:space-between;background:var(--ink-700);border:1px solid rgba(237,230,216,.08);border-radius:10px;padding:11px 13px}
+.flow .who{font-size:13px}
+.flow .amt-p{color:var(--indigo-hi);font-family:'Oswald';font-weight:600;margin-left:3px}
+.flow .amt-w{color:var(--brass);font-family:'Oswald';font-weight:600;margin-left:3px}
+.flow .arr{color:var(--dim);margin:0 6px}
+.adslot{border:1px dashed rgba(237,230,216,.25);border-radius:10px;padding:9px 12px;display:flex;gap:9px;align-items:center;background:rgba(237,230,216,.03)}
+.adslot .tag{flex:none;font-size:10px;color:var(--dim);border:1px solid rgba(237,230,216,.3);border-radius:4px;padding:1px 5px}
+.adslot .txt{font-size:11.5px;color:var(--dim);line-height:1.5}
+.footpills{display:flex;gap:10px;justify-content:center;padding:0 20px var(--pad-safe)}
+.footpills .pill{height:34px;font-size:12px;color:var(--dim);border-color:rgba(237,230,216,.18)}
+
+/* ═══════ 02 房间 · 俯视牌桌 ═══════ */
+.table{position:relative;margin:12px 14px 0;height:252px;border-radius:44px;
+  background:
+    radial-gradient(85% 65% at 50% 38%, #17362B 0%, var(--felt) 55%, var(--felt-deep) 100%);
+  box-shadow:inset 0 0 0 2px rgba(201,162,75,.35), inset 0 14px 40px rgba(0,0,0,.55), 0 16px 34px rgba(0,0,0,.5);
+  border:1px solid rgba(201,162,75,.15)}
+.table .mark{position:absolute;left:50%;top:50%;width:170px;height:170px;border:1.5px dashed rgba(201,162,75,.3);border-radius:50%;transform:translate(-50%,-50%)}
+.table .mark::after{content:'';position:absolute;left:-85px;top:50%;width:340px;height:1.5px;background:linear-gradient(90deg,transparent,rgba(201,162,75,.25),transparent)}
+.seat{position:absolute;display:flex;flex-direction:column;align-items:center;gap:5px;width:96px}
+.seat .av{width:54px;height:54px;border-radius:50%;background:var(--ink-900);border:2.5px solid var(--seatc,rgba(237,230,216,.4));display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500;color:var(--on-ink);box-shadow:0 4px 10px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.4);position:relative}
+.seat .av.me{border-color:var(--vermillion);color:var(--vermillion)}
+.seat .av .badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;border-radius:9px;background:var(--vermillion);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.seat .nm{font-size:11px;color:#B8C9BF;background:rgba(13,29,23,.75);padding:1px 8px;border-radius:999px;white-space:nowrap}
+.seat .sc{font-family:'Oswald';font-weight:600;font-size:20px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+.seat.add .av{border-style:dashed;border-color:rgba(237,230,216,.35);color:var(--dim);font-size:22px;font-weight:300;box-shadow:none;background:transparent}
+.seat.tl{top:20px;left:16px}.seat.tr{top:20px;right:16px}
+.seat.bl{bottom:20px;left:16px}.seat.br{bottom:20px;right:16px}
+.pot{position:absolute;left:50%;top:56px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;background:rgba(13,29,23,.8);border:1px solid rgba(95,168,127,.5);border-radius:14px;padding:7px 18px}
+.pot .cup{font-size:16px;line-height:1}
+.pot .pv{font-family:'Oswald';font-weight:600;font-size:19px;color:var(--jade-hi)}
+.pot .pk{font-size:10px;color:#7FA893;letter-spacing:.1em}
+.center-flow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:270px;background:rgba(13,29,23,.88);border:1.5px solid rgba(201,162,75,.55);border-radius:14px;padding:12px 14px 10px;text-align:center;box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.center-flow .cf{font-size:13.5px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px}
+.center-flow .t{font-size:10px;color:var(--dim);margin-top:5px}
+.center-flow .flyer{display:inline-block;animation:flyUp 2.4s ease-out infinite}
+@keyframes flyUp{0%{opacity:0;transform:translateY(6px)}18%{opacity:1;transform:translateY(0)}70%{opacity:1;transform:translateY(-4px)}100%{opacity:0;transform:translateY(-8px)}}
+.base-mark{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(13,29,23,.8);border:1px solid rgba(201,162,75,.4);border-radius:999px;padding:6px 16px}
+.base-mark .bk{font-size:11px;color:var(--dim);letter-spacing:.1em}
+.base-mark .bv{font-family:'Oswald';font-weight:600;font-size:17px;color:var(--brass)}
+/* 多人局：弹性排座 */
+.seat.mini{width:78px;gap:4px}
+.seat.mini .av{width:46px;height:46px;font-size:14px}
+.seat.mini .nm{max-width:78px;overflow:hidden;text-overflow:ellipsis;padding:1px 6px}
+.seat.mini .sc{font-size:17px}
+.seat-row{position:absolute;left:12px;right:12px;display:flex;justify-content:space-between}
+.seat-row .seat{position:relative;top:auto;left:auto;right:auto;bottom:auto}
+.seat-row.top{top:14px}
+.seat-row.bot{bottom:14px}
+/* 顶部头像座位列表：人多左右滚动 */
+.roster{position:absolute;top:14px;left:12px;right:12px;display:flex;justify-content:space-between;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:2px}
+.roster::-webkit-scrollbar{display:none}
+.roster .seat{position:relative;top:auto;left:auto;right:auto;bottom:auto;flex:none;width:62px;gap:4px}
+.roster .seat .av{width:44px;height:44px;font-size:14px}
+.roster .seat .nm{max-width:62px;overflow:hidden;text-overflow:ellipsis;padding:1px 5px}
+.roster .seat .sc{font-size:17px}
+.center-stack{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:9px;width:300px}
+.base-pot{display:flex;align-items:center;gap:12px;background:rgba(13,29,23,.85);border:1px solid rgba(201,162,75,.45);border-radius:999px;padding:7px 18px}
+.base-pot .bp{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.base-pot .bp .v{font-family:'Oswald';font-weight:600;font-size:16px;color:var(--brass)}
+.base-pot .bp .v.j{color:var(--jade-hi)}
+.base-pot .sep{width:1px;height:16px;background:rgba(237,230,216,.2)}
+.rail-row{display:flex;justify-content:space-between;align-items:center;padding:10px 18px 0}
+.voice{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:rgba(201,162,75,.14);border:1px solid rgba(201,162,75,.45);color:var(--brass);font-size:11px;font-weight:500}
+.ticker{display:flex;gap:8px;padding:9px 16px 0;overflow:hidden}
+.ticker .tk{flex:none;padding:5px 12px;border-radius:8px;background:var(--ink-600);color:var(--dim);font-size:11.5px}
+.ticker .tk.ok{background:rgba(62,125,90,.3);color:#9FD4B6}
+/* 本局流水账板 */
+.ledger{margin:10px 16px 0;background:var(--ink-700);border:1px solid rgba(201,162,75,.3);border-radius:18px;padding:11px 13px 12px;position:relative;overflow:hidden}
+.ledger::before{content:'';position:absolute;left:13px;right:13px;top:0;height:1.5px;background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.6}
+.ledger-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.ledger-h .lt{font-family:'Noto Serif SC',serif;font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--on-ink)}
+.ledger-h .lh-cap{font-size:10.5px;color:var(--dim)}
+.ledger-h .lh-cap .ok{color:#9FD4B6}
+.ledger-rows{display:flex;flex-direction:column;gap:6px}
+.lrow{display:flex;align-items:center;gap:7px;background:var(--ink-600);border-radius:9px;padding:8px 10px;font-size:12px;color:var(--on-ink)}
+.lrow .amt-p{color:var(--indigo-hi);font-family:'Oswald';font-weight:600;font-size:14px}
+.lrow .amt-w{color:var(--brass);font-family:'Oswald';font-weight:600;font-size:14px}
+.lrow .arr{color:var(--dim);font-size:11px}
+.lrow .tm{margin-left:auto;font-size:10px;color:var(--dim);flex:none}
+.lrow .kind{font-size:9.5px;color:var(--dim);border:1px solid rgba(237,230,216,.22);border-radius:3px;padding:0 4px;flex:none}
+.lrow.more{justify-content:center;background:transparent;border:1px dashed rgba(201,162,75,.4);color:var(--brass);font-size:12px;padding:7px;cursor:pointer;letter-spacing:.05em}
+.lrow.sys{background:transparent;border:1px dashed rgba(237,230,216,.16);color:var(--dim);font-size:11.5px;padding:6px 10px}
+.lrow.sys.ok{color:#9FD4B6;border-color:rgba(95,168,127,.4)}
+.screen.long .rail{position:relative;bottom:auto}
+.rail{position:absolute;left:0;right:0;bottom:0;height:110px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.55) 34%);display:flex;align-items:flex-start;justify-content:center;gap:30px;padding-top:14px;padding-bottom:34px;z-index:4}
+.rail .side{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:var(--dim);cursor:pointer;padding-top:6px}
+.rail .main{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.rail .main .bigchip{width:84px;height:84px;border-radius:50%;background:repeating-conic-gradient(from 8deg,var(--brass-lo) 0 18deg,var(--brass) 18deg 36deg);display:flex;align-items:center;justify-content:center;position:relative;box-shadow:0 5px 0 rgba(0,0,0,.5),0 14px 26px rgba(0,0,0,.55)}
+.rail .main .bigchip::before{content:'';position:absolute;inset:8px;border-radius:50%;background:radial-gradient(circle at 50% 36%,var(--brass-hi),var(--brass) 78%)}
+.rail .main .bigchip span{position:relative;z-index:1;font-size:19px;font-weight:700;color:var(--ink-900);letter-spacing:.05em}
+.rail .main .dot-badge{position:absolute;top:-3px;right:8px;min-width:20px;height:20px;border-radius:10px;background:var(--vermillion);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2}
+.rail .main .cap2{font-size:11px;color:var(--dim)}
+
+/* ═══════ 03 邀请 · 扇牌 ═══════ */
+.mask{position:absolute;inset:0;background:rgba(0,0,0,.72);z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.invite-no{font-family:'Oswald';font-weight:700;font-size:64px;color:var(--brass);letter-spacing:.05em;line-height:1;text-shadow:0 6px 30px rgba(201,162,75,.35)}
+.invite-no small{display:block;font-family:'Noto Serif SC';font-size:15px;color:var(--on-ink);letter-spacing:.3em;text-align:center;margin-bottom:6px;font-weight:700}
+.qr-stack{position:relative;width:230px;height:250px;margin-top:22px}
+.qr-stack .ghost-card{position:absolute;width:190px;height:230px;background:var(--tile-shade);border-radius:14px;top:14px;left:20px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.qr-stack .ghost-card.g1{transform:rotate(-9deg);background:#D9CFBA}
+.qr-stack .ghost-card.g2{transform:rotate(7deg);background:#E4DBC8}
+.qr-card{position:absolute;width:196px;height:238px;left:17px;top:6px;background:var(--tile);border-radius:14px;box-shadow:var(--shadow-tile);padding:14px 14px 12px;--suit:var(--vermillion)}
+.qr-card .idx{position:absolute;font-family:'Oswald';font-weight:700;font-size:13px;color:var(--jet)}
+.qr-card .idx.tl{top:8px;left:9px}.qr-card .idx.br{bottom:8px;right:9px;transform:rotate(180deg)}
+.qr{width:168px;height:168px;margin:20px auto 0;position:relative;background:var(--tile);border:1px solid #d8cfbc;border-radius:8px;padding:10px}
+.qr-grid{position:absolute;inset:10px;background:repeating-conic-gradient(var(--jet) 0% 25%,var(--tile) 0% 50%) 0 0/12px 12px;opacity:.92}
+.qr .finder{position:absolute;width:34px;height:34px;border:6px solid var(--jet);background:var(--tile);z-index:2}
+.qr .finder::after{content:'';position:absolute;inset:5px;background:var(--jet)}
+.qr .f1{top:10px;left:10px}.qr .f2{top:10px;right:10px}.qr .f3{bottom:10px;left:10px}
+.qr .badge{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,var(--brass-hi),var(--brass));border:3px solid var(--tile);display:flex;align-items:center;justify-content:center;gap:2px}
+.qr .mc{width:13px;height:19px;background:#fff;border:1.5px solid var(--jet);border-radius:2px;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.qr .mc.red{color:var(--vermillion)}
+.qr .mc:nth-child(1){transform:rotate(-12deg)}.qr .mc:nth-child(3){transform:rotate(12deg)}
+.invite-sub{font-size:12.5px;color:var(--dim);margin-top:20px}
+.invite-x{position:absolute;top:120px;right:40px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(237,230,216,.3);display:flex;align-items:center;justify-content:center;color:var(--on-ink);font-size:16px;background:rgba(0,0,0,.4);cursor:pointer;z-index:9}
+.invite-cta{width:280px;margin-top:16px}
+
+/* ═══════ 04 支出 · 筹码档 ═══════ */
+.lane{margin:16px 20px 0;background:var(--ink-700);border:1px solid rgba(237,230,216,.1);border-radius:20px;padding:14px 14px 13px;position:relative}
+.lane.score-lane{--lane:var(--brass)}
+.lane.pot-lane{--lane:var(--jade-hi)}
+.lane::before{content:'';position:absolute;left:18px;right:18px;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--lane),transparent);opacity:.7}
+.lane .lh{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
+.lane .lt{font-size:14px;font-weight:500;color:var(--on-ink)}
+.lane .ltag{font-size:10px;color:var(--lane);border:1px solid color-mix(in srgb,var(--lane) 55%,transparent);border-radius:4px;padding:1px 7px;letter-spacing:.08em}
+.lane .lbody{display:flex;align-items:center;gap:10px}
+.lane .who{display:flex;flex-direction:column;align-items:center;gap:4px;width:52px;flex:none}
+.lane .who .w-av{width:44px;height:44px;border-radius:50%;background:var(--ink-600);border:2px solid var(--brass);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--brass)}
+.lane .who.cup .w-av{border-color:var(--jade-hi);color:var(--jade-hi);font-size:19px}
+.lane .who .w-n{font-size:10px;color:var(--dim)}
+.lane .well{flex:1;height:62px;background:var(--ink-900);border-radius:14px;box-shadow:inset 0 3px 8px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;gap:7px}
+.lane .well .rv{font-family:'Oswald';font-weight:600;font-size:38px;line-height:1;color:var(--lane)}
+.lane .well .ru{font-size:12px;color:var(--dim);align-self:flex-end;padding-bottom:9px}
+.presets{display:flex;gap:8px;margin-top:11px}
+.presets .pc{flex:1;height:34px;border-radius:999px;border:1px dashed rgba(237,230,216,.3);background:rgba(237,230,216,.04);color:var(--dim);font-family:'Oswald';font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.presets .pc.on{border-style:solid;border-color:var(--brass);color:var(--brass);background:rgba(201,162,75,.1)}
+.rules{padding:12px 22px 0;font-size:11.5px;line-height:1.75;color:var(--dim)}
+.rules b{color:var(--brass);font-weight:500}
+.rules .j{color:var(--jade-hi);font-weight:500}
+
+/* ═══════ 05 结算 · 竖排开牌 ═══════ */
+.settle-hero{display:flex;align-items:center;justify-content:center;gap:18px;padding-top:12px}
+.vtitle{writing-mode:vertical-rl;font-family:'Noto Serif SC',serif;font-weight:700;font-size:42px;letter-spacing:.34em;color:var(--brass);text-shadow:0 4px 24px rgba(201,162,75,.3)}
+.win-card{width:206px;height:268px;--suit:var(--vermillion);position:relative}
+.win-card .idx{position:absolute;font-family:'Oswald';font-weight:700;font-size:15px;color:var(--jet)}
+.win-card .idx .s{display:block;font-size:13px;color:var(--vermillion)}
+.win-card .idx.tl{top:10px;left:11px}
+.win-card .idx.br{bottom:10px;right:11px;transform:rotate(180deg)}
+.win-card .wc-in{padding:44px 18px 20px;text-align:center}
+.win-card .wc-k{font-size:12px;color:#8a8172;letter-spacing:.2em}
+.win-card .wc-v{font-family:'Oswald';font-weight:700;font-size:56px;line-height:1.05;color:var(--vermillion);margin-top:4px}
+.win-card .wc-un{display:inline-block;margin-top:6px;font-size:12px;color:#8a8172;border:1px solid #cfc5b0;border-radius:999px;padding:3px 12px}
+.win-card .wc-t{margin-top:16px;font-family:'Noto Serif SC';font-size:15px;font-weight:700;color:var(--jet);letter-spacing:.06em}
+.win-card .seal{right:12px;bottom:44px}
+.hero-ghost{position:absolute;width:206px;height:268px;background:#D9CFBA;border-radius:14px;top:0;left:0;box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.unsec{padding:12px 20px 0}
+.unsec .st{font-family:'Noto Serif SC',serif;text-align:center;font-size:16px;font-weight:700;letter-spacing:.14em;margin-bottom:11px;color:var(--on-ink)}
+.iou{display:flex;align-items:center;gap:11px;background:var(--tile);color:var(--jet);border-radius:12px;padding:12px 14px;position:relative;box-shadow:var(--shadow-tile)}
+.iou::before{content:'';position:absolute;left:44px;top:8px;bottom:8px;border-left:1.5px dashed #b9b0a0}
+.iou .uav{width:34px;height:34px;border-radius:50%;background:var(--ink-600);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--tile-shade);flex:none}
+.iou .unm{font-size:14px;font-weight:500;padding-left:8px}
+.iou .us{display:block;font-size:11px;color:#8a8172;font-weight:400}
+.iou .uv{margin-left:auto;font-family:'Oswald';font-weight:600;font-size:21px;color:var(--indigo)}
+.tray{margin:10px 20px 0;border:1.5px dashed rgba(201,162,75,.45);border-radius:20px;padding:13px;display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative}
+.tray .tray-k{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--ink-900);padding:0 10px;font-size:10px;color:var(--brass);letter-spacing:.2em}
+
+/* ═══════ 06 手册 · 花色卡章节 ═══════ */
+.mcard{background:var(--ink-700);border:1px solid rgba(237,230,216,.1);border-radius:18px;padding:16px 16px 14px;position:relative;margin-bottom:13px;overflow:hidden}
+.mcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc,var(--brass));opacity:.85}
+.mcard .suit{position:absolute;top:13px;right:15px;font-size:16px;color:var(--sc,var(--brass));opacity:.9}
+.mcard .no{position:absolute;top:14px;right:42px;font-family:'Oswald';font-weight:600;font-size:12px;color:var(--dim)}
+.man-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.man-h .t{font-family:'Noto Serif SC',serif;font-size:16px;font-weight:700;letter-spacing:.05em}
+.man-h .flag{margin-left:auto;margin-right:26px;font-size:10.5px;color:var(--jade-hi);border:1px solid rgba(95,168,127,.5);border-radius:4px;padding:1px 7px}
+.man-h .flag.dev{color:var(--brass);border-color:rgba(201,162,75,.5)}
+.man-b{font-size:12.5px;line-height:1.75;color:#C9C2B4;padding-left:2px}
+.man-b li{list-style:none;position:relative;margin-bottom:5px;padding-left:14px}
+.man-b li::before{content:'';position:absolute;left:0;top:8px;width:5px;height:5px;border-radius:50%;background:var(--dim)}
+.man-b .red{color:var(--vermillion-hi);font-weight:500}
+.man-b .orange{color:var(--brass);font-weight:500}
+.man-b .grn{color:var(--jade-hi);font-weight:500}
+.man-b b{color:var(--on-ink);font-weight:500}
+
+/* ═══════ 其它页面公共组件 ═══════ */
+/* 左滑操作行 */
+.sw-wrap{position:relative;overflow:hidden;border-radius:12px}
+.sw-actions{position:absolute;right:0;top:0;bottom:0;display:flex}
+.sw-actions .sa{width:66px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12.5px;cursor:pointer;border:none;font-family:'Noto Sans SC'}
+.sa.flow{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900)}
+.sa.rank{background:#5C574E;color:var(--on-ink)}
+.sa.del{background:rgba(210,59,34,.92);color:#fff}
+.sa.ban{background:rgba(46,69,111,.95);color:#fff}
+.sw-content{position:relative;background:var(--ink-700);border:1px solid rgba(237,230,216,.08);border-radius:12px;padding:12px 13px;transition:transform .2s}
+.sw-wrap.open .sw-content{transform:translateX(-198px)}
+.sw-wrap.open2 .sw-content{transform:translateX(-132px)}
+.sw-content .r1{display:flex;justify-content:space-between;align-items:center;font-size:13.5px}
+.sw-content .r2{font-size:11px;color:var(--dim);margin-top:3px}
+.sw-content .amt{font-family:'Oswald';font-weight:600;font-size:18px}
+
+/* 开关 */
+.switch{width:50px;height:30px;border-radius:999px;background:var(--ink-600);position:relative;border:1px solid rgba(237,230,216,.2);flex:none;cursor:pointer}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:var(--dim);transition:.2s}
+.switch.on{background:rgba(201,162,75,.28);border-color:var(--brass)}
+.switch.on::after{left:22px;background:linear-gradient(180deg,var(--brass-hi),var(--brass))}
+
+/* 底部弹层 */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--ink-700);border-radius:28px 28px 0 0;border-top:1.5px solid rgba(201,162,75,.5);padding:10px 20px var(--pad-safe);z-index:9;box-shadow:0 -18px 40px rgba(0,0,0,.55)}
+.sheet .handle{width:44px;height:5px;border-radius:3px;background:rgba(237,230,216,.25);margin:0 auto 14px}
+.srow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid rgba(237,230,216,.08)}
+.srow .sk{font-size:14.5px}
+.srow .sd{font-size:11px;color:var(--dim);margin-top:3px;line-height:1.5}
+.mini-step{display:flex;align-items:center;gap:10px}
+.mini-step .sv{min-width:64px;text-align:center;font-family:'Oswald';font-weight:600;font-size:24px;color:var(--brass)}
+
+/* 单选项列表 */
+.vopt{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid rgba(237,230,216,.07);font-size:14px;cursor:pointer}
+.vopt:last-child{border-bottom:none}
+.vopt .radio{width:20px;height:20px;border-radius:50%;border:2px solid rgba(237,230,216,.35);flex:none;position:relative}
+.vopt.on .radio{border-color:var(--brass)}
+.vopt.on .radio::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--brass)}
+.vopt.on{color:var(--brass)}
+.vopt .vi{font-size:16px;width:22px;text-align:center;flex:none}
+.vopt .vdesc{margin-left:auto;font-size:11px;color:var(--dim)}
+
+/* 排名 */
+.medal{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Oswald';font-weight:700;font-size:14px;flex:none}
+.medal.m1{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900)}
+.medal.m2{background:#D9D4C8;color:var(--jet)}
+.medal.m3{background:#A8946B;color:var(--ink-900)}
+.medal.mn{background:var(--ink-600);color:var(--dim)}
+.rrow{display:flex;align-items:center;gap:11px;background:var(--ink-700);border:1px solid rgba(237,230,216,.08);border-radius:12px;padding:10px 13px;position:relative;overflow:hidden}
+.rrow .rav{width:40px;height:40px;border-radius:50%;background:var(--ink-600);border:2px solid var(--rc,rgba(237,230,216,.3));display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.rrow .rn{font-size:14px}
+.rrow .rsub{font-size:10.5px;color:var(--dim);margin-top:1px}
+.rrow .rs{margin-left:auto;font-family:'Oswald';font-weight:600;font-size:19px;color:var(--brass)}
+.rrow.me{border-color:rgba(201,162,75,.65);background:rgba(201,162,75,.07)}
+
+/* 统计条 */
+.stat-strip{display:flex;gap:10px;padding:14px 20px 0}
+.stat-chip{flex:1;background:var(--ink-700);border:1px solid rgba(237,230,216,.1);border-radius:14px;padding:10px 8px;text-align:center}
+.stat-chip .v{font-family:'Oswald';font-weight:600;font-size:23px;line-height:1.1}
+.stat-chip .k{font-size:10.5px;color:var(--dim);margin-top:3px}
+.bar-track{height:12px;border-radius:999px;background:var(--ink-600);overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;background-image:radial-gradient(circle,var(--bc) 40%,transparent 42%);background-size:11px 11px;background-color:color-mix(in srgb,var(--bc) 32%,transparent)}
+.devmark{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--brass);border:1px dashed rgba(201,162,75,.55);border-radius:6px;padding:3px 9px}
+.fchip{display:inline-flex;align-items:center;height:32px;padding:0 15px;border-radius:999px;border:1px solid rgba(237,230,216,.25);background:rgba(237,230,216,.05);color:var(--dim);font-size:13px;cursor:pointer}
+.fchip.on{border-color:var(--brass);color:var(--brass);background:rgba(201,162,75,.1);font-weight:500}
+.fchip .dotc{width:8px;height:8px;border-radius:50%;background:var(--fc,transparent);margin-right:6px}
+.sheet-cta{margin-top:16px}
+
+@media (prefers-reduced-motion: reduce){.flyer{animation:none!important;opacity:1!important}}
+</style>
+</head>
+<body>
+
+<div class="canvas-head">打牌记账 · 突破版 — 牌桌即界面 · 12 屏</div>
+<div class="canvas-sub">参考图仅取功能与规则，版式全部重构：俯视牌桌 / 扇面牌 CTA / 筹码加减档 / 竖排开牌 / 花色卡章节 · 合规红线与手册规则全保留 · 计分不涉金钱（无货币符号）</div>
+
+<div class="frames">
+
+<!-- ═══════ 01 首页 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>01</b>首页 · 扇面牌桌</div>
+  <div class="screen">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">♠</span></div>
+      <div class="ntitle">打牌记账</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <!-- 身份牌 -->
+    <div class="pcard idcard">
+      <div class="strip"></div>
+      <div class="idx tl">A<span class="s">♠</span></div>
+      <div class="idx br">A<span class="s">♠</span></div>
+      <div class="inner">
+        <div class="pav">A</div>
+        <div>
+          <div class="nm">Alex星</div>
+          <div class="sub">牌龄 128 天 · 常驻桌友 6 人</div>
+          <div class="stats">
+            <div class="st"><div class="v">12</div><div class="k">好友排名</div></div>
+            <div class="st"><div class="v">1,860</div><div class="k">总积分</div></div>
+            <div class="st"><div class="v g">58%</div><div class="k">胜率</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stripline">
+      <span>赢<b>14次</b></span><span>/</span><span>输<b>10次</b></span><span>/</span>
+      <span class="go">战绩 ›</span>
+    </div>
+
+    <!-- 扇形 CTA -->
+    <div class="fan-cta">
+      <button class="fc back">扫码进房</button>
+      <button class="fc front">我要开房</button>
+    </div>
+
+    <div class="fan-quick">
+      <span class="pill">好友排名</span>
+      <span class="pill">战绩流水</span>
+      <span class="pill">使用手册</span>
+    </div>
+
+    <div class="section" style="padding-top:22px">
+      <div class="h2" style="margin-bottom:10px">最近战绩</div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div class="flow"><span class="who">10月8日 · 麻将 · 7avw</span><span class="num win-n" style="font-size:17px">+180</span></div>
+        <div class="flow"><span class="who">10月5日 · 掼蛋 · 3k2s</span><span class="num lose-n" style="font-size:17px">−60</span></div>
+      </div>
+      <div class="cap" style="margin-top:8px">左滑房间记录可看流水 / 排行 / 删除</div>
+    </div>
+
+    <div class="adslot" style="margin:14px 20px 0">
+      <span class="tag">广告</span>
+      <span class="txt">感谢使用与反馈！广告位已避开功能按钮，减少误入</span>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="footpills">
+      <span class="pill">客服</span>
+      <span class="pill">获取头像昵称</span>
+      <span class="pill">使用手册</span>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 02 房间 · 俯视牌桌 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>02</b>房间 · 顶部头像座位列表 + 本局流水全量记录（可滚动）</div>
+  <div class="screen long">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">7avw 房间<small>无操作 2 小时自动关闭 · 只能自己退房</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="comply">
+      <span class="spk">🔊</span>
+      <p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p>
+      <span class="x">×</span>
+    </div>
+
+    <!-- 牌桌：顶部头像座位列表 -->
+    <div class="table">
+      <div class="mark"></div>
+
+      <div class="roster">
+        <div class="seat" style="--seatc:var(--indigo-hi)">
+          <div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span>
+        </div>
+        <div class="seat" style="--seatc:var(--jade-hi)">
+          <div class="av">马</div><span class="nm">小马</span><span class="sc win-n">+40</span>
+        </div>
+        <div class="seat" style="--seatc:var(--indigo-hi)">
+          <div class="av">凯</div><span class="nm">阿凯</span><span class="sc lose-n">−30</span>
+        </div>
+        <div class="seat" style="--seatc:var(--brass)">
+          <div class="av me">A<span class="badge">1</span></div><span class="nm">Alex星</span><span class="sc win-n">+100</span>
+        </div>
+        <div class="seat add">
+          <div class="av">＋</div><span class="nm">添加好友</span>
+        </div>
+      </div>
+
+      <div class="center-stack">
+        <div class="center-flow" style="position:static;transform:none;width:290px">
+          <div class="cf">
+            微信用户643<span class="amt-p">−100</span>
+            <span class="arr">→</span>
+            Alex星<span class="amt-w flyer">+100</span>
+          </div>
+          <div class="t">09:41 · 最近一手 · 点头像可直接支出</div>
+        </div>
+        <div class="base-pot">
+          <span class="bp">☕ 茶饭 <span class="v j">0</span></span>
+          <span class="sep"></span>
+          <span class="bp">底分 <span class="v">10</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rail-row">
+      <div class="voice">🔈 语音 · 操作播放</div>
+      <span class="cap">点头像弹窗 5 档 · 座位即顶部头像列表</span>
+    </div>
+
+    <!-- 本局流水账板：全量记录 -->
+    <div class="ledger">
+      <div class="ledger-h">
+        <span class="lt">本局流水</span>
+        <span class="lh-cap"><span class="ok">09:41 已刷新</span> · 全部 12 条 · 下拉刷新</span>
+      </div>
+      <div class="ledger-rows">
+        <div class="lrow"><span>微信用户643</span><span class="amt-p">−100</span><span class="arr">→</span><span>Alex星</span><span class="amt-w">+100</span><span class="tm">09:41</span></div>
+        <div class="lrow"><span>Alex星</span><span class="amt-p">−50</span><span class="arr">→</span><span>茶/饭</span><span class="amt-w">+50</span><span class="kind">方式二</span><span class="tm">09:38</span></div>
+        <div class="lrow"><span>阿凯</span><span class="amt-p">−20</span><span class="arr">→</span><span>小马</span><span class="amt-w">+20</span><span class="tm">09:36</span></div>
+        <div class="lrow sys"><span>阿凯 进入了房间</span><span class="tm">09:35</span></div>
+        <div class="lrow"><span>微信用户643</span><span class="amt-p">−40</span><span class="arr">→</span><span>阿凯</span><span class="amt-w">+40</span><span class="tm">09:33</span></div>
+        <div class="lrow sys ok"><span>09:32 刷新成功 · 网络良好</span></div>
+        <div class="lrow"><span>Alex星</span><span class="amt-p">−10</span><span class="arr">→</span><span>茶/饭</span><span class="amt-w">+10</span><span class="kind">方式一</span><span class="tm">09:30</span></div>
+        <div class="lrow"><span>小马</span><span class="amt-p">−30</span><span class="arr">→</span><span>微信用户643</span><span class="amt-w">+30</span><span class="tm">09:27</span></div>
+        <div class="lrow sys"><span>小马 进入了房间</span><span class="tm">09:25</span></div>
+        <div class="lrow"><span>阿凯</span><span class="amt-p">−60</span><span class="arr">→</span><span>Alex星</span><span class="amt-w">+60</span><span class="tm">09:23</span></div>
+        <div class="lrow sys"><span>微信用户643 进入了房间</span><span class="tm">09:20</span></div>
+        <div class="lrow sys"><span>房间创建 · 底分 10</span><span class="tm">09:18</span></div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <!-- 筹码轨 -->
+    <div class="rail">
+      <div class="side">🎧<span>客服</span></div>
+      <div class="main">
+        <div class="bigchip"><span>支出</span><span class="dot-badge">1</span></div>
+        <span class="cap2">记分入口 · 头像快捷</span>
+      </div>
+      <div class="side">🀄<span>我的</span></div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 02B 多人局 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>02B</b>房间 · 多人左右滚动（6 人）+ 流水全量记录（可滚动）</div>
+  <div class="screen long">
+    <div class="sb"><span>18:40</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">7avw 房间<small>6 人在桌 · 头像列表可左右滑动</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="comply">
+      <span class="spk">🔊</span>
+      <p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p>
+      <span class="x">×</span>
+    </div>
+
+    <!-- 牌桌：顶部头像座位列表（多人左右滚动） -->
+    <div class="table">
+      <div class="mark"></div>
+
+      <div class="roster">
+        <div class="seat" style="--seatc:var(--indigo-hi)">
+          <div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span>
+        </div>
+        <div class="seat" style="--seatc:var(--jade-hi)">
+          <div class="av">马</div><span class="nm">小马</span><span class="sc win-n">+40</span>
+        </div>
+        <div class="seat" style="--seatc:var(--indigo-hi)">
+          <div class="av">凯</div><span class="nm">阿凯</span><span class="sc lose-n">−30</span>
+        </div>
+        <div class="seat" style="--seatc:var(--brass)">
+          <div class="av me">A<span class="badge">1</span></div><span class="nm">Alex星</span><span class="sc win-n">+100</span>
+        </div>
+        <div class="seat" style="--seatc:var(--brass)">
+          <div class="av">表</div><span class="nm">大表姐</span><span class="sc win-n">+20</span>
+        </div>
+        <div class="seat" style="--seatc:var(--indigo-hi)">
+          <div class="av">周</div><span class="nm">老周</span><span class="sc lose-n">−70</span>
+        </div>
+        <div class="seat add">
+          <div class="av">＋</div><span class="nm">添加好友</span>
+        </div>
+      </div>
+
+      <div class="center-stack">
+        <div class="center-flow" style="position:static;transform:none;width:290px">
+          <div class="cf">
+            小马<span class="amt-p">−30</span>
+            <span class="arr">→</span>
+            Alex星<span class="amt-w flyer">+30</span>
+          </div>
+          <div class="t">09:44 · 最近一手 · 超出可左右滑动</div>
+        </div>
+        <div class="base-pot">
+          <span class="bp">☕ 茶饭 <span class="v j">0</span></span>
+          <span class="sep"></span>
+          <span class="bp">底分 <span class="v">10</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rail-row">
+      <div class="voice">🔈 语音 · 操作播放</div>
+      <span class="cap">列表可左右滑动 · 无踢人，只能自己退</span>
+    </div>
+
+    <!-- 本局流水账板：全量记录 -->
+    <div class="ledger">
+      <div class="ledger-h">
+        <span class="lt">本局流水</span>
+        <span class="lh-cap"><span class="ok">09:44 已刷新</span> · 全部 14 条 · 下拉刷新</span>
+      </div>
+      <div class="ledger-rows">
+        <div class="lrow"><span>小马</span><span class="amt-p">−30</span><span class="arr">→</span><span>Alex星</span><span class="amt-w">+30</span><span class="tm">09:44</span></div>
+        <div class="lrow"><span>老周</span><span class="amt-p">−40</span><span class="arr">→</span><span>大表姐</span><span class="amt-w">+40</span><span class="tm">09:42</span></div>
+        <div class="lrow"><span>微信用户643</span><span class="amt-p">−100</span><span class="arr">→</span><span>Alex星</span><span class="amt-w">+100</span><span class="tm">09:41</span></div>
+        <div class="lrow"><span>Alex星</span><span class="amt-p">−50</span><span class="arr">→</span><span>茶/饭</span><span class="amt-w">+50</span><span class="kind">方式二</span><span class="tm">09:39</span></div>
+        <div class="lrow"><span>大表姐</span><span class="amt-p">−20</span><span class="arr">→</span><span>小马</span><span class="amt-w">+20</span><span class="tm">09:37</span></div>
+        <div class="lrow sys"><span>老周 进入了房间</span><span class="tm">09:36</span></div>
+        <div class="lrow"><span>阿凯</span><span class="amt-p">−60</span><span class="arr">→</span><span>微信用户643</span><span class="amt-w">+60</span><span class="tm">09:34</span></div>
+        <div class="lrow sys"><span>大表姐 进入了房间</span><span class="tm">09:33</span></div>
+        <div class="lrow"><span>小马</span><span class="amt-p">−10</span><span class="arr">→</span><span>茶/饭</span><span class="amt-w">+10</span><span class="kind">方式一</span><span class="tm">09:31</span></div>
+        <div class="lrow sys ok"><span>09:29 刷新成功 · 网络良好</span></div>
+        <div class="lrow"><span>阿凯</span><span class="amt-p">−30</span><span class="arr">→</span><span>老周</span><span class="amt-w">+30</span><span class="tm">09:26</span></div>
+        <div class="lrow sys"><span>阿凯 进入了房间</span><span class="tm">09:24</span></div>
+        <div class="lrow"><span>微信用户643</span><span class="amt-p">−50</span><span class="arr">→</span><span>小马</span><span class="amt-w">+50</span><span class="tm">09:21</span></div>
+        <div class="lrow sys"><span>房间创建 · 底分 10</span><span class="tm">09:18</span></div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="rail">
+      <div class="side">🎧<span>客服</span></div>
+      <div class="main">
+        <div class="bigchip"><span>支出</span><span class="dot-badge">1</span></div>
+        <span class="cap2">记分入口 · 头像快捷</span>
+      </div>
+      <div class="side">🀄<span>我的</span></div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 03 邀请 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>03</b>邀请 · 扇牌二维码</div>
+  <div class="screen">
+    <div class="sb"><span>18:30</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">7avw 房间</div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+    <!-- 底层桌影 -->
+    <div class="table" style="height:560px;opacity:.35;margin-top:20px">
+      <div class="mark"></div>
+      <div class="seat tl"><div class="av">微</div></div>
+      <div class="seat tr"><div class="av me">A</div></div>
+      <div class="seat bl"><div class="av">☕</div></div>
+      <div class="seat br add"><div class="av">＋</div></div>
+    </div>
+
+    <div class="mask">
+      <span class="invite-x">×</span>
+      <div class="invite-no"><small>房号</small>7avw</div>
+      <div class="qr-stack">
+        <div class="ghost-card g1"></div>
+        <div class="ghost-card g2"></div>
+        <div class="qr-card">
+          <div class="idx tl">A<span style="display:block;font-size:11px;color:var(--vermillion)">♥</span></div>
+          <div class="idx br">A<span style="display:block;font-size:11px;color:var(--vermillion)">♥</span></div>
+          <div class="qr">
+            <div class="qr-grid"></div>
+            <span class="finder f1"></span><span class="finder f2"></span><span class="finder f3"></span>
+            <div class="badge">
+              <span class="mc red">A♥</span><span class="mc">K♠</span><span class="mc red">Q♦</span>
+            </div>
+          </div>
+          <div style="text-align:center;font-size:11px;color:#8a8172;margin-top:10px">扫码加入 · 或点下方转发</div>
+        </div>
+      </div>
+      <div class="invite-sub">邀请好友扫描牌背二维码加入房间</div>
+      <button class="btn brass invite-cta">转发给好友</button>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 04 支出 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>04</b>支出 · 筹码加减档（免键盘）</div>
+  <div class="screen">
+    <div class="sb"><span>18:31</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">支出<small>7avw 房间 · Alex星</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="comply" style="margin-top:6px">
+      <span class="spk">⚠</span>
+      <p>“打牌记账”是<b>记账、计分工具，不涉及金钱，禁止用于违法行为</b></p>
+    </div>
+
+    <!-- 分数档 -->
+    <div class="lane score-lane">
+      <div class="lh"><span class="lt">支出分数</span><span class="ltag">SCORE</span></div>
+      <div class="lbody">
+        <div class="who"><div class="w-av">A</div><span class="w-n">Alex星</span></div>
+        <button class="chip dark sm"><span>−</span></button>
+        <div class="well"><span class="rv">50</span><span class="ru">分</span></div>
+        <button class="chip brass sm"><span>＋</span></button>
+      </div>
+      <div class="presets">
+        <span class="pc">10</span><span class="pc on">50</span><span class="pc">100</span><span class="pc">200</span>
+      </div>
+    </div>
+
+    <!-- 茶饭档 -->
+    <div class="lane pot-lane">
+      <div class="lh"><span class="lt">支出茶/饭</span><span class="ltag">茶饭锅</span></div>
+      <div class="lbody">
+        <div class="who cup"><div class="w-av">☕</div><span class="w-n">茶/饭</span></div>
+        <button class="chip dark sm"><span>−</span></button>
+        <div class="well"><span class="rv">0</span><span class="ru">分</span></div>
+        <button class="chip brass sm"><span>＋</span></button>
+      </div>
+      <div class="presets">
+        <span class="pc">5</span><span class="pc">10</span><span class="pc on">20</span><span class="pc">自定</span>
+      </div>
+    </div>
+
+    <div class="rules">
+      <b>方式一</b>：抽取百分比 &gt; 0% 时，每次支出记账，赢方按比例另行记为茶饭<br>
+      <span class="j">方式二</span>：本页直接加减记为茶饭 · 房间目标金额 &gt; 0 则开关开启 · <b>赢的一方操作</b>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn brass">支出 50 分</button>
+      <div class="cap" style="text-align:center;margin-top:10px">只记分数，不涉及金钱 · 线下自行处理</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 05 结算 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>05</b>结算 · 竖排开牌</div>
+  <div class="screen">
+    <div class="sb"><span>23:05</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">结算<small>7avw · 6 局</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="settle-hero">
+      <div class="vtitle">战斗胜利</div>
+      <div style="position:relative;width:220px;height:276px">
+        <div class="hero-ghost" style="transform:rotate(-8deg);left:-4px;top:4px;background:#CFC5B0"></div>
+        <div class="hero-ghost" style="transform:rotate(6deg);left:14px;top:2px;background:#DED5C1"></div>
+        <div class="pcard win-card" style="position:absolute;left:7px;top:0;transform:rotate(-1.5deg)">
+          <div class="idx tl">A<span class="s">♥</span></div>
+          <div class="idx br">A<span class="s">♥</span></div>
+          <div class="wc-in">
+            <div class="wc-k">总 计</div>
+            <div class="wc-v">100</div>
+            <div class="wc-un">未结 (100)</div>
+            <div class="wc-t">大神 · 今晚你买单</div>
+          </div>
+          <div class="seal">中</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="unsec">
+      <div class="st">未结算</div>
+      <div class="iou">
+        <span class="uav">微</span>
+        <span class="unm">微信用户643<span class="us">他向你支付 · 线下自行处理</span></span>
+        <span class="uv">−100</span>
+      </div>
+      <div class="cap" style="text-align:center;margin-top:9px">结算仅提供策略参考，可不按策略</div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn brass">生成我的结算策略</button>
+      <div class="tray">
+        <span class="tray-k">操作托盘</span>
+        <button class="btn ghost">直接退房</button>
+        <button class="btn ghost">房间结算单</button>
+        <button class="btn ghost">总分排行榜</button>
+        <button class="btn ghost">房间流水</button>
+        <button class="btn ghost">历史房间</button>
+        <button class="btn ghost">使用手册</button>
+      </div>
+      <div class="cap" style="text-align:center;margin-top:10px">结算后点个人头像退房 · 数据为零可直接退</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 06 手册 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>06</b>使用手册 · 花色卡章节（可滚动长页）</div>
+  <div class="screen long">
+    <div class="sb"><span>18:32</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">使用手册<small>打牌记账 · 当前版本 5.3.1</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="section" style="padding-top:8px;padding-bottom:14px;display:flex;gap:12px;align-items:center">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--ink-700);border:2px solid var(--brass);display:flex;align-items:center;justify-content:center;color:var(--brass);font-weight:500">A</div>
+      <div>
+        <div style="font-size:15px;font-weight:500">Alex星 <span class="cap" style="margin-left:6px">欢迎阅读</span></div>
+        <div class="cap">操作说明 · 细微技巧 · 隐藏功能 · 反馈解决</div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-bottom:16px">
+      <div class="mcard" style="--sc:var(--vermillion)">
+        <span class="suit">♥</span><span class="no">01</span>
+        <div class="man-h"><span class="t">重要提示</span></div>
+        <ul class="man-b">
+          <li class="red">“打牌记账”是记账、计分工具 — 不能涉及金钱，禁止用于违法行为</li>
+          <li>需要帮助：微信客服留言（人多请耐心等待，24h 内回复）</li>
+          <li><b>网络</b>：保持网络良好、亮屏体验最佳（息屏会断小程序网络）；数据不实时<b>下拉刷新</b>，或右上角三点 → 重新进入小程序</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--on-ink)">
+        <span class="suit">♠</span><span class="no">02</span>
+        <div class="man-h"><span class="t">结算 · 退房 · 历史记录</span></div>
+        <ul class="man-b">
+          <li><b>结算</b>：仅提供策略参考，可不按策略，<span class="grn">均线下自行处理</span></li>
+          <li><b>退房</b>：只能自己退房，没有踢人；结算后点头像退出，数据为零可直接退；房间无操作 2 小时自动关闭</li>
+          <li><b>战绩</b>：首页点战绩 → 房间记录，<b>左滑</b>有流水 / 排行 / 删除；好友排名内页左滑可删除、拉黑，点图标可清零</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--brass)">
+        <span class="suit">♦</span><span class="no">03</span>
+        <div class="man-h"><span class="t">茶饭设置</span><span class="flag">完成</span></div>
+        <ul class="man-b">
+          <li>房间点茶/饭弹层配置：目标金额 + 抽取百分比；<span class="orange">目标金额 &gt; 0 则开关开启</span></li>
+          <li><span class="orange">方式一</span>：抽取百分比 &gt; 0% 时，每次支出记账，赢方按比例另行记为茶饭</li>
+          <li><span class="orange">方式二</span>：房间左下角支出按钮，直接 DIY 数值记为茶饭</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--jade-hi)">
+        <span class="suit">♣</span><span class="no">04</span>
+        <div class="man-h"><span class="t">房间语音</span></div>
+        <ul class="man-b">
+          <li>语音分三类：娱乐 / 流水 / 房间动态；点头像弹窗右侧喇叭，<b>5 档循环</b>：全部关闭 → 全部播放 → 娱乐关闭 → 流水关闭 → 操作播放</li>
+          <li>默认：<span class="grn">操作播放</span>（人员进出、结算）；开房人默认全开</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--on-ink)">
+        <span class="suit">♠</span><span class="no">05</span>
+        <div class="man-h"><span class="t">好友排名</span><span class="flag">完成</span></div>
+        <ul class="man-b">
+          <li>内页左滑：删除好友、拉黑好友；可切换「不参与排名 / 加入排名」</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--vermillion)">
+        <span class="suit">♥</span><span class="no">06</span>
+        <div class="man-h"><span class="t">添加广告说明</span></div>
+        <ul class="man-b">
+          <li>非收费工具，服务器成本高，增加广告投放带来体验损失敬请谅解；<span class="orange">广告位尽量避开功能按钮，减少误入</span></li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--brass)">
+        <span class="suit">♦</span><span class="no">07</span>
+        <div class="man-h"><span class="t">功能优化</span></div>
+        <ul class="man-b">
+          <li>部分机型房间信息/广播停止更新：与 WiFi 长连接被断有关，建议 4G；房间支持下滑刷新、检查网络；锁屏久后进入会提示确认刷新</li>
+        </ul>
+      </div>
+
+      <div class="mcard" style="--sc:var(--jade-hi)">
+        <span class="suit">♣</span><span class="no">08</span>
+        <div class="man-h"><span class="t">需求反馈</span><span class="flag dev">开发中</span></div>
+        <ul class="man-b">
+          <li>战绩自定义统计：增加统计入口，可按月份 / 年份 / 具体记录统计</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn bone">返回房间</button>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 07 战绩 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>07</b>战绩 · 房间记录 + 左滑操作</div>
+  <div class="screen">
+    <div class="sb"><span>21:10</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">战绩<small>房间记录 · 左滑有流水 / 排行 / 删除</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat-chip"><div class="v">32</div><div class="k">总局数</div></div>
+      <div class="stat-chip"><div class="v" style="color:var(--brass)">58%</div><div class="k">胜率</div></div>
+      <div class="stat-chip"><div class="v" style="color:var(--brass)">+1,240</div><div class="k">累计净成绩</div></div>
+    </div>
+
+    <div style="display:flex;gap:8px;padding:14px 20px 0;overflow:hidden">
+      <span class="fchip on">全部</span>
+      <span class="fchip"><span class="dotc" style="--fc:var(--vermillion)"></span>麻将</span>
+      <span class="fchip"><span class="dotc" style="--fc:var(--jade-hi)"></span>掼蛋</span>
+      <span class="fchip"><span class="dotc" style="--fc:var(--indigo-hi)"></span>斗地主</span>
+    </div>
+
+    <div class="section" style="display:flex;flex-direction:column;gap:10px;padding-top:14px">
+      <div class="sw-wrap closed">
+        <div class="sw-content">
+          <div class="r1"><span>10月8日 · 麻将 · 7avw</span><span class="amt win-n">+180</span></div>
+          <div class="r2">我的净成绩 · 6 局 · 底分 10</div>
+        </div>
+      </div>
+      <div class="sw-wrap closed">
+        <div class="sw-content">
+          <div class="r1"><span>10月5日 · 掼蛋 · 3k2s</span><span class="amt" style="color:var(--indigo-hi)">−60</span></div>
+          <div class="r2">我的净成绩 · 8 局 · 底分 10</div>
+        </div>
+      </div>
+      <!-- 左滑展开示例 -->
+      <div class="sw-wrap open">
+        <div class="sw-actions">
+          <button class="sa flow">流水</button>
+          <button class="sa rank">排行</button>
+          <button class="sa del">删除</button>
+        </div>
+        <div class="sw-content">
+          <div class="r1"><span>10月2日 · 斗地主 · 5m9d</span><span class="amt" style="color:var(--brass)">+45</span></div>
+          <div class="r2">← 左滑试试：看流水 / 排行 / 删除</div>
+        </div>
+      </div>
+      <div class="sw-wrap closed">
+        <div class="sw-content">
+          <div class="r1"><span>9月28日 · 麻将 · 7avw</span><span class="amt" style="color:var(--indigo-hi)">−120</span></div>
+          <div class="r2">我的净成绩 · 6 局 · 底分 10</div>
+        </div>
+      </div>
+      <div class="sw-wrap closed">
+        <div class="sw-content">
+          <div class="r1"><span>9月25日 · 德州 · 2x8k</span><span class="amt win-n">+200</span></div>
+          <div class="r2">我的净成绩 · 12 局 · 底分 10</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统计入口 -->
+    <div class="section" style="padding-top:16px">
+      <div class="adslot" style="border-style:solid;border-color:rgba(201,162,75,.4);background:rgba(201,162,75,.05)">
+        <span class="devmark">开发中</span>
+        <span class="txt" style="color:var(--on-ink)">自定义统计：按月份 / 年份 / 具体记录 →</span>
+      </div>
+      <div class="cap" style="margin-top:9px;text-align:center">左滑房间记录可看流水 / 排行 / 删除</div>
+    </div>
+
+    <div class="grow"></div>
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn ghost">清零战绩（点图标）</button>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 08 好友排名 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>08</b>好友排名 · 左滑删除/拉黑 + 参与开关</div>
+  <div class="screen">
+    <div class="sb"><span>21:12</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">好友排名<small>内页左滑可删除、拉黑</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <!-- 参与开关 -->
+    <div class="section">
+      <div class="rrow" style="padding:13px 14px">
+        <div>
+          <div class="rn">加入排名</div>
+          <div class="rsub">关闭后不参与好友榜单，互相不可见</div>
+        </div>
+        <div class="switch on" style="margin-left:auto"></div>
+      </div>
+    </div>
+
+    <!-- 我的排名 -->
+    <div class="section" style="padding-top:12px">
+      <div class="rrow me" style="padding:13px 14px">
+        <span class="medal mn">12</span>
+        <div class="rav" style="--rc:var(--vermillion)">A</div>
+        <div>
+          <div class="rn">Alex星 <span style="color:var(--brass);font-size:11px">· 我</span></div>
+          <div class="rsub">好友排名 12 · 胜率 58%</div>
+        </div>
+        <span class="rs">1,860</span>
+      </div>
+    </div>
+
+    <!-- 榜单 -->
+    <div class="section" style="display:flex;flex-direction:column;gap:9px;padding-top:14px">
+      <div class="rrow">
+        <span class="medal m1">1</span>
+        <div class="rav" style="--rc:var(--brass)">王</div>
+        <div><div class="rn">老王</div><div class="rsub">胜率 62%</div></div>
+        <span class="rs">3,420</span>
+      </div>
+      <div class="rrow">
+        <span class="medal m2">2</span>
+        <div class="rav" style="--rc:var(--indigo-hi)">表</div>
+        <div><div class="rn">大表姐</div><div class="rsub">胜率 59%</div></div>
+        <span class="rs">2,980</span>
+      </div>
+      <div class="rrow">
+        <span class="medal m3">3</span>
+        <div class="rav" style="--rc:var(--indigo-hi)">凯</div>
+        <div><div class="rn">阿凯</div><div class="rsub">胜率 55%</div></div>
+        <span class="rs">2,410</span>
+      </div>
+      <!-- 左滑展开示例 -->
+      <div class="sw-wrap open2">
+        <div class="sw-actions">
+          <button class="sa del">删除</button>
+          <button class="sa ban">拉黑</button>
+        </div>
+        <div class="sw-content">
+          <div class="r1" style="align-items:flex-start">
+            <span style="display:flex;gap:10px;align-items:center">
+              <span class="medal mn" style="width:24px;height:24px;font-size:13px">4</span>
+              <span>小马 <span style="font-size:11px;color:var(--dim)">· ← 左滑</span></span>
+            </span>
+            <span class="amt win-n" style="font-size:17px">2,200</span>
+          </div>
+        </div>
+      </div>
+      <div class="rrow">
+        <span class="medal mn">5</span>
+        <div class="rav" style="--rc:var(--indigo-hi)">周</div>
+        <div><div class="rn">老周</div><div class="rsub">胜率 48%</div></div>
+        <span class="rs">1,990</span>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+    <div style="padding:0 20px var(--pad-safe)">
+      <div class="cap" style="text-align:center;line-height:1.8">内页左滑：删除好友、拉黑好友<br>点图标可清零战绩 · 可切换「不参与排名 / 加入排名」</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 09 茶饭设置弹层 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>09</b>茶饭设置 · 底部弹层（目标金额 &gt; 0 开关开启）</div>
+  <div class="screen">
+    <div class="sb"><span>18:45</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">7avw 房间<small>点击茶/饭 铭牌配置规则</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+    <div class="comply"><span class="spk">🔊</span><p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p><span class="x">×</span></div>
+    <div class="table">
+      <div class="mark"></div>
+      <div class="roster">
+        <div class="seat" style="--seatc:var(--indigo-hi)"><div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span></div>
+        <div class="seat" style="--seatc:var(--brass)"><div class="av me">A</div><span class="nm">Alex星</span><span class="sc win-n">+100</span></div>
+        <div class="seat" style="--seatc:var(--jade-hi)"><div class="av">马</div><span class="nm">小马</span><span class="sc win-n">+40</span></div>
+        <div class="seat add"><div class="av">＋</div><span class="nm">添加好友</span></div>
+      </div>
+      <div class="center-stack">
+        <div class="center-flow" style="position:static;transform:none;width:290px">
+          <div class="cf">微信用户643<span class="amt-p">−100</span><span class="arr">→</span>Alex星<span class="amt-w">+100</span></div>
+          <div class="t">09:41 · 最近一手</div>
+        </div>
+        <div class="base-pot" style="border-color:var(--brass);box-shadow:0 0 18px rgba(201,162,75,.35)">
+          <span class="bp">☕ 茶饭 <span class="v j">0</span></span><span class="sep"></span><span class="bp">底分 <span class="v">10</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 弹层 -->
+    <div class="mask" style="background:rgba(0,0,0,.6)"></div>
+    <div class="sheet">
+      <div class="handle"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+        <span class="h2">茶饭设置</span>
+        <span class="cap">目标金额 &gt; 0 则开关开启</span>
+      </div>
+
+      <div class="srow">
+        <div><div class="sk">开启茶饭锅</div><div class="sd">每次支出按比例抽取，记入茶/饭</div></div>
+        <div class="switch on"></div>
+      </div>
+
+      <div class="srow">
+        <div><div class="sk">目标金额</div><div class="sd">达到后停止抽取</div></div>
+        <div class="mini-step">
+          <button class="chip dark xs"><span>−</span></button>
+          <span class="sv">500</span>
+          <button class="chip brass xs"><span>＋</span></button>
+        </div>
+      </div>
+
+      <div style="padding-top:13px">
+        <div class="sk" style="font-size:14.5px;margin-bottom:10px">抽取百分比</div>
+        <div class="presets">
+          <span class="pc">5%</span><span class="pc on">10%</span><span class="pc">15%</span><span class="pc">20%</span>
+        </div>
+      </div>
+
+      <div class="cap" style="margin-top:13px;line-height:1.75">
+        <b style="color:var(--brass)">方式一</b>：抽取百分比 &gt; 0% 时，每次支出记账，赢方按比例另行记为茶饭<br>
+        <b style="color:var(--jade-hi)">方式二</b>：房间左下角支出按钮，直接 DIY 数值记为茶饭
+      </div>
+
+      <button class="btn brass sheet-cta">保存设置</button>
+      <div class="cap" style="text-align:center;margin-top:9px">只记分数，不涉及金钱</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 10 头像弹窗 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>10</b>头像弹窗 · 昵称 / 语音 5 档 / 退出房间</div>
+  <div class="screen">
+    <div class="sb"><span>18:46</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">⌂</span></div>
+      <div class="ntitle">7avw 房间<small>点头像弹窗 · 语音右侧图标 5 档循环</small></div>
+      <div class="side right"><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+    <div class="comply"><span class="spk">🔊</span><p>“打牌记账”<b>不涉及金钱，禁止用于违法行为</b></p><span class="x">×</span></div>
+    <div class="table">
+      <div class="mark"></div>
+      <div class="roster">
+        <div class="seat" style="--seatc:var(--indigo-hi)"><div class="av">微</div><span class="nm">微信用户643</span><span class="sc lose-n">−100</span></div>
+        <div class="seat" style="--seatc:var(--brass)"><div class="av me">A</div><span class="nm">Alex星</span><span class="sc win-n">+100</span></div>
+        <div class="seat" style="--seatc:var(--jade-hi)"><div class="av">马</div><span class="nm">小马</span><span class="sc win-n">+40</span></div>
+        <div class="seat add"><div class="av">＋</div><span class="nm">添加好友</span></div>
+      </div>
+      <div class="center-stack">
+        <div class="base-pot"><span class="bp">☕ 茶饭 <span class="v j">0</span></span><span class="sep"></span><span class="bp">底分 <span class="v">10</span></span></div>
+      </div>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="mask" style="background:rgba(0,0,0,.66)"></div>
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:320px;background:var(--ink-700);border:1.5px solid rgba(201,162,75,.5);border-radius:22px;padding:20px 20px 18px;z-index:9;box-shadow:0 24px 60px rgba(0,0,0,.6)">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--ink-600);border:3px solid var(--brass);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--brass)">A</div>
+        <div class="h2" style="font-size:17px">Alex星</div>
+        <div style="display:flex;gap:16px;margin-top:4px;font-size:13px;color:var(--dim)">
+          <span>✎ 修改昵称</span>
+          <span style="color:var(--brass)">查看资料</span>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;border-top:1px solid rgba(237,230,216,.1);padding-top:12px">
+        <div class="row" style="margin-bottom:2px">
+          <span class="label" style="color:var(--on-ink);font-size:14px">🔈 语音播放</span>
+          <span class="cap">5 档循环</span>
+        </div>
+        <div class="vopt"><span class="vi">🔇</span>全部关闭</div>
+        <div class="vopt"><span class="vi">🔊</span>全部播放</div>
+        <div class="vopt"><span class="vi">🎭</span>娱乐关闭<span class="vdesc">人声欢迎语等</span></div>
+        <div class="vopt"><span class="vi">💰</span>流水关闭<span class="vdesc">记分播报</span></div>
+        <div class="vopt on"><span class="vi">✅</span>操作播放<span class="vdesc">默认 · 进出/结算</span></div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn ghost" style="flex:1;border-color:rgba(210,59,34,.55);color:var(--vermillion-hi)">退出房间</button>
+        <button class="btn brass" style="flex:1;height:48px;font-size:15px">完成</button>
+      </div>
+      <div class="cap" style="text-align:center;margin-top:9px">只能自己退房，没有踢人 · 数据为零可直接退</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════ 11 自定义统计 ═══════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>11</b>自定义统计 · 按月/年份/明细（开发中）</div>
+  <div class="screen">
+    <div class="sb"><span>21:15</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="nav">
+      <div class="side"><span class="navicon">‹</span></div>
+      <div class="ntitle">战绩统计<small>选择月份 / 年份 / 具体记录</small></div>
+      <div class="side right" style="gap:8px"><span class="devmark">开发中</span><div class="capsule"><span class="c">•••</span><span class="sep"></span><span class="c c2"><span class="ring"></span></span></div></div>
+    </div>
+
+    <div style="display:flex;gap:8px;padding:8px 20px 0">
+      <span class="fchip on">本月</span>
+      <span class="fchip">本年</span>
+      <span class="fchip">自定义</span>
+    </div>
+
+    <div class="hero" style="text-align:left;padding:18px 20px 0">
+      <div class="label">2026 年 10 月 · 净成绩</div>
+      <div class="num win-n" style="font-size:58px;font-weight:700;line-height:1.05">+420</div>
+      <div class="label" style="margin-top:2px">12 局 · 胜率 58% · 底分 10</div>
+    </div>
+
+    <div class="section" style="padding-top:16px">
+      <div class="h2" style="margin-bottom:12px">按月份</div>
+      <div style="display:flex;flex-direction:column;gap:13px">
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">7 月</span><span class="num win-n" style="font-size:17px">+320</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:76%;--bc:var(--brass)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">8 月</span><span class="num win-n" style="font-size:17px">+180</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:43%;--bc:var(--brass)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">9 月</span><span class="num win-n" style="font-size:17px">+320</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:76%;--bc:var(--brass)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">10 月 <span style="color:var(--brass);font-size:11px">· 本月</span></span><span class="num win-n" style="font-size:17px">+420</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;--bc:var(--brass)"></div></div>
+        </div>
+      </div>
+      <div class="cap" style="margin-top:8px">四月合计 = 累计 +1,240 ✓ 筹码守恒</div>
+    </div>
+
+    <div class="section" style="padding-top:16px">
+      <div class="h2" style="margin-bottom:10px">明细（10 月）</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="flow"><span class="who">10月8日 · 麻将 · 7avw</span><span class="num win-n" style="font-size:17px">+180</span></div>
+        <div class="flow"><span class="who">10月5日 · 掼蛋 · 3k2s</span><span class="num lose-n" style="font-size:17px">−60</span></div>
+        <div class="flow"><span class="who">10月2日 · 斗地主 · 5m9d</span><span class="num win-n" style="font-size:17px">+45</span></div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+    <div style="padding:0 20px var(--pad-safe)">
+      <div class="cap" style="text-align:center">需求反馈 · 开发中：可按月份 / 年份 / 具体记录统计</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

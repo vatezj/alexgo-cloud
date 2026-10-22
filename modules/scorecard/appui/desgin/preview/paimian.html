@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>牌面 · 打牌记账 v2 · 5 屏视觉稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink-900:#14120F; --ink-700:#1E1B17; --ink-600:#2A2722;
+  --tile:#F2EDE3; --tile-shade:#E5DCC9;
+  --vermillion:#D23B22; --vermillion-600:#B32D18;
+  --indigo:#3D5A96; --indigo-700:#2E456F;
+  --jet:#2A2722; --brass:#C9A24B; --brass-hi:#E0BC6A; --brass-lo:#8F6F2E;
+  --jade:#3E7D5A;
+  --on-ink:#EDE6D8; --dim:#9B917F;
+  --r-tile:12px; --r-md:14px; --r-lg:20px;
+  --shadow-tile:0 2px 0 rgba(0,0,0,.55), 0 12px 26px rgba(0,0,0,.45);
+  --pad-safe:50px; /* HIG: 34 底部安全区 + 16 */
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{background:#0b0b0c;font-family:'Noto Sans SC',system-ui,sans-serif;color:var(--on-ink)}
+.canvas-head{padding:36px 40px 8px;font-family:'Noto Serif SC',serif;font-size:22px;color:var(--brass);letter-spacing:.08em}
+.canvas-sub{padding:0 40px 28px;font-size:13px;color:#6b675f}
+.frames{display:flex;gap:56px;padding:12px 40px 60px;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:12px}
+.frame-label{font-size:13px;color:#8a857c;letter-spacing:.04em}
+.frame-label b{color:var(--brass);font-weight:500;margin-right:8px}
+
+/* ── screen shell ─────────────────────────── */
+.screen{
+  width:390px;height:844px;background:var(--ink-900);
+  border-radius:38px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06), 0 30px 60px rgba(0,0,0,.55);
+}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;font-size:14px;font-weight:500;flex:none}
+.sb svg{display:block}
+.sb-right{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(237,230,216,.35);z-index:5}
+.grow{flex:1;min-height:0}
+
+/* ── type ─────────────────────────── */
+.title-plaque{font-family:'Noto Serif SC',serif;font-weight:700;color:var(--brass);letter-spacing:.08em}
+.h1{font-size:30px;line-height:1.25}
+.h2{font-family:'Noto Serif SC',serif;font-size:19px;font-weight:700;letter-spacing:.05em;color:var(--on-ink)}
+.body{font-size:15px;line-height:1.5;color:var(--on-ink)}
+.label{font-size:13px;font-weight:500;color:var(--dim)}
+.cap{font-size:11px;color:var(--dim);line-height:1.5}
+.num{font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}
+.hairline{height:1px;background:linear-gradient(90deg,var(--brass),transparent);opacity:.55}
+
+/* ── tile card (骨白牌) ─────────────────── */
+.tile{
+  background:var(--tile);border-radius:var(--r-tile);
+  box-shadow:var(--shadow-tile);position:relative;overflow:hidden;color:var(--jet);
+}
+.tile-strip{
+  height:14px;position:relative;
+  background:
+    repeating-linear-gradient(45deg, rgba(20,18,15,.10) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(-45deg, rgba(20,18,15,.08) 0 1px, transparent 1px 7px),
+    var(--tile-shade);
+  border-bottom:3px solid var(--suit,var(--jet));
+}
+.tile.win{outline:2px solid var(--brass);outline-offset:-2px}
+.seal{
+  position:absolute;right:12px;bottom:12px;width:26px;height:26px;
+  border:2px solid var(--vermillion);border-radius:5px;
+  color:var(--vermillion);font-family:'Noto Serif SC',serif;font-size:15px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  transform:rotate(-10deg);opacity:.85;background:rgba(210,59,34,.06);
+}
+
+/* player tile */
+.tile-player .p-body{padding:12px 16px 16px}
+.p-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.chip-av{
+  width:34px;height:34px;border-radius:50%;background:var(--jet);color:var(--tile);
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;flex:none;
+  box-shadow:inset 0 -3px 0 rgba(255,255,255,.12);
+}
+.p-name{font-size:15px;font-weight:500;color:var(--jet)}
+.p-round{margin-left:auto;font-size:11px;color:#8a8172}
+.p-score{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.score{
+  font-family:'Oswald',sans-serif;font-variant-numeric:tabular-nums;
+  font-weight:600;font-size:48px;line-height:1.05;letter-spacing:.01em;
+}
+.score.win{color:var(--vermillion)}
+.score.lose{color:var(--indigo)}
+.score.tie{color:#6b6459}
+
+/* ── chip buttons (筹码) ─────────────────── */
+.chip{
+  width:56px;height:56px;border:none;border-radius:50%;position:relative;cursor:pointer;
+  background:repeating-conic-gradient(from 8deg, var(--c-edge-a) 0 18deg, var(--c-edge-b) 18deg 36deg);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.35);
+}
+.chip::before{content:'';position:absolute;inset:6px;border-radius:50%;background:var(--c-face);box-shadow:inset 0 2px 3px rgba(255,255,255,.25)}
+.chip span{position:relative;z-index:1;font-size:26px;font-weight:700;font-family:'Noto Sans SC';line-height:1}
+.chip.plus{--c-edge-a:var(--brass-lo);--c-edge-b:var(--brass);--c-face:radial-gradient(circle at 50% 38%, var(--brass-hi), var(--brass) 75%);color:var(--ink-900)}
+.chip.minus{--c-edge-a:var(--indigo-700);--c-edge-b:var(--indigo);--c-face:radial-gradient(circle at 50% 38%, #4d6cae, var(--indigo) 75%);color:#F4F1EA}
+.chip.sm{width:44px;height:44px}
+.chip.sm span{font-size:20px}
+.chip.sm::before{inset:5px}
+.chip:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.45)}
+
+/* ── buttons ─────────────────── */
+.btn{
+  height:56px;border-radius:999px;border:none;cursor:pointer;
+  font-family:'Noto Sans SC';font-size:17px;font-weight:500;
+  display:flex;align-items:center;justify-content:center;gap:6px;width:100%;
+}
+.btn.brass{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900);box-shadow:0 4px 0 var(--brass-lo),0 10px 18px rgba(0,0,0,.4)}
+.btn.bone{background:var(--tile);color:var(--jet);box-shadow:0 4px 0 #b9b0a0,0 10px 18px rgba(0,0,0,.4)}
+.btn.ghost{background:transparent;color:var(--on-ink);border:1.5px solid rgba(237,230,216,.35)}
+.btn.small{width:auto;padding:0 28px;height:56px;flex:none}
+
+/* ── base score control ─────────────────── */
+.bsc{
+  display:flex;align-items:center;gap:10px;background:var(--ink-700);
+  border:1px solid rgba(237,230,216,.14);border-radius:999px;padding:6px 10px;
+}
+.bsc .val{display:flex;flex-direction:column;align-items:center;min-width:56px}
+.bsc .val .cap{line-height:1.2}
+.bsc .val .num{font-size:19px;color:var(--brass);font-weight:500}
+
+/* ── tabbar ─────────────────── */
+.tabbar{
+  position:absolute;left:0;right:0;bottom:0;height:83px;background:var(--ink-700);
+  border-top:1px solid rgba(237,230,216,.09);
+  display:flex;justify-content:space-around;padding:9px 0 34px;z-index:4;
+}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim);font-size:11px;font-weight:500}
+.tab.active{color:var(--brass)}
+.tab svg{display:block}
+
+/* ── misc blocks ─────────────────── */
+.section{padding:0 20px}
+.row{display:flex;align-items:center;justify-content:space-between}
+.mini-tile{
+  background:var(--tile);border-radius:10px;padding:12px 14px;color:var(--jet);
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 2px 0 rgba(0,0,0,.5),0 6px 14px rgba(0,0,0,.35);
+}
+.mini-tile .num{font-size:22px}
+.mini-tile .win{color:var(--vermillion-600)}
+.mini-tile .lose{color:var(--indigo)}
+.mini-info{font-size:13px;color:#4a453d}
+.mini-info .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--suitc,var(--jet));vertical-align:1px}
+
+/* game select tiles */
+.games{display:flex;gap:10px}
+.game{
+  flex:1;height:104px;border-radius:var(--r-tile);position:relative;overflow:hidden;cursor:pointer;
+  background:
+    repeating-linear-gradient(45deg, rgba(237,230,216,.07) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(-45deg, rgba(237,230,216,.05) 0 1px, transparent 1px 8px),
+    var(--ink-700);
+  border:1px solid rgba(237,230,216,.12);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  color:var(--dim);font-size:13px;
+}
+.game .gdot{width:26px;height:26px;border-radius:50%;background:var(--gc,#333);opacity:.55}
+.game.on{background:var(--tile);border-color:var(--tile);color:var(--jet);box-shadow:var(--shadow-tile);font-weight:500}
+.game.on .gdot{opacity:1}
+.game.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--gc)}
+
+/* avatars */
+.avs{display:flex;justify-content:space-between}
+.av{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.av .coin{
+  width:54px;height:54px;border-radius:50%;background:var(--ink-700);
+  border:2px solid var(--avc,var(--dim));display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:500;color:var(--on-ink);
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.35);
+}
+.av.me .coin{border-color:var(--vermillion);color:var(--vermillion)}
+.av.add .coin{border-style:dashed;border-color:rgba(237,230,216,.3);color:var(--dim);font-size:22px;font-weight:400}
+
+/* stat bars */
+.bar-track{height:12px;border-radius:999px;background:var(--ink-600);overflow:hidden;position:relative}
+.bar-fill{
+  height:100%;border-radius:999px;
+  background-image:radial-gradient(circle, var(--bc) 40%, transparent 42%);
+  background-size:11px 11px;background-color:color-mix(in srgb, var(--bc) 30%, transparent);
+}
+
+/* settle tile */
+.tile-settle{display:flex;align-items:center;padding:16px 18px}
+.tile-settle .s-info{flex:1}
+.tile-settle .s-name{font-family:'Noto Serif SC',serif;font-size:17px;font-weight:700;color:var(--jet);letter-spacing:.04em}
+.tile-settle .s-sub{font-size:11px;color:#8a8172;margin-top:2px}
+.tile-settle .num{font-size:32px}
+.tile-settle .win-n{color:var(--vermillion)}
+.tile-settle .lose-n{color:var(--indigo)}
+
+/* hero */
+.hero{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:0 20px}
+.hero .big{font-family:'Oswald',sans-serif;font-weight:700;font-size:72px;line-height:1;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+.hero .big.brass{color:var(--brass)}
+.hero .big.indigo{color:#5b7ec2}
+
+/* +20 bubble */
+.bubble{
+  position:absolute;left:242px;top:614px;z-index:6;
+  background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--ink-900);
+  font-family:'Oswald';font-weight:600;font-size:17px;
+  padding:6px 13px;border-radius:999px;transform:rotate(-8deg);
+  box-shadow:0 0 22px rgba(201,162,75,.5),0 4px 10px rgba(0,0,0,.4);
+  animation:bubbleFloat 2.6s ease-out infinite;
+}
+@keyframes bubbleFloat{
+  0%{opacity:0;transform:rotate(-8deg) translateY(0)}
+  12%{opacity:1}
+  45%{opacity:0;transform:rotate(-8deg) translateY(-14px)}
+  100%{opacity:0;transform:rotate(-8deg) translateY(-14px)}
+}
+@keyframes flipIn{from{transform:perspective(800px) rotateY(88deg);opacity:.2}to{transform:perspective(800px) rotateY(0);opacity:1}}
+.flip-in{animation:flipIn .5s cubic-bezier(.2,.8,.3,1) both}
+.flip-in.d1{animation-delay:.08s}.flip-in.d2{animation-delay:.16s}.flip-in.d3{animation-delay:.24s}
+
+/* bottom action bar */
+.actions{display:flex;gap:12px;padding:12px 20px var(--pad-safe)}
+.center-cap{text-align:center;padding-bottom:8px}
+
+/* header rows */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 20px 6px}
+.hdr .left{display:flex;align-items:center;gap:10px}
+.back{font-size:26px;color:var(--on-ink);line-height:1;cursor:pointer;padding-right:4px}
+.hdr .sub{font-size:11px;color:var(--dim)}
+
+@media (prefers-reduced-motion: reduce){
+  .bubble,.flip-in{animation:none!important;opacity:1!important;transform:rotate(-8deg)!important}
+}
+</style>
+</head>
+<body>
+
+<div class="canvas-head">牌面 · 打牌记账 v2 — 5 屏高保真视觉稿</div>
+<div class="canvas-sub">输赢有数，面子周全 · 390×844 · 已按 hig-review.md 修正底部安全区(34pt)/小字红(#B32D18)/Reduce-Motion 降级</div>
+
+<div class="frames">
+
+<!-- ═══════════ 01 首页 ═══════════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>01</b>首页 · 牌桌上，还有半局</div>
+  <div class="screen">
+    <div class="sb"><span>21:36</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <div class="section" style="padding-top:14px">
+      <div class="title-plaque h1">牌局账本</div>
+      <div class="cap" style="margin-top:5px">记完就散，账不乱</div>
+      <div class="hairline" style="margin-top:12px"></div>
+    </div>
+
+    <div class="section" style="padding-top:18px">
+      <div class="tile win" style="--suit:var(--vermillion)">
+        <div class="tile-strip"></div>
+        <div style="padding:14px 16px 16px">
+          <div class="row">
+            <span class="label" style="color:var(--vermillion-600);font-weight:500">进行中 · 麻将</span>
+            <span class="cap">老王家 · 4 人</span>
+          </div>
+          <div style="font-family:'Noto Serif SC',serif;font-size:21px;font-weight:700;color:var(--jet);margin-top:8px;letter-spacing:.04em">这局还没结</div>
+          <div class="row" style="margin-top:12px">
+            <div>
+              <div class="cap" style="color:#8a8172">我的成绩 · 第 6 局</div>
+              <div class="num lose" style="font-size:34px;color:var(--indigo);margin-top:2px">−40</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end">
+              <span class="num" style="font-size:15px;color:#8a8172">底分</span>
+              <span class="num" style="font-size:22px;color:var(--vermillion-600)">¥10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn brass" style="margin-top:16px">继续记分</button>
+    </div>
+
+    <div class="section" style="padding-top:22px">
+      <div class="h2" style="margin-bottom:12px">最近牌局</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="mini-tile" style="--suitc:var(--vermillion)">
+          <span class="mini-info"><span class="dot"></span>10月8日 · 麻将</span>
+          <span class="num win">+180</span>
+        </div>
+        <div class="mini-tile" style="--suitc:var(--jade)">
+          <span class="mini-info"><span class="dot"></span>10月5日 · 掼蛋</span>
+          <span class="num lose">−60</span>
+        </div>
+        <div class="mini-tile" style="--suitc:var(--indigo)">
+          <span class="mini-info"><span class="dot"></span>10月2日 · 斗地主</span>
+          <span class="num win">+45</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px 12px"><button class="btn brass">＋ 新开局</button></div>
+
+    <div class="tabbar">
+      <div class="tab active">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 10.8 12 3.5l9 7.3V20a1 1 0 0 1-1 1h-5.2v-5.6H9.2V21H4a1 1 0 0 1-1-1v-9.2z"/></svg>
+        <span>首页</span>
+      </div>
+      <div class="tab">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V11M10 20V5M16 20v-7M3 20h18"/></svg>
+        <span>战绩</span>
+      </div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════════ 02 开局设置 ═══════════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>02</b>开局设置 · 翻牌开局</div>
+  <div class="screen">
+    <div class="sb"><span>21:38</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <div class="hdr"><div class="left"><span class="back">‹</span><span class="title-plaque" style="font-size:24px">新开局</span></div></div>
+
+    <div class="section" style="padding-top:14px">
+      <div class="label" style="margin-bottom:10px">选玩法</div>
+      <div class="games">
+        <div class="game on" style="--gc:var(--vermillion)"><span class="gdot"></span>麻将</div>
+        <div class="game" style="--gc:var(--indigo)"><span class="gdot"></span>斗地主</div>
+        <div class="game" style="--gc:var(--jade)"><span class="gdot"></span>掼蛋</div>
+        <div class="game" style="--gc:var(--brass)"><span class="gdot"></span>德州</div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:24px">
+      <div class="row" style="margin-bottom:14px">
+        <span class="label">玩家</span><span class="label" style="color:var(--brass)">4 人</span>
+      </div>
+      <div class="avs">
+        <div class="av" style="--avc:var(--vermillion)"><span class="coin">王</span>老王</div>
+        <div class="av" style="--avc:var(--indigo)"><span class="coin">李</span>李姐</div>
+        <div class="av" style="--avc:var(--jade)"><span class="coin">强</span>阿强</div>
+        <div class="av me"><span class="coin">我</span>我</div>
+        <div class="av add"><span class="coin">＋</span>加一位</div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:26px;display:flex;flex-direction:column;align-items:center;gap:10px">
+      <span class="label">底分</span>
+      <div class="bsc">
+        <button class="chip minus sm"><span>−</span></button>
+        <div class="val"><span class="cap">底分</span><span class="num">¥10</span></div>
+        <button class="chip plus sm"><span>＋</span></button>
+      </div>
+      <span class="cap">每一分 ¥10，结束后按总分结算</span>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe)">
+      <button class="btn bone">开始牌局</button>
+      <div class="cap center-cap" style="margin-top:10px">4 人 · 麻将 · 底分 ¥10</div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════════ 03 记分页 ═══════════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>03</b>记分页（核心） · 牌面上见</div>
+  <div class="screen">
+    <div class="sb"><span>21:52</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <div class="hdr" style="padding-bottom:10px">
+      <div>
+        <div class="title-plaque" style="font-size:19px">麻将 · 第 6 局</div>
+        <div class="sub" style="margin-top:2px">老王家 · 4 人</div>
+      </div>
+      <div class="bsc" style="gap:8px;padding:5px 8px">
+        <button class="chip minus sm"><span>−</span></button>
+        <div class="val"><span class="cap">底分</span><span class="num">¥10</span></div>
+        <button class="chip plus sm"><span>＋</span></button>
+      </div>
+    </div>
+
+    <div class="section" style="display:flex;flex-direction:column;gap:12px;padding-top:4px">
+
+      <!-- 玩家1 赢 -->
+      <div class="tile tile-player win" style="--suit:var(--vermillion)">
+        <div class="tile-strip"></div>
+        <div class="p-body">
+          <div class="p-head"><span class="chip-av">王</span><span class="p-name">老王</span><span class="p-round">本局领先</span></div>
+          <div class="p-score">
+            <button class="chip minus"><span>−</span></button>
+            <span class="score win">+120</span>
+            <button class="chip plus"><span>＋</span></button>
+          </div>
+        </div>
+        <div class="seal">中</div>
+      </div>
+
+      <!-- 玩家2 输 -->
+      <div class="tile tile-player" style="--suit:var(--indigo)">
+        <div class="tile-strip"></div>
+        <div class="p-body">
+          <div class="p-head"><span class="chip-av">李</span><span class="p-name">李姐</span><span class="p-round">第 6 局</span></div>
+          <div class="p-score">
+            <button class="chip minus"><span>−</span></button>
+            <span class="score lose">−80</span>
+            <button class="chip plus"><span>＋</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 玩家3 平 -->
+      <div class="tile tile-player" style="--suit:#6b6459">
+        <div class="tile-strip"></div>
+        <div class="p-body">
+          <div class="p-head"><span class="chip-av">强</span><span class="p-name">阿强</span><span class="p-round">第 6 局</span></div>
+          <div class="p-score">
+            <button class="chip minus"><span>−</span></button>
+            <span class="score tie">0</span>
+            <button class="chip plus"><span>＋</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 玩家4 我 -->
+      <div class="tile tile-player" style="--suit:var(--indigo)">
+        <div class="tile-strip"></div>
+        <div class="p-body">
+          <div class="p-head"><span class="chip-av" style="background:var(--vermillion);border-color:var(--vermillion)">我</span><span class="p-name">我</span><span class="p-round">第 6 局</span></div>
+          <div class="p-score">
+            <button class="chip minus"><span>−</span></button>
+            <span class="score lose">−40</span>
+            <button class="chip plus"><span>＋</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="actions">
+      <button class="btn ghost small">撤销</button>
+      <button class="btn brass" style="flex:1">结束牌局</button>
+    </div>
+
+    <div class="bubble">+20</div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════════ 04 结算 ═══════════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>04</b>结算 · 开牌，两清</div>
+  <div class="screen">
+    <div class="sb"><span>23:05</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <div class="hdr"><div class="left"><span class="back">‹</span><span class="title-plaque" style="font-size:24px">结算</span></div></div>
+
+    <div class="hero" style="padding-top:22px">
+      <span class="label">我的净成绩 · 麻将 6 局 · 底分 ¥10</span>
+      <span class="big indigo">−160</span>
+    </div>
+
+    <div class="section" style="display:flex;flex-direction:column;gap:10px;padding-top:24px">
+      <div class="tile tile-settle win flip-in" style="--suit:var(--vermillion)">
+        <div class="tile-strip" style="position:absolute;left:0;right:0;top:0"></div>
+        <div class="s-info" style="margin-top:6px">
+          <div class="s-name">老王</div>
+          <div class="s-sub">净赢 · 6 局</div>
+        </div>
+        <div class="seal" style="position:static;margin:0 14px 0 0;flex:none">中</div>
+        <span class="num win-n">+360</span>
+      </div>
+      <div class="tile tile-settle flip-in d1" style="--suit:var(--indigo)">
+        <div class="s-info">
+          <div class="s-name">李姐</div>
+          <div class="s-sub">净输 · 6 局</div>
+        </div>
+        <span class="num lose-n">−80</span>
+      </div>
+      <div class="tile tile-settle flip-in d2" style="--suit:var(--indigo)">
+        <div class="s-info">
+          <div class="s-name">我</div>
+          <div class="s-sub">净输 · 6 局</div>
+        </div>
+        <span class="num lose-n">−160</span>
+      </div>
+      <div class="tile tile-settle flip-in d3" style="--suit:var(--indigo)">
+        <div class="s-info">
+          <div class="s-name">阿强</div>
+          <div class="s-sub">净输 · 6 局</div>
+        </div>
+        <span class="num lose-n">−120</span>
+      </div>
+      <div class="cap" style="text-align:center;padding-top:6px">筹码守恒 &nbsp;+360 −80 −160 −120 = 0</div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div style="padding:0 20px var(--pad-safe);display:flex;flex-direction:column;gap:12px">
+      <button class="btn ghost">编辑明细</button>
+      <button class="btn brass">保存战绩</button>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- ═══════════ 05 战绩 ═══════════ -->
+<div class="frame-wrap">
+  <div class="frame-label"><b>05</b>战绩 · 牌谱</div>
+  <div class="screen">
+    <div class="sb"><span>21:40</span>
+      <span class="sb-right">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#EDE6D8"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#EDE6D8" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.6 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8" cy="10" r="1.3" fill="#EDE6D8" stroke="none"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#EDE6D8" opacity=".5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#EDE6D8"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="#EDE6D8" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <div class="section" style="padding-top:12px">
+      <div class="title-plaque" style="font-size:26px">战绩</div>
+      <div class="cap" style="margin-top:4px">从 2026 年 6 月起 · 牌谱</div>
+      <div class="hairline" style="margin-top:12px"></div>
+    </div>
+
+    <div class="hero" style="padding-top:18px">
+      <span class="label">累计净成绩</span>
+      <span class="big brass">+1,240</span>
+      <span class="label" style="margin-top:2px">32 局 · 胜率 56%</span>
+    </div>
+
+    <div class="section" style="padding-top:20px">
+      <div class="h2" style="margin-bottom:12px">按玩法</div>
+      <div style="display:flex;flex-direction:column;gap:13px">
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">麻将</span><span class="num" style="font-size:17px;color:var(--vermillion)">+860</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:80%;--bc:var(--vermillion)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">掼蛋</span><span class="num" style="font-size:17px;color:var(--jade)">+320</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:30%;--bc:var(--jade)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">斗地主</span><span class="num" style="font-size:17px;color:var(--brass)">+100</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:11%;--bc:var(--brass)"></div></div>
+        </div>
+        <div>
+          <div class="row" style="margin-bottom:6px"><span class="body" style="font-size:14px">德州</span><span class="num" style="font-size:17px;color:#5b7ec2">−40</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:6%;--bc:var(--indigo)"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:18px">
+      <div class="h2" style="margin-bottom:10px">最近牌局</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="mini-tile"><span class="mini-info" style="--suitc:var(--vermillion)"><span class="dot"></span>10月8日 · 麻将</span><span class="num win">+180</span></div>
+        <div class="mini-tile"><span class="mini-info" style="--suitc:var(--jade)"><span class="dot"></span>10月5日 · 掼蛋</span><span class="num lose">−60</span></div>
+        <div class="mini-tile"><span class="mini-info" style="--suitc:var(--indigo)"><span class="dot"></span>10月2日 · 斗地主</span><span class="num win">+45</span></div>
+      </div>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="tabbar">
+      <div class="tab">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 10.8 12 3.5l9 7.3V20a1 1 0 0 1-1 1h-5.2v-5.6H9.2V21H4a1 1 0 0 1-1-1v-9.2z"/></svg>
+        <span>首页</span>
+      </div>
+      <div class="tab active">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V11M10 20V5M16 20v-7M3 20h18"/></svg>
+        <span>战绩</span>
+      </div>
+    </div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

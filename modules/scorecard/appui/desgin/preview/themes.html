@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打牌记账 · 12 屏 · 4 套配色</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style id="base"></style>
+<style id="ui">
+/* ── 基础补丁：赢色与 chrome 拆分 / 桌面渐变参数化 ── */
+:root{--win-dark:#C9A24B;--felt-hi:#17362B}
+.win-n{color:var(--win-dark)}
+.lrow .amt-w{color:var(--win-dark)}
+.table{background:radial-gradient(85% 65% at 50% 38%, var(--felt-hi) 0%, var(--felt) 55%, var(--felt-deep) 100%)}
+/* ── 锁定：合规横幅与红中印永远是红 ── */
+.comply{background:rgba(210,59,34,.13);border-color:rgba(210,59,34,.45)}
+.comply p,.comply .spk{color:#E8734F}
+.comply p b{color:#F0906F}
+.seal{border-color:#D23B22;color:#D23B22;background:rgba(210,59,34,.06)}
+
+/* ── 配色作用域 ── */
+/* T2 深海筹码：海军蓝 + 铜 + 琥珀 */
+.t2{
+  --ink-900:#0D1420; --ink-700:#16202E; --ink-600:#223042;
+  --felt:#0F2233; --felt-hi:#16344A; --felt-deep:#0A1826;
+  --brass:#D98E5F; --brass-hi:#E8A878; --brass-lo:#8F5A38;
+  --win-dark:#F0A93B;
+  --vermillion:#E06A3B; --vermillion-hi:#EF8B5C; --vermillion-600:#C2552A;
+  --indigo:#5C8DE0; --indigo-hi:#7FA6F2; --indigo-700:#3A5FA8;
+  --dim:#8E9BAD;
+  --spot:radial-gradient(130% 75% at 50% -8%, rgba(217,142,95,.16), transparent 55%);
+}
+/* T3 红黑赌场：暖黑 + 银铬 + 绯红 */
+.t3{
+  --ink-900:#151113; --ink-700:#211A1D; --ink-600:#2F2428;
+  --felt:#261416; --felt-hi:#3A1B1E; --felt-deep:#1A0E10;
+  --brass:#C4C9D0; --brass-hi:#E4E8ED; --brass-lo:#8C939C;
+  --win-dark:#F0546A;
+  --vermillion:#D93049; --vermillion-hi:#E8506A; --vermillion-600:#B81F38;
+  --indigo:#5578C2; --indigo-hi:#7E9BE0; --indigo-700:#3D5791;
+  --dim:#A2938F;
+  --spot:radial-gradient(130% 75% at 50% -8%, rgba(196,201,208,.14), transparent 55%);
+}
+/* T4 青瓷茶室：墨青 + 青瓷 + 赭红 */
+.t4{
+  --ink-900:#0B1512; --ink-700:#13211C; --ink-600:#1E302A;
+  --felt:#0E2724; --felt-hi:#14352E; --felt-deep:#091A17;
+  --brass:#9CC4A1; --brass-hi:#BCDCC0; --brass-lo:#6E9474;
+  --win-dark:#DDB455;
+  --vermillion:#C75B39; --vermillion-hi:#DE7A57; --vermillion-600:#A94427;
+  --indigo:#6B87B0; --indigo-hi:#8FA8D6; --indigo-700:#4A6488;
+  --dim:#8FA396;
+  --jade-hi:#55B98A;
+  --spot:radial-gradient(130% 75% at 50% -8%, rgba(156,196,161,.15), transparent 55%);
+}
+
+/* ── 页面自身装饰（配色卡片 / 主题分节） ── */
+.pal-board{display:flex;flex-wrap:wrap;gap:18px;padding:0 40px 8px}
+.pal-card{background:#141414;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 18px;width:340px}
+.pal-card .pn{font-family:'Noto Serif SC',serif;font-size:16px;font-weight:700;letter-spacing:.05em;color:#EDE6D8}
+.pal-card .pd{font-size:11.5px;color:#8a857c;margin-top:3px;line-height:1.6}
+.pal-sw{display:flex;gap:8px;margin-top:12px}
+.pal-sw .sw{flex:1;height:44px;border-radius:9px;position:relative;border:1px solid rgba(255,255,255,.12)}
+.pal-sw .sw span{position:absolute;left:0;right:0;bottom:-16px;text-align:center;font-size:8.5px;color:#6b675f;font-family:'Oswald'}
+.pal-card .pnote{margin-top:26px;font-size:11px;color:#6b675f}
+.tsec{border-top:3px solid var(--brass);margin-top:44px;padding-top:6px}
+.tsec-h{display:flex;align-items:baseline;gap:14px;padding:14px 40px 4px}
+.tsec-h .tn{font-family:'Noto Serif SC',serif;font-size:26px;font-weight:700;letter-spacing:.08em;color:var(--brass)}
+.tsec-h .td{font-size:13px;color:var(--dim)}
+.tsec-h .tpill{margin-left:auto;font-family:'Oswald';font-size:13px;color:var(--dim);border:1px solid rgba(155,155,155,.35);border-radius:999px;padding:4px 14px}
+#stage .frames{padding-top:14px}
+.th-note{font-size:12px;color:#6b675f;padding:6px 40px 0;line-height:1.7;max-width:1400px}
+</style>
+</head>
+<body>
+
+<div class="canvas-head">打牌记账 · 同一版式 · 4 套配色方案</div>
+<div class="canvas-sub">布局/内容与 miniapp-breakout.html 完全一致（运行时复用，零复制）· 合规红与红中印全局锁定 · 赢色与 chrome 色已解耦 · 每套 = 12 屏</div>
+
+<div class="pal-board">
+  <div class="pal-card">
+    <div class="pn">① 墨金牌桌 <span style="color:#8a857c;font-weight:400">Charcoal & Brass</span></div>
+    <div class="pd">炭墨 + 桌布墨绿 + 黄铜暖金 · 原版基准，夜局牌桌的正统感</div>
+    <div class="pal-sw">
+      <div class="sw" style="background:#14120F"><span>14120F</span></div>
+      <div class="sw" style="background:#1E1B17"><span>1E1B17</span></div>
+      <div class="sw" style="background:#12261E"><span>12261E</span></div>
+      <div class="sw" style="background:#C9A24B"><span>C9A24B</span></div>
+      <div class="sw" style="background:#D23B22"><span>D23B22</span></div>
+      <div class="sw" style="background:#F2EDE3"><span>F2EDE3</span></div>
+    </div>
+    <div class="pnote">赢=黄铜金 · 输=靛蓝 · 合规红锁定</div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pn">② 深海筹码 <span style="color:#8a857c;font-weight:400">Navy & Copper</span></div>
+    <div class="pd">海军蓝桌布 + 铜铬件 + 琥珀赢色 · 深夜远洋邮轮赌场的沉静</div>
+    <div class="pal-sw">
+      <div class="sw" style="background:#0D1420"><span>0D1420</span></div>
+      <div class="sw" style="background:#16202E"><span>16202E</span></div>
+      <div class="sw" style="background:#0F2233"><span>0F2233</span></div>
+      <div class="sw" style="background:#D98E5F"><span>D98E5F</span></div>
+      <div class="sw" style="background:#F0A93B"><span>F0A93B</span></div>
+      <div class="sw" style="background:#F2EDE3"><span>F2EDE3</span></div>
+    </div>
+    <div class="pnote">赢=琥珀 · 铜 chrome · 输=湖蓝</div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pn">③ 红黑赌场 <span style="color:#8a857c;font-weight:400">Oxblood & Silver</span></div>
+    <div class="pd">暖黑 + 酒红桌面 + 银铬件 + 绯红赢色 · 高注牌局的锋利</div>
+    <div class="pal-sw">
+      <div class="sw" style="background:#151113"><span>151113</span></div>
+      <div class="sw" style="background:#211A1D"><span>211A1D</span></div>
+      <div class="sw" style="background:#261416"><span>261416</span></div>
+      <div class="sw" style="background:#C4C9D0"><span>C4C9D0</span></div>
+      <div class="sw" style="background:#F0546A"><span>F0546A</span></div>
+      <div class="sw" style="background:#F2EDE3"><span>F2EDE3</span></div>
+    </div>
+    <div class="pnote">赢=绯红 · chrome=银 · 输=冷蓝</div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pn">④ 青瓷茶室 <span style="color:#8a857c;font-weight:400">Teal & Celadon</span></div>
+    <div class="pd">墨青 + 青瓷绿件 + 赭红赢色 · 茶馆雅局，收着一股文气</div>
+    <div class="pal-sw">
+      <div class="sw" style="background:#0B1512"><span>0B1512</span></div>
+      <div class="sw" style="background:#13211C"><span>13211C</span></div>
+      <div class="sw" style="background:#0E2724"><span>0E2724</span></div>
+      <div class="sw" style="background:#9CC4A1"><span>9CC4A1</span></div>
+      <div class="sw" style="background:#C75B39"><span>C75B39</span></div>
+      <div class="sw" style="background:#F2EDE3"><span>F2EDE3</span></div>
+    </div>
+    <div class="pnote">赢=赭红 · chrome=青瓷 · 输=黛蓝</div>
+  </div>
+</div>
+
+<div id="stage"><div class="th-note">正在加载 12 屏版式…（需通过 localhost 访问）</div></div>
+
+<script>
+const THEMES = [
+  { cls: '', name: '① 墨金牌桌', desc: '原版基准 · 炭墨桌布 + 黄铜', pill: 'BASELINE' },
+  { cls: 't2', name: '② 深海筹码', desc: '海军蓝 + 铜铬 + 琥珀赢色', pill: 'NAVY / COPPER' },
+  { cls: 't3', name: '③ 红黑赌场', desc: '暖黑 + 银铬 + 绯红赢色', pill: 'OXBLOOD / SILVER' },
+  { cls: 't4', name: '④ 青瓷茶室', desc: '墨青 + 青瓷 + 赭红赢色', pill: 'TEAL / CELADON' }
+];
+
+(async () => {
+  try {
+    const res = await fetch('miniapp-breakout.html');
+    const txt = await res.text();
+    const doc = new DOMParser().parseFromString(txt, 'text/html');
+    document.getElementById('base').textContent =
+      [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
+    const frames = doc.querySelector('.frames');
+    if (!frames) throw new Error('.frames not found');
+    const stage = document.getElementById('stage');
+    stage.innerHTML = '';
+    for (const th of THEMES) {
+      const sec = document.createElement('section');
+      sec.className = 'tsec ' + th.cls;
+      sec.innerHTML = '<div class="tsec-h"><span class="tn">' + th.name +
+        '</span><span class="td">' + th.desc + '</span><span class="tpill">' + th.pill + '</span></div>';
+      sec.appendChild(frames.cloneNode(true));
+      stage.appendChild(sec);
+    }
+    window.__themesReady = true;
+  } catch (e) {
+    document.getElementById('stage').innerHTML =
+      '<div class="th-note" style="color:#E8734F">加载失败：请通过 localhost 访问本页（' + e.message + '）</div>';
+  }
+})();
+</script>
+</body>
+</html>
