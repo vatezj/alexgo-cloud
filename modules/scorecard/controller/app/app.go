@@ -4,10 +4,12 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/scorecard/service"
+	"alexGo-cloud/modules/system/oauth2/social"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/resp"
 	"alexGo-cloud/pkg/tenant"
@@ -20,11 +22,22 @@ type AppController struct {
 	records   service.RecordService
 	friends   service.FriendService
 	validator token.Validator
+	// Task 2 小程序码：渠道配置取数 + 微信取码（social 窄接口，scorecard module 注入）。
+	apps social.AppGetter
+	wx   social.Wxacoder
+	// wxMu/wxCache 小程序码进程内按房号缓存（5min，见 wxacode.go）。
+	wxMu    sync.Mutex
+	wxCache map[string]wxacodeCacheEntry
 }
 
 func NewAppController(rooms service.RoomService, records service.RecordService,
-	friends service.FriendService, validator token.Validator) *AppController {
-	return &AppController{rooms: rooms, records: records, friends: friends, validator: validator}
+	friends service.FriendService, validator token.Validator,
+	apps social.AppGetter, wx social.Wxacoder) *AppController {
+	return &AppController{
+		rooms: rooms, records: records, friends: friends, validator: validator,
+		apps: apps, wx: wx,
+		wxCache: make(map[string]wxacodeCacheEntry),
+	}
 }
 
 // claims 解析 Bearer 并校验 member 身份；成功后把 token 内租户写回请求 ctx

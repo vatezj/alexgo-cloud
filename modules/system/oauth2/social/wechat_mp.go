@@ -8,13 +8,19 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
-// WechatMP 微信小程序 code2session。
+// WechatMP 微信小程序 code2session（+ Task 2：stable_token / getwxacodeunlimit，见 wxacode.go）。
 type WechatMP struct {
 	baseURL string
 	client  *http.Client
+
+	// tokMu/tokCache stable_token 进程内缓存（appid → token，expires_in-300s），
+	// 单实例足够，不引入 redis（Task 2）。
+	tokMu    sync.Mutex
+	tokCache map[string]mpToken
 }
 
 func NewWechatMP() *WechatMP {

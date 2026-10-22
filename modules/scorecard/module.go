@@ -13,6 +13,7 @@ import (
 	"alexGo-cloud/modules/scorecard/controller/app"
 	"alexGo-cloud/modules/scorecard/repository"
 	"alexGo-cloud/modules/scorecard/service"
+	"alexGo-cloud/modules/system/oauth2/social"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
@@ -52,6 +53,12 @@ var FxModule = fx.Module("scorecard",
 		// Task 12 合一版 app 控制器（Bearer 自鉴权）。token.Validator 的接口映射归
 		// 入口（alexgo-server/cmd/main.go ifaceOptions），模块内不重复 Provide。
 		app.NewAppController,
+		// Task 2 小程序码（social 窄接口注入）：取配置 AppGetter 由 oauth2 模块图内
+		// 的 social.SocialRepository 映射（GetApp 同签名）；Wxacoder 用 NewWechatMP
+		// 新建客户端实例——与登录适配器注册表内实例各自持有 token 缓存
+		// （登录路径不走 StableToken，无共享需求）。
+		func(repo social.SocialRepository) social.AppGetter { return repo },
+		func() social.Wxacoder { return social.NewWechatMP() },
 		// Task 13 合一版 admin 监管控制器（只读 + 强制关房）：无 claims
 		// （casbin 中间件按 permissionRoutes 放行），依赖三个业务服务接口。
 		admin.NewAdminController,
@@ -127,7 +134,7 @@ func NewModule(p ModuleParams) server.Module {
 }
 
 // RegisterRoutes 挂载 scorecard 路由。入参是 /api group（见 server/http.go），
-// admin 监管段（5 路由，Task 13）与 app 端 18 业务接口（Task 12）齐备。
+// admin 监管段（5 路由，Task 13）与 app 端 19 业务接口（Task 12 + Task 2 小程序码）齐备。
 func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 	if m.cfg != nil {
 		if on, ok := m.cfg.Modules["scorecard"]; ok && !on {
@@ -146,6 +153,8 @@ func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 	app.POST("/rooms", m.appCtrl.CreateRoom)
 	app.POST("/rooms/join", m.appCtrl.JoinRoom)
 	app.GET("/rooms/:id/snapshot", m.appCtrl.Snapshot)
+	// Task 2 小程序码：200 image/png 字节直出（非 JSON 信封，见 wxacode.go）。
+	app.GET("/rooms/:id/wxacode", m.appCtrl.Wxacode)
 	app.PUT("/rooms/:id/config", m.appCtrl.UpdateConfig)
 	app.POST("/rooms/:id/expense", m.appCtrl.Expense)
 	app.GET("/rooms/:id/logs", m.appCtrl.Logs)

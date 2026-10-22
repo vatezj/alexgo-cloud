@@ -87,6 +87,9 @@ const (
 
 	// 5xxxx 系统
 	CodeInternal Code = 50000
+	// CodeWxacodeNotConfigured scorecard 小程序码：租户未配置（或已停用）微信小程序渠道，
+	// 无法生成小程序码（服务端配置缺失 → HTTP 500 + 明确 msg，前端降级房号展示）。
+	CodeWxacodeNotConfigured Code = 50001
 )
 
 // registry 是错误码文案表（中文、写死代码，不做 i18n）。新码追加到这里 + 顶部常量。
@@ -139,6 +142,8 @@ var registry = map[Code]string{
 	CodeSocialUnbindLast:       "解绑后将失去唯一登录方式",
 
 	CodeInternal: "系统繁忙，请稍后重试",
+
+	CodeWxacodeNotConfigured: "微信小程序渠道未配置，无法生成小程序码",
 }
 
 // BizError 携带业务错误码的错误。cause 可为 nil；cause 只进日志，禁止外泄给客户端。
