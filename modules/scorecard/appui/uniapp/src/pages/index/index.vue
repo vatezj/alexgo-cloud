@@ -17,6 +17,7 @@ import { myRecords, stat } from '@/api/scorecard/record'
 import { createRoom, joinRoom } from '@/api/scorecard/room'
 import PlayCard from '@/components/scorecard/PlayCard.vue'
 import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 definePage({
   style: {

@@ -192,8 +192,8 @@ function goBack() {
       <view class="man-b">
         <view class="li">
           <text>
-            房间点茶/饭弹层配置：目标金额 + 抽取百分比；<text class="orange">
-              目标金额 &gt; 0 则开关开启
+            房间点茶/饭弹层配置：目标 + 抽取百分比；<text class="orange">
+              目标 &gt; 0 则开关开启
             </text>
           </text>
         </view>

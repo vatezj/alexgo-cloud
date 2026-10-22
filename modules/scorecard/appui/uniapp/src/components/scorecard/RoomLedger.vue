@@ -5,7 +5,7 @@
  * - type=1 记分行：from −score → to +score（附茶 +tea 走 jade）；其余为虚线系统行
  * - type 文案映射：1 记分 / 2 茶饭达标 / 3 进房 / 5 结算 / 6 上限提醒 / 8 超时关房 / 9 转让房主
  * - showMore=true（默认）底部「查看更多」→ emit more（页面弹分页弹层）；弹层内传 false
- * - 色值零硬编码：金额走 ScoreText（--lose-dark/--win-dark/--jade-hi），边框描边走 token
+ * - 色值零硬编码：分值走 ScoreText（--lose-dark/--win-dark/--jade-hi），边框描边走 token
  */
 import type { RoomLogItem } from '@/api/scorecard/types'
 import ScoreText from './ScoreText.vue'

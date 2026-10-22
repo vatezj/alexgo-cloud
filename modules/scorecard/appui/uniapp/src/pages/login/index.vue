@@ -11,6 +11,7 @@ import { ApiError } from '@/api/core/handlers'
 import { loginByMobile, wxLogin } from '@/api/scorecard/auth'
 import { joinRoom } from '@/api/scorecard/room'
 import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 definePage({
   style: {
@@ -51,6 +52,7 @@ async function afterLogin(res: LoginResult) {
   if (roomCode) {
     try {
       const snapshot = await joinRoom({ room_code: roomCode })
+      authStore.lastRoomId = snapshot.id
       router.push({ path: '/pages/room/index', query: { roomId: String(snapshot.id) } })
       return
     }

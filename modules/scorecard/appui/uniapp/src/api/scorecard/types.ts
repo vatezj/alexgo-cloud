@@ -56,7 +56,7 @@ export interface RoomMember {
 export interface RoomLogItem {
   id: number
   from_user_id: number
-  /** 无收款人时为 0（状态变更类流水）。 */
+  /** 无接收方时为 0（状态变更类流水）。 */
   to_user_id: number
   score: number
   tea: number

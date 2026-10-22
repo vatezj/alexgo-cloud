@@ -56,11 +56,11 @@ const routeToUserId = computed(() => {
 })
 
 /**
- * 本次房间 id（query 优先链保持原样）。
+ * 本次房间 id：query 优先，兜底 store / lastRoomId（回访直达，与 room/settle 三段兜底链一致）。
  * 必须惰性求值（computed）：@wot-ui/router 的 currentRoute 在 setup 之后（onLoad/onShow）
  * 才同步本页 query，setup 时同步读到的是上一路由的值（R1 Important）。
  */
-const roomId = computed(() => routeRoomId.value)
+const roomId = computed(() => routeRoomId.value || roomStore.roomId || authStore.lastRoomId)
 
 const polling = useRoomPolling(roomId)
 
@@ -191,10 +191,10 @@ onShow(() => {
   }
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
-  // 快照兜底（H5 直达/刷新时 store 可能无本房快照）
+  // 快照兜底（H5 直达/刷新时 store 可能无本房快照）；applySnapshot 走 version 单调门
   if (roomStore.snapshot?.id !== roomId.value) {
     fetchSnapshot(roomId.value)
-      .then(snap => roomStore.setSnapshot(snap))
+      .then(snap => roomStore.applySnapshot(snap))
       .catch(toastApiError)
   }
 })

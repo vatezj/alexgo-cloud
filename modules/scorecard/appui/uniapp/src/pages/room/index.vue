@@ -6,9 +6,9 @@
  * - 俯视牌桌：RoomRoster 横滚座位 + 中央最近一手（最新 type=1）+ 茶饭池铭牌
  *   （tea_pool_total + tea_percent 摘要；点击 → TeaConfigSheet 茶饭设置弹层）
  * - 邀请（设计 03）：房号标题/右上 ••• → QrInvitePanel 扇牌小程序码弹层；
- *   转发 onShareAppMessage（path 带 roomId，open-type="share" 与胶囊菜单共用）
+ *   转发 onShareAppMessage 与小程序码同走 scene 进房协议（roomId 直达不再作为邀请 path）
  * - 流水：recent_logs 账板 + 「查看更多」→ wd-popup 内 logs 分页上拉
- * - 筹码轨：客服占位 | 支出 → expense（预选空）| 我的 → AvatarPopup（设计 10 头像弹窗）；
+ * - 筹码轨：客服占位 | 支出 → expense（预选空）| 结束牌局 → settle（房主 status===0）| 我的 → AvatarPopup（设计 10 头像弹窗）；
  *   点成员头像 → expense 页预填 toUserId query
  * - 轮询：onShow refresh（错误本页 toast）+ start；onHide/onUnload stop；下拉刷新 refresh
  * - 业务错误本页 toast（ApiError 非 401/403，handlers 已全局提示的不重复）；
@@ -26,6 +26,7 @@ import RoomRoster from '@/components/scorecard/RoomRoster.vue'
 import ScoreText from '@/components/scorecard/ScoreText.vue'
 import TeaConfigSheet from '@/components/scorecard/TeaConfigSheet.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 
 definePage({
@@ -62,8 +63,17 @@ const currentRoomId = computed(() => routeRoomId.value || roomStore.roomId || au
 
 const polling = useRoomPolling(currentRoomId)
 
-const snapshot = computed(() => roomStore.snapshot)
+/** 本房快照（store 可能持有其它房快照，按 id 过滤）。 */
+const snapshot = computed(() =>
+  roomStore.snapshot && roomStore.snapshot.id === currentRoomId.value ? roomStore.snapshot : null,
+)
 const myUserId = computed(() => authStore.user?.user_id ?? 0)
+
+/** 房主且本局仍进行中：与 settle 页同门（快照未载入 fail-closed 不渲染）。 */
+const canSettle = computed(() => {
+  const snap = snapshot.value
+  return !!snap && snap.status === 0 && myUserId.value > 0 && snap.creator_id === myUserId.value
+})
 
 const members = computed(() => snapshot.value?.members ?? [])
 const creatorId = computed(() => snapshot.value?.creator_id ?? 0)
@@ -121,6 +131,11 @@ function goExpense(toUserId?: number) {
   router.push({ path: '/pages/expense/index', query })
 }
 
+/** 结束牌局入口（筹码轨）：房主 status===0 → settle 页（页内二次确认后 settle）。 */
+function goSettle() {
+  router.push({ path: '/pages/settle/index', query: { roomId: String(currentRoomId.value) } })
+}
+
 /** 头像弹窗显隐（「我的」筹码轨与点自己头像共用入口）。 */
 const showAvatarPopup = ref(false)
 
@@ -144,11 +159,17 @@ function onInviteClick() {
   showQrInvite.value = true
 }
 
-/** 转发卡片：邀请弹层 open-type="share" 与右上角胶囊菜单共用；path 带 roomId 供直达进房。 */
-onShareAppMessage(() => ({
-  title: `${roomCodeText.value} · 邀你打牌记账`,
-  path: `/pages/room/index?roomId=${currentRoomId.value}`,
-}))
+/** 转发卡片：邀请弹层 open-type="share" 与右上角胶囊菜单共用；scene 协议进房（幂等 join）。 */
+onShareAppMessage(() => {
+  const code = snapshot.value?.room_code
+  return {
+    title: `${roomCodeText.value} · 邀你打牌记账`,
+    // 收敛到 scene 协议：index onShow consumePendingScene → joinRoom 幂等（已在房返回现状）
+    path: code
+      ? `/pages/index/index?scene=${encodeURIComponent(`qr=${code}`)}`
+      : '/pages/index/index',
+  }
+})
 
 /* ── 占位交互 ── */
 
@@ -214,13 +235,14 @@ function onPopupScrollEnd() {
 
 /* ── 生命周期 ── */
 
-/** 状态门：status!=0（已结算/已关闭）→ 结算页（Task 9 落地前为占位页）。 */
+/** 状态门：status!=0（已结算/已关闭）→ 结算页；immediate：回访 persist 快照已是终局时也要触发。 */
 watch(
   () => snapshot.value?.status,
   (status) => {
     if (status != null && status !== 0)
       router.replaceAll({ path: '/pages/settle/index', query: { roomId: String(currentRoomId.value) } })
   },
+  { immediate: true },
 )
 
 onShow(() => {
@@ -397,6 +419,16 @@ onPullDownRefresh(() => {
         <text class="cap2">
           记分入口 · 头像快捷
         </text>
+      </view>
+      <view
+        v-if="canSettle"
+        class="side"
+        @click="goSettle"
+      >
+        <text class="ico">
+          ⚑
+        </text>
+        <text>结束牌局</text>
       </view>
       <view
         class="side"
