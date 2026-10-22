@@ -1,0 +1,481 @@
+/**
+ * 打牌记账 · 主题 token + 工具类
+ *
+ * 视觉唯一来源（色值逐值抄录，不自创）：
+ *  - T1 墨金 BASELINE：`desgin/preview/miniapp-breakout.html` `:root`
+ *  - T2/T3/T4 覆盖组：`desgin/preview/themes.html` `.t2/.t3/.t4`
+ *  - 赢色/桌布解耦补丁（--win-dark / --felt-hi / .win-n）：`themes.html` `#ui`
+ *
+ * 产品红线：`--vermillion` 合规红 + 红中印相关值四套主题同值，锁定在类外公共段
+ *（:root / page），不进 .theme-t2/3/4 主题覆盖 —— 任意主题下合规视觉一致。
+ *
+ * brief 名对齐：源稿无 `--ink-800` / `--lose-dark`，按名取同值
+ *（--ink-800 随 --ink-700；--lose-dark 随 --indigo-hi，themes.html 将输色与 chrome 解耦）。
+ */
+
+/* ════════════════════════════════════════════════════════════
+ * 公共段（类外锁定）：合规红 / 红中印 —— 四套主题同值
+ * ════════════════════════════════════════════════════════════ */
+@mixin scorecard-compliance {
+  --vermillion: #D23B22;
+  --vermillion-hi: #E8734F;
+  --vermillion-600: #B32D18;
+  // 合规横幅 / 红中印底衬（源稿 rgba(210,59,34,·) = 锁定红的透明态）
+  --comply-bg: rgba(210, 59, 34, 0.13);
+  --comply-border: rgba(210, 59, 34, 0.45);
+  --comply-dash: rgba(210, 59, 34, 0.35);
+  --comply-strong: #F0906F;
+  --seal-bg: rgba(210, 59, 34, 0.06);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * T1 墨金 BASELINE（breakout :root + themes.html 基础补丁）
+ * ════════════════════════════════════════════════════════════ */
+@mixin scorecard-theme-t1 {
+  // 墨面
+  --ink-900: #14120F;
+  --ink-700: #1E1B17;
+  --ink-600: #2A2722;
+  --ink-800: var(--ink-700);
+  // 桌布
+  --felt: #12261E;
+  --felt-hi: #17362B;
+  --felt-deep: #0D1D17;
+  // 牌面 / chrome
+  --tile: #F2EDE3;
+  --tile-shade: #E5DCC9;
+  --tile-emboss: #B9B0A0; // 源稿 .btn.bone #b9b0a0，抽为变量
+  --jet: #2A2722;
+  --brass: #C9A24B;
+  --brass-hi: #E0BC6A;
+  --brass-lo: #8F6F2E;
+  --brass-a50: rgba(201, 162, 75, 0.5); // 源稿 .sheet 顶边 rgba(201,162,75,.5)
+  --jade: #3E7D5A;
+  --jade-hi: #5FA87F;
+  // 赢 / 输（themes.html：赢色与 chrome 解耦）
+  --win-dark: #C9A24B;
+  --indigo: #3D5A96;
+  --indigo-hi: #6B8BD0;
+  --indigo-700: #2E456F;
+  --lose-dark: var(--indigo-hi);
+  // 文字
+  --on-ink: #EDE6D8;
+  --dim: #9B917F;
+  --on-ink-a04: rgba(237, 230, 216, 0.04); // 源稿 .btn.ghost 底
+  --on-ink-a25: rgba(237, 230, 216, 0.25); // 源稿 .sheet .handle
+  --on-ink-a28: rgba(237, 230, 216, 0.28); // 源稿 .btn.ghost 描边
+  // 筹码暗色档 / 牌面斜纹：源稿字面值，四套主题恒定
+  --chip-dark-a: #3A362F;
+  --chip-dark-b: #57524A;
+  --chip-dark-face: #2F2C27;
+  --strip-a10: rgba(20, 18, 15, 0.1);
+  --strip-a08: rgba(20, 18, 15, 0.08);
+  // 几何 / 阴影
+  --r-tile: 12px;
+  --pad-safe: 50px;
+  --shadow-tile: 0 2px 0 rgba(0, 0, 0, 0.55), 0 12px 26px rgba(0, 0, 0, 0.45);
+  --shadow-press: 0 10px 18px rgba(0, 0, 0, 0.4);
+  --shadow-chip: 0 3px 0 rgba(0, 0, 0, 0.45), 0 8px 14px rgba(0, 0, 0, 0.35);
+  --shadow-chip-inset: inset 0 2px 3px rgba(255, 255, 255, 0.25);
+  --shadow-sheet: 0 -18px 40px rgba(0, 0, 0, 0.55);
+  --spot: radial-gradient(130% 75% at 50% -8%, rgba(201, 162, 75, 0.16), transparent 55%);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * T2 深海筹码（themes.html .t2，合规红除外）
+ * ════════════════════════════════════════════════════════════ */
+@mixin scorecard-theme-t2 {
+  --ink-900: #0D1420;
+  --ink-700: #16202E;
+  --ink-600: #223042;
+  --ink-800: var(--ink-700);
+  --felt: #0F2233;
+  --felt-hi: #16344A;
+  --felt-deep: #0A1826;
+  --brass: #D98E5F;
+  --brass-hi: #E8A878;
+  --brass-lo: #8F5A38;
+  --brass-a50: rgba(217, 142, 95, 0.5);
+  --win-dark: #F0A93B;
+  --indigo: #5C8DE0;
+  --indigo-hi: #7FA6F2;
+  --indigo-700: #3A5FA8;
+  --lose-dark: var(--indigo-hi);
+  --dim: #8E9BAD;
+  --spot: radial-gradient(130% 75% at 50% -8%, rgba(217, 142, 95, 0.16), transparent 55%);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * T3 红黑赌场（themes.html .t3，合规红除外）
+ * ════════════════════════════════════════════════════════════ */
+@mixin scorecard-theme-t3 {
+  --ink-900: #151113;
+  --ink-700: #211A1D;
+  --ink-600: #2F2428;
+  --ink-800: var(--ink-700);
+  --felt: #261416;
+  --felt-hi: #3A1B1E;
+  --felt-deep: #1A0E10;
+  --brass: #C4C9D0;
+  --brass-hi: #E4E8ED;
+  --brass-lo: #8C939C;
+  --brass-a50: rgba(196, 201, 208, 0.5);
+  --win-dark: #F0546A;
+  --indigo: #5578C2;
+  --indigo-hi: #7E9BE0;
+  --indigo-700: #3D5791;
+  --lose-dark: var(--indigo-hi);
+  --dim: #A2938F;
+  --spot: radial-gradient(130% 75% at 50% -8%, rgba(196, 201, 208, 0.14), transparent 55%);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * T4 青瓷茶室（themes.html .t4，合规红除外）
+ * ════════════════════════════════════════════════════════════ */
+@mixin scorecard-theme-t4 {
+  --ink-900: #0B1512;
+  --ink-700: #13211C;
+  --ink-600: #1E302A;
+  --ink-800: var(--ink-700);
+  --felt: #0E2724;
+  --felt-hi: #14352E;
+  --felt-deep: #091A17;
+  --brass: #9CC4A1;
+  --brass-hi: #BCDCC0;
+  --brass-lo: #6E9474;
+  --brass-a50: rgba(156, 196, 161, 0.5);
+  --win-dark: #DDB455;
+  --indigo: #6B87B0;
+  --indigo-hi: #8FA8D6;
+  --indigo-700: #4A6488;
+  --lose-dark: var(--indigo-hi);
+  --dim: #8FA396;
+  --jade-hi: #55B98A;
+  --spot: radial-gradient(130% 75% at 50% -8%, rgba(156, 196, 161, 0.15), transparent 55%);
+}
+
+/* ── 根节点落地：H5 挂 documentElement（:root），小程序挂 page 根 ── */
+/* #ifdef H5 */
+:root {
+  @include scorecard-compliance;
+  @include scorecard-theme-t1;
+}
+/* #endif */
+/* #ifndef H5 */
+page {
+  @include scorecard-compliance;
+  @include scorecard-theme-t1;
+}
+/* #endif */
+
+/* ── 主题类：挂根节点后全局可读，互斥换 class ── */
+.theme-t1 {
+  @include scorecard-theme-t1;
+}
+
+.theme-t2 {
+  @include scorecard-theme-t2;
+}
+
+.theme-t3 {
+  @include scorecard-theme-t3;
+}
+
+.theme-t4 {
+  @include scorecard-theme-t4;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 工具类（照翻译 breakout；色值一律走变量）
+ * ════════════════════════════════════════════════════════════ */
+
+/* 数字：Oswald tabular */
+.num {
+  font-family: 'Oswald', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* 赢 / 输 / 茶池 金额色 */
+.win-n {
+  color: var(--win-dark);
+}
+
+.lose-n {
+  color: var(--lose-dark);
+}
+
+.jade-n {
+  color: var(--jade-hi);
+}
+
+/* 主按钮 */
+.btn {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 56px;
+  border: none;
+  border-radius: 999px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* uni-app button 组件默认 ::after 边框 */
+.btn::after {
+  border: none;
+}
+
+.btn.brass {
+  background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+  color: var(--ink-900);
+  box-shadow: 0 4px 0 var(--brass-lo), var(--shadow-press);
+}
+
+.btn.bone {
+  background: var(--tile);
+  color: var(--jet);
+  box-shadow: 0 4px 0 var(--tile-emboss), var(--shadow-press);
+}
+
+.btn.ghost {
+  background: var(--on-ink-a04);
+  border: 1.5px solid var(--on-ink-a28);
+  border-radius: 14px;
+  height: 48px;
+  font-size: 14px;
+  color: var(--on-ink);
+}
+
+/* 扑克牌底衬 */
+.pcard {
+  position: relative;
+  overflow: hidden;
+  background: var(--tile);
+  border-radius: 14px;
+  box-shadow: var(--shadow-tile);
+  color: var(--jet);
+}
+
+.pcard .idx {
+  position: absolute;
+  color: var(--jet);
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.pcard .idx.tl {
+  top: 9px;
+  left: 9px;
+}
+
+.pcard .idx.br {
+  right: 9px;
+  bottom: 9px;
+  transform: rotate(180deg);
+}
+
+.pcard .idx .s {
+  display: block;
+  font-size: 12px;
+}
+
+.pcard .idx.red {
+  color: var(--vermillion);
+}
+
+.pcard .strip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 12px;
+  background:
+    repeating-linear-gradient(45deg, var(--strip-a10) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(-45deg, var(--strip-a08) 0 1px, transparent 1px 7px),
+    var(--tile-shade);
+  border-bottom: 2px solid var(--suit, var(--jet));
+}
+
+/* 红中印（合规锁定：颜色只走锁定红变量） */
+.seal {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--vermillion);
+  border-radius: 5px;
+  background: var(--seal-bg);
+  color: var(--vermillion);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.85;
+  transform: rotate(-10deg);
+}
+
+/* 筹码 */
+.chip {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 8deg, var(--c-a) 0 18deg, var(--c-b) 18deg 36deg);
+  box-shadow: var(--shadow-chip);
+  cursor: pointer;
+}
+
+.chip::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  border-radius: 50%;
+  background: var(--c-face);
+  box-shadow: var(--shadow-chip-inset);
+}
+
+.chip span {
+  position: relative;
+  z-index: 1;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Noto Sans SC', sans-serif;
+  line-height: 1;
+}
+
+.chip.brass {
+  --c-a: var(--brass-lo);
+  --c-b: var(--brass);
+  --c-face: radial-gradient(circle at 50% 38%, var(--brass-hi), var(--brass) 75%);
+  color: var(--ink-900);
+}
+
+.chip.dark {
+  --c-a: var(--chip-dark-a);
+  --c-b: var(--chip-dark-b);
+  --c-face: radial-gradient(circle at 50% 38%, var(--chip-dark-face), var(--ink-600) 75%);
+  color: var(--on-ink);
+}
+
+.chip.sm {
+  width: 46px;
+  height: 46px;
+}
+
+.chip.sm span {
+  font-size: 20px;
+}
+
+.chip.sm::before {
+  top: 5px;
+  right: 5px;
+  bottom: 5px;
+  left: 5px;
+}
+
+.chip.xs {
+  width: 38px;
+  height: 38px;
+}
+
+.chip.xs span {
+  font-size: 17px;
+}
+
+.chip.xs::before {
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+}
+
+/* 合规横幅（锁定红） */
+.comply {
+  position: relative;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: 4px 16px 0;
+  padding: 9px 13px;
+  background: var(--comply-bg);
+  border: 1px solid var(--comply-border);
+  border-radius: 10px;
+  // mp 兜底：小程序端无 p 元素（.comply p 不命中），正文色/字号由容器继承；H5 下 p 同值覆盖
+  color: var(--vermillion-hi);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.comply::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 13px;
+  bottom: 3px;
+  left: 13px;
+  border: 1px dashed var(--comply-dash);
+  border-radius: 7px;
+  pointer-events: none;
+}
+
+.comply .spk {
+  flex: none;
+  color: var(--vermillion-hi);
+  font-size: 14px;
+}
+
+.comply p {
+  color: var(--vermillion-hi);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.comply p b {
+  color: var(--comply-strong);
+}
+
+.comply .x {
+  margin-left: auto;
+  flex: none;
+  color: var(--dim);
+  font-size: 15px;
+}
+
+/* 底部弹层 */
+.sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9;
+  padding: 10px 20px var(--pad-safe);
+  background: var(--ink-700);
+  border-top: 1.5px solid var(--brass-a50);
+  border-radius: 28px 28px 0 0;
+  box-shadow: var(--shadow-sheet);
+}
+
+.sheet .handle {
+  width: 44px;
+  height: 5px;
+  margin: 0 auto 14px;
+  border-radius: 3px;
+  background: var(--on-ink-a25);
+}
