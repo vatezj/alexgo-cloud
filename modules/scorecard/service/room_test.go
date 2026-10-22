@@ -113,6 +113,82 @@ func TestSnapshot_BriefsCarryTenantCtx(t *testing.T) {
 	}
 }
 
+// 票1：Create 多步写（room → member → log）任一步失败须整体回滚，
+// 不得残留房行烧掉自定义房号。
+func TestCreate_PartialFailureRollsBack(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	// 砍掉成员表制造第二步（member.Create）失败。
+	if err := db.Exec(`DROP TABLE room_user`).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AB12"})
+	if err == nil {
+		t.Fatal("成员表缺失时 Create 应失败")
+	}
+	var n int64
+	if err := db.Model(&model.Room{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("失败后不应残留房行（自定义房号被烧）: n=%d", n)
+	}
+}
+
+// 票1：Join 多步写（member → log → expire 续期）任一步失败须整体回滚，
+// 不得残留无流水的成员行。
+func TestJoin_PartialFailureRollsBack(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	snap, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 砍掉流水表制造第二步（log.Create）失败。
+	if err := db.Exec(`DROP TABLE room_log`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, 200, snap.RoomCode); err == nil {
+		t.Fatal("流水表缺失时 Join 应失败")
+	}
+	var n int64
+	if err := db.WithContext(ctx).Model(&model.RoomUser{}).
+		Where("room_id = ? AND user_id = ?", snap.ID, uint64(200)).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("失败后不应残留成员行: n=%d", n)
+	}
+}
+
+// 票1：UpdateConfig 状态门——已结算 30104 / 已关闭 30103 拒绝改配置。
+func TestUpdateConfig_StatusGate(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	settled, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "GS01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settle(ctx, 100, settled.ID); err != nil {
+		t.Fatal(err)
+	}
+	auto := true
+	if _, err := svc.UpdateConfig(ctx, 100, settled.ID, ConfigReq{TeaAutoEnabled: &auto}); !errs.Is(err, errs.CodeScorecardRoomSettled) {
+		t.Fatalf("已结算应 30104, got %v", err)
+	}
+	closed, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "GS02"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithContext(ctx).Model(&model.Room{}).Where("id = ?", closed.ID).
+		UpdateColumn("status", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateConfig(ctx, 100, closed.ID, ConfigReq{TeaAutoEnabled: &auto}); !errs.Is(err, errs.CodeScorecardRoomClosed) {
+		t.Fatalf("已关闭应 30103, got %v", err)
+	}
+}
+
 // TestSweepExpired_ClosesAndLogs 超时关房：把 expire_time 拨到过去后 SweepExpired
 // 关闭该房（status=2）并写 type=8 状态变更流水（系统级扫描，各房带自己的 TenantID）。
 func TestSweepExpired_ClosesAndLogs(t *testing.T) {

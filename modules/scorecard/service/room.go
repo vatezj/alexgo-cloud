@@ -97,55 +97,59 @@ func NewRoomService(db *gorm.DB, room repository.RoomRepository, member reposito
 
 // Create 开房：房号（自定义冲突直接 30106 / 生成冲突重试 5 次）→ room 行（status=0、
 // expire=now+2h、version=1）→ 房主成员行（is_creator=1, session_no=1）→ 进房流水（type=3）
-// → 快照。中间步失败不做跨行回滚：唯一可失败点是库级错误，房号唯一键是首道写入
-// （repository 的 Create 无 tx 参数，是 Task 5 既定接口；Expense/Settle 类多步事务在 Task 7+）。
+// → 快照。room/member/log 三步写在单事务内（tx 绑定 repo，Expense 同款）：任一步失败
+// 整体回滚，自定义房号不会被半成品房行烧掉。生成路径的房号唯一键冲突随事务整体回滚，
+// 重试 = 换新码开新事务（PG「错误中止事务」下不能在原事务内重试 INSERT）。
 func (s *roomService) Create(ctx context.Context, userID uint64, req CreateRoomReq) (*RoomSnapshot, error) {
 	if userID == 0 || req.TeaPercent < 0 || req.TeaPercent > 100 ||
 		req.TeaTargetAmount < 0 || req.MaxLoseScore < 0 {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
+	custom := req.RoomCode != ""
+	attempts := roomCodeMaxAttempts
+	if custom {
+		attempts = 1 // 自定义房号：冲突不重试，直接 30106
+	}
 	var room *model.Room
-	if req.RoomCode != "" {
-		// 自定义房号：冲突不重试，直接 30106。
+	for attempt := 0; attempt < attempts; attempt++ {
 		cand := newRoomRow(userID, req)
-		if err := s.room.Create(ctx, cand); err != nil {
-			if isUniqueViolation(err) {
-				return nil, errs.New(errs.CodeScorecardRoomTaken, nil)
-			}
-			return nil, err
-		}
-		room = cand
-	} else {
-		// 服务端生成 4 位房号：唯一键冲突换码重试，耗尽 → 30106。
-		for attempt := 0; attempt < roomCodeMaxAttempts; attempt++ {
+		if !custom {
 			code, err := generateRoomCode()
 			if err != nil {
 				return nil, err // 熵源异常原样上抛（500）
 			}
-			cand := newRoomRow(userID, req)
 			cand.RoomCode = code
-			err = s.room.Create(ctx, cand)
-			if err == nil {
-				room = cand
-				break
-			}
-			if !isUniqueViolation(err) {
-				return nil, err
-			}
 		}
-		if room == nil {
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			roomRepo := repository.NewRoomRepository(tx)
+			userRepo := repository.NewRoomUserRepository(tx)
+			logRepo := repository.NewRoomLogRepository(tx)
+			if err := roomRepo.Create(ctx, cand); err != nil {
+				return err
+			}
+			if err := userRepo.Create(ctx, &model.RoomUser{
+				RoomID: cand.ID, UserID: userID, IsCreator: 1, SessionNo: 1,
+			}); err != nil {
+				return err
+			}
+			return logRepo.Create(ctx, &model.RoomLog{
+				RoomID: cand.ID, FromUserID: userID, Type: 3,
+			})
+		})
+		if err == nil {
+			room = cand
+			break
+		}
+		if !isUniqueViolation(err) {
+			return nil, err
+		}
+		if custom {
 			return nil, errs.New(errs.CodeScorecardRoomTaken, nil)
 		}
+		// 生成路径：换码重试（新事务），耗尽 → 30106。
 	}
-	if err := s.member.Create(ctx, &model.RoomUser{
-		RoomID: room.ID, UserID: userID, IsCreator: 1, SessionNo: 1,
-	}); err != nil {
-		return nil, err
-	}
-	if err := s.log.Create(ctx, &model.RoomLog{
-		RoomID: room.ID, FromUserID: userID, Type: 3,
-	}); err != nil {
-		return nil, err
+	if room == nil {
+		return nil, errs.New(errs.CodeScorecardRoomTaken, nil)
 	}
 	return s.buildSnapshot(ctx, s.db, room.ID, userID)
 }
@@ -210,20 +214,29 @@ func (s *roomService) Join(ctx context.Context, userID uint64, roomCode string) 
 	} else if u != nil {
 		return s.buildSnapshot(ctx, s.db, room.ID, userID)
 	}
-	// 新进房：建行（退房行已被硬删，重进从 session_no=1、计分为 0 起 = 新会话清零）。
-	if err := s.member.Create(ctx, &model.RoomUser{
-		RoomID: room.ID, UserID: userID, IsCreator: 0, SessionNo: 1,
-	}); err != nil {
+	// 新进房：单事务（member → log → expire 续期，tx 绑定 repo，Expense 同款），
+	// 任一步失败整体回滚，不残留无流水的成员行。成员行是硬删重建：重进从
+	// session_no=1、计分为 0 起 = 新会话清零。
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		roomRepo := repository.NewRoomRepository(tx)
+		userRepo := repository.NewRoomUserRepository(tx)
+		logRepo := repository.NewRoomLogRepository(tx)
+		if err := userRepo.Create(ctx, &model.RoomUser{
+			RoomID: room.ID, UserID: userID, IsCreator: 0, SessionNo: 1,
+		}); err != nil {
+			return err
+		}
+		if err := logRepo.Create(ctx, &model.RoomLog{
+			RoomID: room.ID, FromUserID: userID, Type: 3,
+		}); err != nil {
+			return err
+		}
+		room.ExpireTime = time.Now().Add(roomTTL)
+		// 失败即弃用内存 room（version 就地 +1 语义见 Task 5 契约）。
+		return roomRepo.SaveVersioned(ctx, tx, room)
+	})
+	if err != nil {
 		return nil, err
-	}
-	if err := s.log.Create(ctx, &model.RoomLog{
-		RoomID: room.ID, FromUserID: userID, Type: 3,
-	}); err != nil {
-		return nil, err
-	}
-	room.ExpireTime = time.Now().Add(roomTTL)
-	if err := s.room.SaveVersioned(ctx, s.db, room); err != nil {
-		return nil, err // 失败即弃用内存 room（version 就地 +1 语义见 Task 5 契约）
 	}
 	return s.buildSnapshot(ctx, s.db, room.ID, userID)
 }
@@ -267,7 +280,8 @@ func (s *roomService) Logs(ctx context.Context, userID, roomID uint64, page, siz
 	return s.log.ListByRoom(ctx, roomID, page, size)
 }
 
-// UpdateConfig 改配置（仅房主 30105）：数值项（target/percent/maxLose）写 pending_* 暂存，
+// UpdateConfig 改配置（仅房主 30105；已结算 30104/已关闭 30103 拒绝）：
+// 数值项（target/percent/maxLose）写 pending_* 暂存，
 // pending_apply_round_no=round_no+1「从下把生效」（spec §3.2，当前把不受影响，下一笔支出时
 // applyPending 整组刷入）。部分编辑不清场：首次暂存先按当前生效值种子全部 pending 槽、
 // 再覆写提供的项；已有暂存（PendingApplyRoundNo>0）只覆写提供的项、保留其余暂存值。
@@ -281,6 +295,13 @@ func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, r
 	}
 	if room == nil {
 		return nil, errs.New(errs.CodeScorecardRoomNotFound, nil)
+	}
+	// 状态门（TransferOwner 同款）：已结算 30104 / 已关闭 30103 拒绝改配置。
+	if room.Status == 1 {
+		return nil, errs.New(errs.CodeScorecardRoomSettled, nil)
+	}
+	if room.Status != 0 {
+		return nil, errs.New(errs.CodeScorecardRoomClosed, nil)
 	}
 	if room.CreatorID != userID {
 		return nil, errs.New(errs.CodeScorecardNotOwner, nil)
