@@ -17,7 +17,7 @@ type RoomLogRepository interface {
 	Create(ctx context.Context, l *model.RoomLog) error
 	GetByRequestID(ctx context.Context, roomID uint64, reqID string) (*model.RoomLog, error) // 软查：无 → (nil, nil)
 	ListByRoom(ctx context.Context, roomID uint64, page, size int) ([]*model.RoomLog, int64, error)
-	ListTypeByUser(ctx context.Context, roomID, userID, typ, limit int) ([]*model.RoomLog, error) // 上限频控：取该用户近期该类型日志，service 解码 extra.session_no 判本会话首触发
+	ListTypeByUser(ctx context.Context, roomID, userID, typ, limit int) ([]*model.RoomLog, error) // 上限频控：取该用户近期该类型日志；service 以最近 type=3 进房流水 id 为下界判本会话首触发
 }
 
 type roomLogRepo struct {

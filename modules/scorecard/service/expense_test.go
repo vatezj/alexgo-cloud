@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"alexGo-cloud/modules/scorecard/model"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 )
@@ -168,6 +169,40 @@ func TestExpense_MaxLoseFrequencyControl(t *testing.T) {
 	}
 	if len(res3.AlarmedUserIDs) != 0 {
 		t.Fatalf("二次超限不应重复全房提醒: %+v", res3)
+	}
+}
+
+// 票2：type-6 首提醒按最近进房流水 id 下界判定——退房重进（新会话）后
+// 再次达上限须重新全房提醒，不被上一会话的老提醒日志吞掉。
+func TestExpense_MaxLoseAlarmResetsAcrossSessions(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 50, 0)
+	res1, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 50, ToUserID: winner, ClientRequestID: "s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res1.AlarmedUserIDs) != 1 || res1.AlarmedUserIDs[0] != loser {
+		t.Fatalf("首次达上限应提醒: %+v", res1)
+	}
+	// 退房（硬删成员行，Leave 同款）+ 重进 = 新会话。
+	if err := svc.(*roomService).db.WithContext(ctx).
+		Where("room_id = ? AND user_id = ?", roomID, uint64(loser)).
+		Delete(&model.RoomUser{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	snap, err := svc.Snapshot(ctx, winner, roomID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, loser, snap.RoomCode); err != nil {
+		t.Fatal(err)
+	}
+	// 新会话再达上限：须重新全房提醒。
+	res2, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 50, ToUserID: winner, ClientRequestID: "s2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res2.AlarmedUserIDs) != 1 || res2.AlarmedUserIDs[0] != loser {
+		t.Fatalf("新会话再达上限应重新提醒: %+v", res2)
 	}
 }
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -47,7 +46,7 @@ const maxTeaPerExpense = 1_000_000
 // Expense 记分支出核心事务（spec §3.1）：FOR UPDATE 锁房行 → 幂等命中回放 →
 // round_no+1 应用到期 pending → 茶饭计算（自动 T=round(S×percent) 从赢家所得扣 /
 // 手动 DIY 从 tea_from_user_id 扣 T 进池）→ 记账（表达式列更新，总分守恒）→
-// 达标自动关 → 上限频控（extra.session_no 判本会话首提醒）→ type=1 流水 →
+// 达标自动关 → 上限频控（最近进房流水 id 下界判本会话首提醒）→ type=1 流水 →
 // version 乐观锁落库。任一步失败整体回滚（spec §5.3）。
 //
 // 事务内所有库访问经 tx 绑定的 repo 实例（ruling：回调里再用根 db 的 repo 会拿到池上
@@ -164,11 +163,10 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 			}
 		}
 		// ⑦ 上限频控：本会话首次达上限全房提醒（记入 AlarmedUserIDs），之后仅写日志。
-		// 会话判定：日志 extra 存 session_no，等于成员当前 session_no 即视为本会话已提醒。
-		// 已知限制（此处只记实情、不改逻辑）：Join 是成员行硬删重建、恒 session_no=1
-		// （room.go Create/Join 同款），重进房后老 type=6 日志的 session_no 也是 1 → 依然匹配，
-		// 所以「跨会话重新首提醒」并不重现——首提醒跨会话不重现属已知遗留；
-		// 要真按会话区分，需让 session_no 递增或日志另存会话标识。
+		// 会话边界 = 该用户最近一条 type=3 进房流水：只认 id 大于进房流水的 type=6
+		// 提醒日志为「本会话已提醒」。退房硬删重建成员行、重进写新 type=3（id 更大），
+		// 上一会话的老提醒日志 id 必然小于新进房流水 → 不再匹配，新会话重新首提醒
+		//（此前按 extra.session_no 判定，Join 恒 session_no=1，跨会话不重现）。
 		if room.MaxLoseScore > 0 {
 			users, err := userRepo.ListByRoom(ctx, roomID)
 			if err != nil {
@@ -179,16 +177,22 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 					continue
 				}
 				first := true
+				// 进房流水 id 下界：最近一条 type=3（无则 0，老数据全算本会话）。
 				// T5 接口签名 roomID/userID 为 int（repository/room_log.go），此处收窄转换。
+				joins, err := logRepo.ListTypeByUser(ctx, int(roomID), int(u.UserID), 3, 1)
+				if err != nil {
+					return err
+				}
+				var floor uint64
+				if len(joins) > 0 {
+					floor = joins[0].ID
+				}
 				recent, err := logRepo.ListTypeByUser(ctx, int(roomID), int(u.UserID), 6, 20)
 				if err != nil {
 					return err
 				}
 				for _, l := range recent {
-					var e struct {
-						SessionNo int `json:"session_no"`
-					}
-					if json.Unmarshal([]byte(l.Extra), &e) == nil && e.SessionNo == u.SessionNo {
+					if l.ID > floor {
 						first = false
 						break
 					}
