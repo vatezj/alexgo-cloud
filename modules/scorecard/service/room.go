@@ -159,7 +159,7 @@ func (s *roomService) Create(ctx context.Context, userID uint64, req CreateRoomR
 	if room == nil {
 		return nil, errs.New(errs.CodeScorecardRoomTaken, nil)
 	}
-	return s.buildSnapshot(ctx, s.db, room.ID, userID)
+	return s.buildSnapshot(ctx, s.db, room.ID, userID, false)
 }
 
 // newRoomRow 组装开房行：进行中 + expire=now+2h + version=1（乐观锁起点）。
@@ -220,7 +220,7 @@ func (s *roomService) Join(ctx context.Context, userID uint64, roomCode string) 
 	if u, err := s.member.Get(ctx, room.ID, userID); err != nil {
 		return nil, err
 	} else if u != nil {
-		return s.buildSnapshot(ctx, s.db, room.ID, userID)
+		return s.buildSnapshot(ctx, s.db, room.ID, userID, false)
 	}
 	// 新进房：单事务（member → log → expire 续期，tx 绑定 repo，Expense 同款），
 	// 任一步失败整体回滚，不残留无流水的成员行。成员行是硬删重建：重进从
@@ -246,7 +246,7 @@ func (s *roomService) Join(ctx context.Context, userID uint64, roomCode string) 
 	if err != nil {
 		return nil, err
 	}
-	return s.buildSnapshot(ctx, s.db, room.ID, userID)
+	return s.buildSnapshot(ctx, s.db, room.ID, userID, false)
 }
 
 // Snapshot 房间快照：不存在/跨租户 30101（gormplugin 过滤后软查为 nil）→ 非成员 30102
@@ -266,7 +266,7 @@ func (s *roomService) Snapshot(ctx context.Context, userID, roomID uint64) (*Roo
 	if u == nil {
 		return nil, errs.New(errs.CodeScorecardNotMember, nil)
 	}
-	return s.buildSnapshot(ctx, s.db, roomID, userID)
+	return s.buildSnapshot(ctx, s.db, roomID, userID, false)
 }
 
 // Logs 流水分页：不存在 30101 → 非成员 30102 → repo 透传（created_at 倒序）。
@@ -349,15 +349,23 @@ func (s *roomService) UpdateConfig(ctx context.Context, userID, roomID uint64, r
 	if err := s.room.SaveVersioned(ctx, s.db, room); err != nil {
 		return nil, err // 失败弃用内存 room（Version 已就地 +1 语义，T5 契约）
 	}
-	return s.buildSnapshot(ctx, s.db, roomID, userID)
+	return s.buildSnapshot(ctx, s.db, roomID, userID, false)
 }
 
 // buildSnapshot 组装房间全量快照（开房/进房/快照接口与 Task 7 expense 事务内共用）。
 // 全部读走传入的 tx：事务内可读未提交状态；非事务路径传 s.db。
+// forUpdate 控制房行读法：事务内写路径锁行（FOR UPDATE 串行化）；非事务读路径
+// （快照接口轮询热点）走 GetByID 普通读，不抢行锁。
 // viewerID 在房校验（30102，viewerID=0 跳过）；昵称头像经 member BriefProvider 批量补，
 // 拉取失败降级空昵称不阻断接口（快照可用性优先，昵称下次拉取自愈）。
-func (s *roomService) buildSnapshot(ctx context.Context, tx *gorm.DB, roomID, viewerID uint64) (*RoomSnapshot, error) {
-	room, err := s.room.GetForUpdate(ctx, tx, roomID)
+func (s *roomService) buildSnapshot(ctx context.Context, tx *gorm.DB, roomID, viewerID uint64, forUpdate bool) (*RoomSnapshot, error) {
+	var room *model.Room
+	var err error
+	if forUpdate {
+		room, err = s.room.GetForUpdate(ctx, tx, roomID)
+	} else {
+		room, err = s.room.GetByID(ctx, roomID)
+	}
 	if err != nil {
 		return nil, err
 	}

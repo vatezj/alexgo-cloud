@@ -100,7 +100,7 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 			if prev.FromUserID != userID {
 				return errs.New(errs.CodeParamInvalid, nil)
 			}
-			snap, err := s.buildSnapshot(ctx, tx, roomID, userID)
+			snap, err := s.buildSnapshot(ctx, tx, roomID, userID, true)
 			if err != nil {
 				return err
 			}
@@ -222,7 +222,7 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 		if err := roomRepo.SaveVersioned(ctx, tx, room); err != nil {
 			return err // err 上抛即整体回滚；此后不再触碰内存 room（Version 已就地 +1，T5 契约）
 		}
-		snap, err := s.buildSnapshot(ctx, tx, roomID, userID)
+		snap, err := s.buildSnapshot(ctx, tx, roomID, userID, true)
 		if err != nil {
 			return err
 		}

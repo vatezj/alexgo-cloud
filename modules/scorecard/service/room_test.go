@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"alexGo-cloud/modules/scorecard/model"
+	"alexGo-cloud/modules/scorecard/repository"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/tenant"
 )
@@ -204,6 +207,46 @@ func TestCreate_CustomCodeFormatValidation(t *testing.T) {
 		if _, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: code}); err != nil {
 			t.Fatalf("合法房号 %q 被拒: %v", code, err)
 		}
+	}
+}
+
+// 票5：快照读路径（非事务）不抢 FOR UPDATE 行锁——轮询热点；只有事务内才锁行。
+type spyRoomRepo struct {
+	repository.RoomRepository
+	forUpdateCalls int
+}
+
+func (s *spyRoomRepo) GetForUpdate(ctx context.Context, tx *gorm.DB, id uint64) (*model.Room, error) {
+	s.forUpdateCalls++
+	return s.RoomRepository.GetForUpdate(ctx, tx, id)
+}
+
+func TestBuildSnapshot_NonTxSkipsForUpdate(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	snap, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := svc.(*roomService)
+	spy := &spyRoomRepo{RoomRepository: rs.room}
+	rs.room = spy
+	// 非事务读（快照接口轮询热点）：不走 GetForUpdate。
+	if _, err := rs.buildSnapshot(ctx, db, snap.ID, 100, false); err != nil {
+		t.Fatal(err)
+	}
+	if spy.forUpdateCalls != 0 {
+		t.Fatalf("非事务快照不应 GetForUpdate, got %d", spy.forUpdateCalls)
+	}
+	// 事务内（Expense 等写路径）：必须锁行。
+	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, err := rs.buildSnapshot(ctx, tx, snap.ID, 100, true)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if spy.forUpdateCalls != 1 {
+		t.Fatalf("事务内快照应 GetForUpdate 一次, got %d", spy.forUpdateCalls)
 	}
 }
 
