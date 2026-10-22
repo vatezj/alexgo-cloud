@@ -65,7 +65,7 @@ const gridOptions: VxeGridProps<CodegenDemoItem> = {
   proxyConfig: {
     ajax: {
       // 第二参 = 查询表单值（vxe extends.ts 把最后一次提交的表单值并进参数）。
-      query: async ({ page }, formValues: Record<string, any>) => {
+      query: async ({ page }, formValues: { [key: string]: any }) => {
         const rows = await listCodegenDemoItem();
         const filtered = matchQuery(rows, formValues ?? {});
         return {

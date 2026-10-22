@@ -3,8 +3,9 @@ import { requestClient } from '#/api/request';
 
 import type { CodegenDemoItem } from './types';
 
-/** 查询操作表：键 = JSONName，值 = query_operation 配置（eq/like/between）。 */
-export const queryOps: Record<string, string> = {
+/** 查询操作表：键 = JSONName，值 = query_operation 配置（eq/like/between）。
+ * 用索引签名不用内建 Record 类型：实体名可为 Record（如表 records），import 后遮蔽内建类型。 */
+export const queryOps: { [key: string]: string } = {
   id: 'eq',
   name: 'like',
   price: 'like',
@@ -18,7 +19,7 @@ export const queryOps: Record<string, string> = {
  * like/between 走子串匹配且不区分大小写（between≈like，见 docs/usage.md）。 */
 export function matchQuery<T extends object>(
   rows: T[],
-  formValues: Record<string, any>,
+  formValues: { [key: string]: any },
 ): T[] {
   const entries = Object.entries(formValues ?? {}).filter(
     ([, v]) => v !== undefined && v !== null && v !== '',
