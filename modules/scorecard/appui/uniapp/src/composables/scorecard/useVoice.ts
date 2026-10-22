@@ -48,7 +48,9 @@ function warnPluginOnce(): void {
     return
   pluginWarned = true
   try {
-    const toast = useToast()
+    // 走全局 toast store（Pinia），不能用 useToast()——后者靠 inject/provide，只在 setup 有效；
+    // speak 跑在事件回调里（currentInstance 为 null），useToast 写的 ref 无人渲染（同 api/core/handlers 模式）
+    const toast = useGlobalToast()
     toast.info({ msg: '语音插件未启用' })
   }
   catch {

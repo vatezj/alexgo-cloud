@@ -9,7 +9,6 @@
  */
 import {
   modeFromFlags,
-  nextMode,
   useScorecardVoiceStore,
   VOICE_MODE_DESCS,
   VOICE_MODE_ICONS,
@@ -24,9 +23,9 @@ const icon = computed(() => VOICE_MODE_ICONS[currentMode.value])
 const label = computed(() => VOICE_MODE_LABELS[currentMode.value])
 const desc = computed(() => VOICE_MODE_DESCS[currentMode.value])
 
-/** 点按循环下一档。 */
+/** 点按循环下一档（store.cycle 为唯一入口）。 */
 function onTap() {
-  voiceStore.setMode(nextMode(currentMode.value))
+  voiceStore.cycle()
 }
 </script>
 

@@ -121,7 +121,15 @@ function goExpense(toUserId?: number) {
   router.push({ path: '/pages/expense/index', query })
 }
 
+/** 头像弹窗显隐（「我的」筹码轨与点自己头像共用入口）。 */
+const showAvatarPopup = ref(false)
+
 function onMemberClick(userId: number) {
+  // 点自己头像 → 头像弹窗（设计 10）；点其他成员 → expense 预填记分对象
+  if (userId === myUserId.value) {
+    showAvatarPopup.value = true
+    return
+  }
   goExpense(userId)
 }
 
@@ -158,8 +166,6 @@ function onServiceClick() {
 }
 
 /** 我的 → 头像弹窗（设计 10：昵称 / 语音 5 档 / 主题入口 / 退出房间）。 */
-const showAvatarPopup = ref(false)
-
 function onMineClick() {
   showAvatarPopup.value = true
 }
