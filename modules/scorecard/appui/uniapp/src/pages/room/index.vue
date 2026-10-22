@@ -235,14 +235,17 @@ function onPopupScrollEnd() {
 
 /* ── 生命周期 ── */
 
-/** 状态门：status!=0（已结算/已关闭）→ 结算页；immediate：回访 persist 快照已是终局时也要触发。 */
+/**
+ * 状态门：status!=0（已结算/已关闭）→ 结算页。
+ * 不用 immediate：setup 期 currentRoute 尚未同步（R1 契约），兜底链会拉回旧房 id，
+ * 若 persist 快照恰为旧房终局会被劫持到旧房 settle 页。回访终局在 onShow 补检（见下）。
+ */
 watch(
   () => snapshot.value?.status,
   (status) => {
     if (status != null && status !== 0)
       router.replaceAll({ path: '/pages/settle/index', query: { roomId: String(currentRoomId.value) } })
   },
-  { immediate: true },
 )
 
 onShow(() => {
@@ -254,6 +257,13 @@ onShow(() => {
   // lastRoomId / store.roomId 同步（继续上局 & 回访兜底）
   authStore.lastRoomId = currentRoomId.value
   roomStore.roomId = currentRoomId.value
+  // 回访补检：persist 快照已是终局且属于本房（onShow 时 currentRoute 已同步，id 过滤已排除异房）。
+  // version 等值去重不会触发上面的 watch，故此处显式跳转。
+  const snap = snapshot.value
+  if (snap && snap.status !== 0 && snap.id === currentRoomId.value) {
+    router.replaceAll({ path: '/pages/settle/index', query: { roomId: String(currentRoomId.value) } })
+    return
+  }
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
   void polling.refresh().catch(toastApiError)

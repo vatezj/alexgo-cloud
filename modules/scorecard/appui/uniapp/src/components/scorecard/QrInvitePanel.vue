@@ -5,7 +5,7 @@
  * - 扇牌码：PlayCard（A♥ 骨白牌）内嵌 getRoomWxacode 的 PNG dataURL；
  *   打开时惰性拉取并按房间 id 缓存（同房间重开不重拉，换房间重拉）
  * - 失败降级（接口 throw / 空缓冲 / 非 PNG 字节）：牌面内改示房号大字 + 复制房号，不崩不回环
- * - 转发给好友：MP 微信 button open-type="share"（触发房间页 onShareAppMessage，path 带 roomId）；
+ * - 转发给好友：MP 微信 button open-type="share"（触发房间页 onShareAppMessage，path 走 scene 进房协议）；
  *   H5 走复制房号（与降级复制同一动作，uni.setClipboardData）
  * - 文案：「邀请好友扫描牌背小程序码加入房间」（逐字 brief）；
  *   本地业务错误 toast（ApiError 非 401/403，handlers 已全局提示的不重复）
