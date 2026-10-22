@@ -9,7 +9,7 @@
  * - 幂等提交：reqId 页面进入生成一次存 ref，失败 toast 后重试复用同键
  *   （Review Focus #1：断网重按不双记，后端同 client_request_id 回放同 log_id）
  * - 成功：applySnapshot（响应内嵌快照，version 单调门）+ polling.refresh() 重置 +
- *   toast「已记分」+ navigateBack；voice 播报占位（Task 13 接）
+ *   toast「已记分」+ 语音播报（speak ledger 类，永不 throw）+ navigateBack
  * - 业务错误本页 toast（ApiError 非 401/403）；401 由 handlers 全局清态跳登录
  * - 色值零硬编码：全走主题 token 与全局工具类（.comply/.num/.btn.brass）
  */
@@ -18,6 +18,7 @@ import { expense, snapshot as fetchSnapshot } from '@/api/scorecard/room'
 import ComplianceBanner from '@/components/scorecard/ComplianceBanner.vue'
 import ExpenseLane from '@/components/scorecard/ExpenseLane.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
+import { useVoice } from '@/composables/scorecard/useVoice'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 
@@ -31,6 +32,7 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
+const { speak } = useVoice()
 
 /**
  * query.roomId → number（非法/缺失返回0）。
@@ -165,8 +167,9 @@ async function onSubmit() {
     // 响应内嵌最新快照：version 单调门写回（防旧覆盖新）
     roomStore.applySnapshot(res.snapshot)
     void polling.refresh().catch(() => {})
-    // voice 播报占位（Task 13 接）
     toast.success('已记分')
+    // 语音播报（ledger 类）：纯记分词汇拼接；speak 永不 throw，失败不影响回房
+    speak(`${myNickname.value}支出${score.value}分`, 'ledger')
     goBack()
   }
   catch (err) {

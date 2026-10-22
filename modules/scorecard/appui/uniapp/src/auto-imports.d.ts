@@ -9,6 +9,11 @@ declare global {
   const Apis: typeof import('./api/index')['Apis']
   const CommonUtil: typeof import('@wot-ui/ui')['CommonUtil']
   const EffectScope: typeof import('vue')['EffectScope']
+  const VOICE_MODE_DESCS: typeof import('./store/scorecard/voice')['VOICE_MODE_DESCS']
+  const VOICE_MODE_FLAGS: typeof import('./store/scorecard/voice')['VOICE_MODE_FLAGS']
+  const VOICE_MODE_ICONS: typeof import('./store/scorecard/voice')['VOICE_MODE_ICONS']
+  const VOICE_MODE_LABELS: typeof import('./store/scorecard/voice')['VOICE_MODE_LABELS']
+  const VOICE_MODE_ORDER: typeof import('./store/scorecard/voice')['VOICE_MODE_ORDER']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alovaInstance: typeof import('./api/index')['alovaInstance']
   const api: typeof import('./api/index')['default']
@@ -65,7 +70,9 @@ declare global {
   const mapStores: typeof import('pinia')['mapStores']
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
+  const modeFromFlags: typeof import('./store/scorecard/voice')['modeFromFlags']
   const mountApis: typeof import('./api/createApis')['mountApis']
+  const nextMode: typeof import('./store/scorecard/voice')['nextMode']
   const nextTick: typeof import('vue')['nextTick']
   const onActivated: typeof import('vue')['onActivated']
   const onAddToFavorites: typeof import('@dcloudio/uni-app')['onAddToFavorites']
@@ -283,6 +290,7 @@ declare global {
   const useScorecardRoomStore: typeof import('./store/scorecard/room')['useScorecardRoomStore']
   const useScorecardTheme: typeof import('./store/scorecard/theme')['useScorecardTheme']
   const useScorecardThemeStore: typeof import('./store/scorecard/theme')['useScorecardThemeStore']
+  const useScorecardVoiceStore: typeof import('./store/scorecard/voice')['useScorecardVoiceStore']
   const useScreenOrientation: typeof import('@vueuse/core')['useScreenOrientation']
   const useScreenSafeArea: typeof import('@vueuse/core')['useScreenSafeArea']
   const useScriptTag: typeof import('@vueuse/core')['useScriptTag']
@@ -327,6 +335,7 @@ declare global {
   const useVModels: typeof import('@vueuse/core')['useVModels']
   const useVibrate: typeof import('@vueuse/core')['useVibrate']
   const useVirtualList: typeof import('@vueuse/core')['useVirtualList']
+  const useVoice: typeof import('./composables/scorecard/useVoice')['useVoice']
   const useWakeLock: typeof import('@vueuse/core')['useWakeLock']
   const useWebNotification: typeof import('@vueuse/core')['useWebNotification']
   const useWebSocket: typeof import('@vueuse/core')['useWebSocket']
@@ -368,6 +377,11 @@ declare module 'vue' {
     readonly Apis: UnwrapRef<typeof import('./api/index')['Apis']>
     readonly CommonUtil: UnwrapRef<typeof import('@wot-ui/ui')['CommonUtil']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly VOICE_MODE_DESCS: UnwrapRef<typeof import('./store/scorecard/voice')['VOICE_MODE_DESCS']>
+    readonly VOICE_MODE_FLAGS: UnwrapRef<typeof import('./store/scorecard/voice')['VOICE_MODE_FLAGS']>
+    readonly VOICE_MODE_ICONS: UnwrapRef<typeof import('./store/scorecard/voice')['VOICE_MODE_ICONS']>
+    readonly VOICE_MODE_LABELS: UnwrapRef<typeof import('./store/scorecard/voice')['VOICE_MODE_LABELS']>
+    readonly VOICE_MODE_ORDER: UnwrapRef<typeof import('./store/scorecard/voice')['VOICE_MODE_ORDER']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alovaInstance: UnwrapRef<typeof import('./api/index')['alovaInstance']>
     readonly api: UnwrapRef<typeof import('./api/index')['default']>
@@ -424,7 +438,9 @@ declare module 'vue' {
     readonly mapStores: UnwrapRef<typeof import('pinia')['mapStores']>
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
+    readonly modeFromFlags: UnwrapRef<typeof import('./store/scorecard/voice')['modeFromFlags']>
     readonly mountApis: UnwrapRef<typeof import('./api/createApis')['mountApis']>
+    readonly nextMode: UnwrapRef<typeof import('./store/scorecard/voice')['nextMode']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onAddToFavorites: UnwrapRef<typeof import('@dcloudio/uni-app')['onAddToFavorites']>
@@ -641,6 +657,7 @@ declare module 'vue' {
     readonly useScorecardRoomStore: UnwrapRef<typeof import('./store/scorecard/room')['useScorecardRoomStore']>
     readonly useScorecardTheme: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardTheme']>
     readonly useScorecardThemeStore: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardThemeStore']>
+    readonly useScorecardVoiceStore: UnwrapRef<typeof import('./store/scorecard/voice')['useScorecardVoiceStore']>
     readonly useScreenOrientation: UnwrapRef<typeof import('@vueuse/core')['useScreenOrientation']>
     readonly useScreenSafeArea: UnwrapRef<typeof import('@vueuse/core')['useScreenSafeArea']>
     readonly useScriptTag: UnwrapRef<typeof import('@vueuse/core')['useScriptTag']>
@@ -685,6 +702,7 @@ declare module 'vue' {
     readonly useVModels: UnwrapRef<typeof import('@vueuse/core')['useVModels']>
     readonly useVibrate: UnwrapRef<typeof import('@vueuse/core')['useVibrate']>
     readonly useVirtualList: UnwrapRef<typeof import('@vueuse/core')['useVirtualList']>
+    readonly useVoice: UnwrapRef<typeof import('./composables/scorecard/useVoice')['useVoice']>
     readonly useWakeLock: UnwrapRef<typeof import('@vueuse/core')['useWakeLock']>
     readonly useWebNotification: UnwrapRef<typeof import('@vueuse/core')['useWebNotification']>
     readonly useWebSocket: UnwrapRef<typeof import('@vueuse/core')['useWebSocket']>

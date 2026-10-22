@@ -64,7 +64,17 @@ export default defineManifestConfig({
     optimization: {
       subPackages: true,
     },
+    // 小程序 appid：运营侧在小程序后台/发行配置填写，仓库不落凭据
     appid: '',
+    // 微信同声传译插件（WechatSI，TTS 语音播报用）：代码先声明插件结构；
+    // provider/version 为微信官方插件固定标识（非本应用凭据），运营侧需在小程序后台
+    // 「设置-第三方设置-插件管理」添加同声传译插件后真机方可生效（未添加时 useVoice 降级静默）
+    plugins: {
+      WechatSI: {
+        version: '0.3.6',
+        provider: 'wx069ba97219f66d99',
+      },
+    },
     setting: {
       urlCheck: false,
     },

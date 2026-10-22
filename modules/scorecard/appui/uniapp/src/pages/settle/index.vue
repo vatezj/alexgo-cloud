@@ -198,6 +198,8 @@ async function onSettle() {
     await settle(currentRoomId.value)
     await polling.refresh()
     toast.success('已结算')
+    // Task 13 接线点：结算胜利 entertain 播报（可选，后续接 useVoice）——
+    // speak(`${topMember.value?.nickname || ''}战斗胜利`, 'entertain')
   }
   catch (err) {
     toastApiError(err)

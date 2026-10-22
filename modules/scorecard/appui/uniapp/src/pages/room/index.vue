@@ -8,7 +8,7 @@
  * - 邀请（设计 03）：房号标题/右上 ••• → QrInvitePanel 扇牌小程序码弹层；
  *   转发 onShareAppMessage（path 带 roomId，open-type="share" 与胶囊菜单共用）
  * - 流水：recent_logs 账板 + 「查看更多」→ wd-popup 内 logs 分页上拉
- * - 筹码轨：客服占位 | 支出 → expense（预选空）| 我的占位（Task 13 换 AvatarPopup）；
+ * - 筹码轨：客服占位 | 支出 → expense（预选空）| 我的 → AvatarPopup（设计 10 头像弹窗）；
  *   点成员头像 → expense 页预填 toUserId query
  * - 轮询：onShow refresh（错误本页 toast）+ start；onHide/onUnload stop；下拉刷新 refresh
  * - 业务错误本页 toast（ApiError 非 401/403，handlers 已全局提示的不重复）；
@@ -18,6 +18,7 @@
 import type { RoomLogItem } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
 import { logs as fetchLogs } from '@/api/scorecard/room'
+import AvatarPopup from '@/components/scorecard/AvatarPopup.vue'
 import ComplianceBanner from '@/components/scorecard/ComplianceBanner.vue'
 import QrInvitePanel from '@/components/scorecard/QrInvitePanel.vue'
 import RoomLedger from '@/components/scorecard/RoomLedger.vue'
@@ -156,9 +157,11 @@ function onServiceClick() {
   toast.info({ msg: '客服入口 · 敬请期待' })
 }
 
-/** 我的：Task 13 换 AvatarPopup，先 toast 占位。 */
+/** 我的 → 头像弹窗（设计 10：昵称 / 语音 5 档 / 主题入口 / 退出房间）。 */
+const showAvatarPopup = ref(false)
+
 function onMineClick() {
-  toast.info({ msg: '个人面板 · Task 13 接入' })
+  showAvatarPopup.value = true
 }
 
 /* ── 全部流水弹层（分页上拉） ── */
@@ -454,6 +457,12 @@ onPullDownRefresh(() => {
       v-model:show="showQrInvite"
       :room-id="currentRoomId"
       :room-code="snapshot?.room_code ?? ''"
+    />
+
+    <!-- 头像弹窗（设计 10；「我的」入口） -->
+    <AvatarPopup
+      v-model:show="showAvatarPopup"
+      :room-id="currentRoomId"
     />
   </view>
 </template>
