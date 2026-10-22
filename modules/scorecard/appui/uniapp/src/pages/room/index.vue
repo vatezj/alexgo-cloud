@@ -4,7 +4,7 @@
  *
  * - 状态门：快照 status!=0（已结算/已关闭）→ replaceAll 去结算页（Task 9 落地前为占位页）
  * - 俯视牌桌：RoomRoster 横滚座位 + 中央最近一手（最新 type=1）+ 茶饭池铭牌
- *   （tea_pool_total + tea_percent 摘要；点击 = Task 11 弹层占位 toast）
+ *   （tea_pool_total + tea_percent 摘要；点击 → TeaConfigSheet 茶饭设置弹层）
  * - 流水：recent_logs 账板 + 「查看更多」→ wd-popup 内 logs 分页上拉
  * - 筹码轨：客服占位 | 支出 → expense（预选空）| 我的占位（Task 13 换 AvatarPopup）；
  *   点成员头像 → expense 页预填 toUserId query
@@ -20,6 +20,7 @@ import ComplianceBanner from '@/components/scorecard/ComplianceBanner.vue'
 import RoomLedger from '@/components/scorecard/RoomLedger.vue'
 import RoomRoster from '@/components/scorecard/RoomRoster.vue'
 import ScoreText from '@/components/scorecard/ScoreText.vue'
+import TeaConfigSheet from '@/components/scorecard/TeaConfigSheet.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 
@@ -122,9 +123,13 @@ function onMemberClick(userId: number) {
 
 /* ── 占位交互 ── */
 
-/** 茶饭池铭牌：Task 11 换真弹层，先 toast 占位。 */
+/** 茶饭池铭牌 → 茶饭设置弹层（非房主/已结算在组件内只读）。 */
+const showTeaConfig = ref(false)
+
 function onTeaPoolClick() {
-  toast.info({ msg: '茶饭明细 · Task 11 接入' })
+  if (!snapshot.value)
+    return
+  showTeaConfig.value = true
 }
 
 function onServiceClick() {
@@ -302,7 +307,7 @@ onPullDownRefresh(() => {
           </text>
         </view>
 
-        <!-- 茶饭池铭牌（点击 = Task 11 弹层占位） -->
+        <!-- 茶饭池铭牌（点击 → 茶饭设置弹层） -->
         <view
           class="base-pot"
           @click="onTeaPoolClick"
@@ -410,6 +415,13 @@ onPullDownRefresh(() => {
         </scroll-view>
       </view>
     </wd-popup>
+
+    <!-- 茶饭设置弹层（设计 09；非房主/已结算只读） -->
+    <TeaConfigSheet
+      v-model:show="showTeaConfig"
+      :snapshot="snapshot"
+      :my-user-id="myUserId"
+    />
   </view>
 </template>
 
