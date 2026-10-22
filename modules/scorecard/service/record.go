@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 
-	"gorm.io/gorm"
-
 	"alexGo-cloud/modules/scorecard/model"
 	"alexGo-cloud/modules/scorecard/repository"
 	errs "alexGo-cloud/pkg/errors"
@@ -35,13 +33,12 @@ type RecordService interface {
 }
 
 type recordService struct {
-	db   *gorm.DB
 	repo repository.RecordRepository // 测试白盒直取：rs.repo.Create 构造非本人行
 }
 
 // NewRecordService 构造战绩服务（fx 装配；测试与 roomService 同库构造）。
-func NewRecordService(db *gorm.DB, repo repository.RecordRepository) RecordService {
-	return &recordService{db: db, repo: repo}
+func NewRecordService(repo repository.RecordRepository) RecordService {
+	return &recordService{repo: repo}
 }
 
 // MyRecords 我的战绩分页：单条 ListByUser（user_id 过滤 + 租户插件隔离），本人行天然只读。

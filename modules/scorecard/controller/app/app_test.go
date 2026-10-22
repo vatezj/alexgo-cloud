@@ -68,7 +68,7 @@ func newAppRouter(t *testing.T) (*gin.Engine, *gorm.DB, service.RoomService) {
 	rooms := service.NewRoomService(db, roomRepo, repository.NewRoomUserRepository(db),
 		repository.NewRoomLogRepository(db), repository.NewRecordRepository(db),
 		nil /* briefs：缺席降级空昵称 */, repository.NewFriendBlackRepository(db))
-	records := service.NewRecordService(db, repository.NewRecordRepository(db))
+	records := service.NewRecordService(repository.NewRecordRepository(db))
 	friends := service.NewFriendService(db, repository.NewFriendRepository(db),
 		repository.NewFriendBlackRepository(db), repository.NewRecordRepository(db), nil)
 	ctrl := NewAppController(rooms, records, friends, stubValidator{byToken: map[string]*token.Claims{

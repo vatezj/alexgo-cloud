@@ -51,7 +51,7 @@ func (s *roomService) Settle(ctx context.Context, userID, roomID uint64) error {
 		if locked.Status != 0 {
 			return errs.New(errs.CodeScorecardRoomClosed, nil)
 		}
-		return s.settleTx(ctx, tx, locked, 1, 0)
+		return s.settleTx(ctx, tx, locked, 1)
 	})
 }
 
@@ -102,7 +102,7 @@ func (s *roomService) Leave(ctx context.Context, userID, roomID uint64) error {
 		if locked.Status == 0 { // 进行中才写 record；已结算/已关闭不重复落战绩
 			if me.IsCreator == 1 {
 				// 房主退房：先自动结算（全员 record settle_type=2、status=1、type=5），再删行。
-				if err := s.settleTx(ctx, tx, locked, 2, 0); err != nil {
+				if err := s.settleTx(ctx, tx, locked, 2); err != nil {
 					return err
 				}
 			} else {
@@ -248,10 +248,9 @@ func (s *roomService) TransferOwner(ctx context.Context, userID, roomID, targetU
 
 // settleTx 结算核心（事务内）：全员 room_user 各写一行 record（终局快照字段从 room 拷贝、
 // score=u.CurScore、cum_lose_score=u.CumLoseScore）→ room.status=1 + SaveVersioned →
-// room_log(type=5, extra 含 settle_type)。excludeUserID 非 0 时跳过该成员的 record 行
-// （当前调用方均传 0：Settle 与房主退房都写全员含触发者本人）。
+// room_log(type=5, extra 含 settle_type)。Settle 与房主退房都写全员含触发者本人。
 // 传入的 room 必须是本事务 GetForUpdate 锁下的实例。
-func (s *roomService) settleTx(ctx context.Context, tx *gorm.DB, room *model.Room, settleType int, excludeUserID uint64) error {
+func (s *roomService) settleTx(ctx context.Context, tx *gorm.DB, room *model.Room, settleType int) error {
 	roomRepo := repository.NewRoomRepository(tx)
 	logRepo := repository.NewRoomLogRepository(tx)
 	userRepo := repository.NewRoomUserRepository(tx)
@@ -262,9 +261,6 @@ func (s *roomService) settleTx(ctx context.Context, tx *gorm.DB, room *model.Roo
 	}
 	recs := make([]*model.Record, 0, len(users))
 	for _, u := range users {
-		if u.UserID == excludeUserID {
-			continue
-		}
 		recs = append(recs, &model.Record{
 			TenantID:        room.TenantID,
 			RoomID:          room.ID,

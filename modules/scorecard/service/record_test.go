@@ -17,7 +17,7 @@ func TestRecords_Flow(t *testing.T) {
 	}
 	// 与 setupRoom 同一个 sqlite 库（跨库会读不到上面刚结算的 record）
 	roomInternal := svc.(*roomService)
-	rs := NewRecordService(roomInternal.db, repository.NewRecordRepository(roomInternal.db))
+	rs := NewRecordService(repository.NewRecordRepository(roomInternal.db))
 	list, total, err := rs.MyRecords(ctx, loser, 1, 10)
 	if err != nil || total != 1 || list[0].Score != -20 {
 		t.Fatalf("我的战绩: total=%d list=%v err=%v", total, list, err)
@@ -54,7 +54,7 @@ func TestRecords_AdminListAndEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 	roomInternal := svc.(*roomService)
-	rs := NewRecordService(roomInternal.db, repository.NewRecordRepository(roomInternal.db))
+	rs := NewRecordService(repository.NewRecordRepository(roomInternal.db))
 
 	// AdminList：roomID 过滤全房 2 行；size=1 分页 total 仍为 2；userID 过滤只剩本人 1 行。
 	rows, total, err := rs.AdminList(ctx, 0, roomID, 1, 1)
