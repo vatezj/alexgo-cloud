@@ -40,7 +40,8 @@ function handleUnauthorized(globalToast: ReturnType<typeof useGlobalToast>) {
   globalToast.error({ msg: '登录已过期，请重新登录！', duration: 500 })
   const timer = setTimeout(() => {
     clearTimeout(timer)
-    router.replaceAll({ name: 'login' })
+    // 路由表来自 virtual:uni-pages（页面无 name 字段），按 path 命中登录页
+    router.replaceAll({ path: '/pages/login/index' })
   }, 500)
 }
 
