@@ -15,6 +15,7 @@ declare module 'vue' {
     ScorecardChipButton: typeof import('./components/scorecard/ChipButton.vue')['default']
     ScorecardComplianceBanner: typeof import('./components/scorecard/ComplianceBanner.vue')['default']
     ScorecardExpenseLane: typeof import('./components/scorecard/ExpenseLane.vue')['default']
+    ScorecardFriendRow: typeof import('./components/scorecard/FriendRow.vue')['default']
     ScorecardPlayCard: typeof import('./components/scorecard/PlayCard.vue')['default']
     ScorecardQrInvitePanel: typeof import('./components/scorecard/QrInvitePanel.vue')['default']
     ScorecardRecordSwipable: typeof import('./components/scorecard/RecordSwipable.vue')['default']

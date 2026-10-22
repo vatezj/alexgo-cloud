@@ -13,6 +13,48 @@ Wot Starter
   <a href="https://starter.wot-ui.cn/">📖 在线文档</a>
 </p>
 
+## 打牌记账小程序 · 运行说明
+
+打牌记账（scorecard）页面位于 `src/pages`（index / room / settle / records / friends / expense / manual / login），运行方式如下。
+
+### 安装与开发
+
+```bash
+pnpm install        # 安装依赖
+pnpm dev:h5         # H5 开发（默认 http://localhost:5173）
+pnpm dev:mp-weixin  # 微信小程序开发构建（监听输出 dist/dev/mp-weixin）
+```
+
+### 构建与检查
+
+```bash
+pnpm build:h5        # H5 产物 → dist/build/h5
+pnpm build:mp-weixin # 微信小程序产物 → dist/build/mp-weixin
+pnpm type-check      # 类型检查
+pnpm lint            # 代码检查
+```
+
+### 后端地址（env 端口）
+
+- 请求 baseURL 走 `VITE_API_BASE_URL`：`.env.development` / `.env.staging` / `.env.production`。
+- 开发默认 `http://127.0.0.1:8080`（alexgo-server 默认监听 `:8080`）；真机联调时把 `.env.development` 的地址改成电脑局域网 IP。
+
+### 微信开发者工具
+
+1. `pnpm dev:mp-weixin` 保持监听，开发者工具「导入项目」选择 `dist/dev/mp-weixin`。
+2. appid 在 `manifest.config.ts` 的 `mp-weixin.appid` 配置（仓库不落凭据，本地调试可用测试号）。
+3. 体验版：`pnpm build:mp-weixin` 后将 `dist/build/mp-weixin` 上传，在小程序后台提审 / 设为体验版。
+
+### 微信同声传译插件（WechatSI）
+
+- 语音播报依赖微信官方同声传译插件（provider `wx069ba97219f66d99`，version `0.3.6`，已在 `manifest.config.ts` 声明插件结构）。
+- 运营侧需在小程序后台「设置 - 第三方设置 - 插件管理」添加该插件后真机语音方生效；未添加时端上自动降级（静默 / 一次提示，不报错）。
+
+### 主题切换
+
+- 四套主题（墨金牌桌 / 深海筹码 / 红黑赌场 / 青瓷茶室）由 `src/store/scorecard/theme.ts` 在根节点切换 `.theme-t1` ~ `.theme-t4` 类，全页面即时生效。
+- 合规红与红中印四套主题同值锁定（`src/theme/scorecard.scss` 公共段），换主题不掉色。
+
 ## 特性
 
 - ⚡️ [Vue 3](https://github.com/vuejs/core), [Vite](https://github.com/vitejs/vite), [pnpm](https://pnpm.io/), [esbuild](https://github.com/evanw/esbuild) - 就是快！
