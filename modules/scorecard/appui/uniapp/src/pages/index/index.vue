@@ -4,7 +4,8 @@
  *
  * - 身份牌：authStore.user（昵称/头像/注册天数）+ stat 总分/胜率 + listFriends 好友数
  * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
- * - scene 进房：onShow 时已登录且 pendingScene 有值 → consumeScene 只消费一次 → joinRoom 进房（T5 afterLogin 消费点的已登录侧）
+ * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次 → joinRoom 进房；
+ *   未登录 → 留存 scene 去登录（登录后 afterLogin 消费进房，只进一次）
  * - 未登录持有 scene：先去登录（scene 暂存保留，登录后 afterLogin 消费进房）；未登录点开房 → 跳登录（已知简化：登录后回首页，不回跳原动作）
  * - 业务错误 catch → 本页 toast（ApiError 非 401/403）；数据拉取失败降级空态，不阻塞渲染
  * - 色值零硬编码：全走主题 token 与全局工具类（.pcard/.btn.brass/.num/.win-n/.lose-n）
@@ -191,10 +192,15 @@ async function loadHomeData() {
   loadingData.value = false
 }
 
-/** scene 进房（已登录侧）：pendingScene 有值才消费（只消费一次，与 T5 afterLogin 互斥不双进房）。 */
+/** scene 进房闭环：pendingScene 有值才处理——已登录消费进房（只消费一次）；未登录留存去登录（afterLogin 消费）。 */
 async function consumePendingScene() {
-  if (!isLoggedIn.value)
+  if (!isLoggedIn.value) {
+    // 未登录：scene 不消费（留存），去登录（登录成功 afterLogin 消费进房，验收只进一次）
+    if (pendingScene.value)
+      router.push({ path: '/pages/login/index' })
     return
+  }
+  // 先消费后请求（读后即清）：onShow 连续触发/请求在途时不会重复进房
   const code = consumeScene()
   if (!code)
     return
@@ -204,6 +210,7 @@ async function consumePendingScene() {
     router.push({ path: '/pages/room/index', query: { roomId: String(snap.id) } })
   }
   catch (err) {
+    // 已消费：失败停在首页 toast，不回环重试 scene
     toastApiError(err)
   }
 }
