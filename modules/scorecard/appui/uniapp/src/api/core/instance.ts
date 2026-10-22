@@ -1,6 +1,7 @@
 import AdapterUniapp from '@alova/adapter-uniapp'
 import { createAlova } from 'alova'
 import vueHook from 'alova/vue'
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { handleAlovaError, handleAlovaResponse } from './handlers'
 
 export const alovaInstance = createAlova({
@@ -8,6 +9,12 @@ export const alovaInstance = createAlova({
   ...AdapterUniapp(),
   statesHook: vueHook,
   beforeRequest: (method) => {
+    // 注入登录态 Bearer token（无 token 的公开接口不带 Authorization）
+    const { token } = useScorecardAuthStore()
+    if (token) {
+      method.config.headers.Authorization = `Bearer ${token}`
+    }
+
     // Add content type for POST/PUT/PATCH requests
     if (['POST', 'PUT', 'PATCH'].includes(method.type)) {
       method.config.headers['Content-Type'] = 'application/json'

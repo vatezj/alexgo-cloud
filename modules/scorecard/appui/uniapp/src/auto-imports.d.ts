@@ -277,6 +277,7 @@ declare global {
   const useResizeObserver: typeof import('@vueuse/core')['useResizeObserver']
   const useRoute: typeof import('@wot-ui/router')['useRoute']
   const useRouter: typeof import('@wot-ui/router')['useRouter']
+  const useScorecardAuthStore: typeof import('./store/scorecard/auth')['useScorecardAuthStore']
   const useScorecardTheme: typeof import('./store/scorecard/theme')['useScorecardTheme']
   const useScorecardThemeStore: typeof import('./store/scorecard/theme')['useScorecardThemeStore']
   const useScreenOrientation: typeof import('@vueuse/core')['useScreenOrientation']
@@ -631,6 +632,7 @@ declare module 'vue' {
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
     readonly useRoute: UnwrapRef<typeof import('@wot-ui/router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('@wot-ui/router')['useRouter']>
+    readonly useScorecardAuthStore: UnwrapRef<typeof import('./store/scorecard/auth')['useScorecardAuthStore']>
     readonly useScorecardTheme: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardTheme']>
     readonly useScorecardThemeStore: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardThemeStore']>
     readonly useScreenOrientation: UnwrapRef<typeof import('@vueuse/core')['useScreenOrientation']>

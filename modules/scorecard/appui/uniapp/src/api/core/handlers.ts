@@ -8,6 +8,7 @@
  */
 import type { Method } from 'alova'
 import router from '@/router'
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 // Custom error class for API errors
 export class ApiError extends Error {
@@ -32,6 +33,17 @@ interface ApiResponse {
   more?: boolean
 }
 
+// 401/403 统一善后：清登录态 + 提示 + 延时跳登录页。
+// store 经静态 import 引入无环：authStore 只静态依赖 types，api 依赖是动态 import。
+function handleUnauthorized(globalToast: ReturnType<typeof useGlobalToast>) {
+  useScorecardAuthStore().logout()
+  globalToast.error({ msg: '登录已过期，请重新登录！', duration: 500 })
+  const timer = setTimeout(() => {
+    clearTimeout(timer)
+    router.replaceAll({ name: 'login' })
+  }, 500)
+}
+
 // Handle successful responses
 export async function handleAlovaResponse(
   response: UniApp.RequestSuccessCallbackResult | UniApp.UploadFileSuccessCallbackResult | UniApp.DownloadSuccessData,
@@ -42,18 +54,20 @@ export async function handleAlovaResponse(
 
   // 处理401/403错误（如果不是在handleAlovaResponse中处理的）
   if ((statusCode === 401 || statusCode === 403)) {
-    // 如果是未授权错误，清除用户信息并跳转到登录页
-    globalToast.error({ msg: '登录已过期，请重新登录！', duration: 500 })
-    const timer = setTimeout(() => {
-      clearTimeout(timer)
-      router.replaceAll({ name: 'login' })
-    }, 500)
+    // 如果是未授权错误，清除登录态并跳转到登录页
+    handleUnauthorized(globalToast)
 
     throw new ApiError('登录已过期，请重新登录！', statusCode, data)
   }
 
   // Handle HTTP error status codes
   if (statusCode >= 400) {
+    // 后端 pkg/resp.statusFor 把业务错误码映射成 HTTP 状态（3xxxx→400 等），
+    // body 仍是 {code,msg,data} 信封——优先透出五位业务码，便于页面按码分支（如 30112 版本冲突）。
+    const errBody = data as ApiResponse | undefined
+    if (errBody && typeof errBody.code === 'number' && errBody.code !== 0) {
+      throw new ApiError(errBody.msg || `Request failed with status: ${statusCode}`, errBody.code, errBody.data)
+    }
     globalToast.error(`Request failed with status: ${statusCode}`)
     throw new ApiError(`Request failed with status: ${statusCode}`, statusCode, data)
   }
@@ -79,12 +93,8 @@ export function handleAlovaError(error: any, method: Method) {
 
   // 处理401/403错误（如果不是在handleAlovaResponse中处理的）
   if (error instanceof ApiError && (error.code === 401 || error.code === 403)) {
-    // 如果是未授权错误，清除用户信息并跳转到登录页
-    globalToast.error({ msg: '登录已过期，请重新登录！', duration: 500 })
-    const timer = setTimeout(() => {
-      clearTimeout(timer)
-      router.replaceAll({ name: 'login' })
-    }, 500)
+    // 如果是未授权错误，清除登录态并跳转到登录页
+    handleUnauthorized(globalToast)
     throw new ApiError('登录已过期，请重新登录！', error.code, error.data)
   }
 
