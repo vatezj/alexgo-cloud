@@ -3,7 +3,7 @@
  * 支出页 · 筹码加减档（设计 04；Task 8 自占位页整体重写）
  *
  * - 分数档：ExpenseLane（±步进 10 + 预设 10/50/100/200）；score>0 才可提交
- * - 收款方：query toUserId 预选（须为房内非自己成员），否则成员横选（排除自己）
+ * - 记分对象：query toUserId 预选（须为房内非自己成员），否则成员横选（排除自己）
  * - 茶饭档：tea_auto_enabled=true → 「按 X% 自动抽取」说明；false → 手动 tea 档 +
  *   扣茶来源横选（tea_from_user_id，默认支出方=我；0 由后端缺省=支出方）
  * - 幂等提交：reqId 页面进入生成一次存 ref，失败 toast 后重试复用同键
@@ -41,7 +41,7 @@ const routeRoomId = computed(() => {
   return Number.isInteger(n) && n > 0 ? n : 0
 })
 
-/** query.toUserId → 预选收款方（非法/缺失返回0，不预选）。 */
+/** query.toUserId → 预选记分对象（非法/缺失返回0，不预选）。 */
 const routeToUserId = computed(() => {
   const raw = route.query.toUserId
   const str = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
@@ -59,7 +59,7 @@ const snapshot = computed(() =>
 const myUserId = computed(() => authStore.user?.user_id ?? 0)
 const myNickname = computed(() => authStore.user?.nickname || '牌友')
 const members = computed(() => snapshot.value?.members ?? [])
-/** 收款方候选：排除自己（后端拒 to_user_id==本人）。 */
+/** 记分对象候选：排除自己（后端拒 to_user_id==本人）。 */
 const payees = computed(() => members.value.filter(m => m.user_id !== myUserId.value))
 const teaAuto = computed(() => snapshot.value?.tea_auto_enabled ?? false)
 const teaPercentText = computed(() => `${snapshot.value?.tea_percent ?? 0}%`)
@@ -117,6 +117,12 @@ watch(
   { immediate: true },
 )
 
+/** 预选复检：auth 未就绪（myUserId=0）时 query 可能预选到自己，me 就绪后清零重选。 */
+watch(myUserId, (id) => {
+  if (id > 0 && toUserId.value === id)
+    toUserId.value = 0
+}, { immediate: true })
+
 /** 扣茶来源默认支出方（我）：me 资料就绪后回填。 */
 watch(
   myUserId,
@@ -135,7 +141,7 @@ async function onSubmit() {
     return
   }
   if (!toUserId.value) {
-    toast.warning('请先选择收款方')
+    toast.warning('请先选择记分对象')
     return
   }
   submitting.value = true
@@ -228,10 +234,10 @@ onShow(() => {
       :who-name="myNickname"
     />
 
-    <!-- 收款方横选（query 预选后仍可改） -->
+    <!-- 记分对象横选（query 预选后仍可改） -->
     <view class="payees">
       <text class="sec-label">
-        付给谁
+        记给谁
       </text>
       <scroll-view
         class="pay-scroll"
@@ -290,7 +296,7 @@ onShow(() => {
       <ExpenseLane
         v-model:value="tea"
         lane="pot"
-        title="支出茶·饭"
+        title="支出茶/饭"
         tag="茶饭锅"
         :presets="[5, 10, 20]"
         :step="5"
@@ -453,7 +459,7 @@ onShow(() => {
   letter-spacing: 0.12em;
 }
 
-/* ── 收款方横选 ── */
+/* ── 记分对象横选 ── */
 .payees {
   margin-top: 2px;
 }
