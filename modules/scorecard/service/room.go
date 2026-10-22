@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,6 +28,10 @@ const roomCodeLen = 4
 
 // roomCodeMaxAttempts 服务端生成房号的尝试上限：首次 + 冲突重试 5 次，耗尽 → 30106。
 const roomCodeMaxAttempts = 6
+
+// roomCodeCustomRe 自定义房号格式：4-8 位大写字母/数字（落库列 varchar(8)；
+// 无校验时任意串直落，超长在 MySQL 严格模式报 500）。
+var roomCodeCustomRe = regexp.MustCompile(`^[A-Z0-9]{4,8}$`)
 
 // recentLogLimit 快照内嵌最近流水条数（spec §4.1 快照含最近日志）。
 const recentLogLimit = 20
@@ -103,6 +108,9 @@ func NewRoomService(db *gorm.DB, room repository.RoomRepository, member reposito
 func (s *roomService) Create(ctx context.Context, userID uint64, req CreateRoomReq) (*RoomSnapshot, error) {
 	if userID == 0 || req.TeaPercent < 0 || req.TeaPercent > 100 ||
 		req.TeaTargetAmount < 0 || req.MaxLoseScore < 0 {
+		return nil, errs.New(errs.CodeParamInvalid, nil)
+	}
+	if req.RoomCode != "" && !roomCodeCustomRe.MatchString(req.RoomCode) {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
 	custom := req.RoomCode != ""

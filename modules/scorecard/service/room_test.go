@@ -189,6 +189,24 @@ func TestUpdateConfig_StatusGate(t *testing.T) {
 	}
 }
 
+// 票3：自定义房号格式 ^[A-Z0-9]{4,8}$，非法串 10001 拒，不落库
+//（原任意串直落 varchar(8)，超长 500）。
+func TestCreate_CustomCodeFormatValidation(t *testing.T) {
+	svc, _ := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	for _, code := range []string{"abc9", "AB", "ABCDEFGHI", "AB C", "abcd", "AB12中文"} {
+		if _, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: code}); !errs.Is(err, errs.CodeParamInvalid) {
+			t.Fatalf("非法房号 %q 应 10001, got %v", code, err)
+		}
+	}
+	// 合法：4-8 位大写字母/数字。
+	for _, code := range []string{"AB12", "ABCDEF12"} {
+		if _, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: code}); err != nil {
+			t.Fatalf("合法房号 %q 被拒: %v", code, err)
+		}
+	}
+}
+
 // TestSweepExpired_ClosesAndLogs 超时关房：把 expire_time 拨到过去后 SweepExpired
 // 关闭该房（status=2）并写 type=8 状态变更流水（系统级扫描，各房带自己的 TenantID）。
 func TestSweepExpired_ClosesAndLogs(t *testing.T) {
