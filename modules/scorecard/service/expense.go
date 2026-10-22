@@ -92,9 +92,14 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 		// 普通 SELECT 才建立在能看到并发已提交流水的视图；放锁前（MySQL RR）快照
 		// 可能先于对方提交，并发同 client_request_id 会双记。重放语义：同 LogID、
 		// prev.Tea，零重记。
+		// 键归属：client_request_id 仅房间内查重、无唯一索引，可跨用户撞键——
+		// prev 属他人时直接 10001 拒（否则本人支出被吞、回放成他人结果）。
 		if prev, err := logRepo.GetByRequestID(ctx, roomID, req.ClientRequestID); err != nil {
 			return err
 		} else if prev != nil {
+			if prev.FromUserID != userID {
+				return errs.New(errs.CodeParamInvalid, nil)
+			}
 			snap, err := s.buildSnapshot(ctx, tx, roomID, userID)
 			if err != nil {
 				return err

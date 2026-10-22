@@ -60,6 +60,28 @@ func TestExpense_IdempotentReplay(t *testing.T) {
 	}
 }
 
+// 票4：幂等键房间内唯一但可跨用户撞键——同 client_request_id 被他人抢先后，
+// 本人的记分请求不得被吞（回放他人结果），应拒绝；键的原主重放不受影响。
+func TestExpense_IdempotentKeyMustBelongToRequester(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 0, 0)
+	if _, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 30, ToUserID: winner, ClientRequestID: "shared"}); err != nil {
+		t.Fatal(err)
+	}
+	// 他人已占用同键：本人请求被拒（否则本人支出被吞、回放成他人结果）。
+	if _, err := svc.Expense(ctx, winner, roomID, ExpenseReq{Score: 10, ToUserID: loser, ClientRequestID: "shared"}); err == nil {
+		t.Fatal("他人已占用的幂等键应拒绝")
+	}
+	// 键的原主重放仍正常。
+	r, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 30, ToUserID: winner, ClientRequestID: "shared"})
+	if err != nil || r == nil {
+		t.Fatalf("原主重放应正常: %v", err)
+	}
+	m := memberScoreMap(t, svc, ctx, roomID)
+	if m[loser] != -30 || m[winner] != 30 {
+		t.Fatalf("被拒请求不应记分: %v", m)
+	}
+}
+
 func TestExpense_VersionIncrementsSerially(t *testing.T) {
 	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 0, 0)
 	r1, err := svc.Expense(ctx, loser, roomID, ExpenseReq{Score: 10, ToUserID: winner, ClientRequestID: "v1"})
