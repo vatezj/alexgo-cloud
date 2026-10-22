@@ -66,7 +66,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 Recovery → Tenant → Prometheus → RateLimitAndBreaker → Auth → OperateLog → OTEL → AccessLog → Trace
 ```
 
-- **Tenant**：`X-Tenant-ID` 头 → Host 域名匹配 `tenants.domain` → 默认 `0`；登录后由 **token 内 tenant_id 覆盖**（防头伪造跨租户，全路径生效：`/api/admin/**` 与 vben 自读在 `pkg/middleware/auth.go`，`/api/app/**` 在各 handler 的 `claims()` 里同款回写请求 ctx）。
+- **Tenant**：`X-Tenant-ID` 头 → Host 域名匹配 `tenants.domain` → 默认 `0`；登录后由 **token 内 tenant_id 覆盖**（防头伪造跨租户：`/api/admin/**` 与 vben 自读在 `pkg/middleware/auth.go` 中间件统一回写；`/api/app/**` 由各 handler 的 `claims()` 按需回写——member/system 的 7 条 auth 端点不回写，但均不读写租户数据，无越权面）。
 - **RateLimitAndBreaker**：Redis Token Bucket（key `{tid}:{ip}:{FullPath}`）+ 熔断；两开关默认 false，`/health`、`/metrics` 豁免。
 - **Auth**（`pkg/middleware/auth.go`）：作用范围 = `/api/admin/**` + vben 自读 3 端点（`/api/auth/codes`、`/api/user/info`、`/api/menu/all`）。按序：解析 token（token 模式查库 fail-closed / jwt 模式静态解析）→ tenant 覆盖 → **`user_type != 1` 恒 403（置于 Casbin 之前）** → data_scope 注入（失败按 Mode 5 最严兜底）→ `Casbin Enforce(sub, FullPath, method)`。
 - **OperateLog**：仅 `/api/admin/**`，写 `operate_logs` 表。
