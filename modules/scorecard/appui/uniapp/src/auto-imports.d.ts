@@ -275,10 +275,12 @@ declare global {
   const useRefHistory: typeof import('@vueuse/core')['useRefHistory']
   const useRequest: typeof import('alova/client')['useRequest']
   const useResizeObserver: typeof import('@vueuse/core')['useResizeObserver']
+  const useRoomPolling: typeof import('./composables/scorecard/useRoomPolling')['useRoomPolling']
   const useRoute: typeof import('@wot-ui/router')['useRoute']
   const useRouter: typeof import('@wot-ui/router')['useRouter']
   const useSceneRoom: typeof import('./composables/scorecard/useSceneRoom')['useSceneRoom']
   const useScorecardAuthStore: typeof import('./store/scorecard/auth')['useScorecardAuthStore']
+  const useScorecardRoomStore: typeof import('./store/scorecard/room')['useScorecardRoomStore']
   const useScorecardTheme: typeof import('./store/scorecard/theme')['useScorecardTheme']
   const useScorecardThemeStore: typeof import('./store/scorecard/theme')['useScorecardThemeStore']
   const useScreenOrientation: typeof import('@vueuse/core')['useScreenOrientation']
@@ -631,10 +633,12 @@ declare module 'vue' {
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useRequest: UnwrapRef<typeof import('alova/client')['useRequest']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
+    readonly useRoomPolling: UnwrapRef<typeof import('./composables/scorecard/useRoomPolling')['useRoomPolling']>
     readonly useRoute: UnwrapRef<typeof import('@wot-ui/router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('@wot-ui/router')['useRouter']>
     readonly useSceneRoom: UnwrapRef<typeof import('./composables/scorecard/useSceneRoom')['useSceneRoom']>
     readonly useScorecardAuthStore: UnwrapRef<typeof import('./store/scorecard/auth')['useScorecardAuthStore']>
+    readonly useScorecardRoomStore: UnwrapRef<typeof import('./store/scorecard/room')['useScorecardRoomStore']>
     readonly useScorecardTheme: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardTheme']>
     readonly useScorecardThemeStore: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardThemeStore']>
     readonly useScreenOrientation: UnwrapRef<typeof import('@vueuse/core')['useScreenOrientation']>

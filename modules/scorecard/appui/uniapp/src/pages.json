@@ -19,6 +19,13 @@
     },
     // #endif
     {
+      "path": "pages/expense/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/friends/index",
       "type": "page",
       "style": {
@@ -48,6 +55,14 @@
     },
     {
       "path": "pages/room/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/settle/index",
       "type": "page",
       "style": {
         "navigationStyle": "custom"
