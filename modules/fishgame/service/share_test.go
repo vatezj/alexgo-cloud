@@ -90,3 +90,34 @@ func TestShareService_Get_Miss(t *testing.T) {
 		t.Fatalf("应 ErrShareNotFound, got %v", err)
 	}
 }
+
+// jpegBytes 最小 jpeg 头 + 填充（DetectContentType 认 \xFF\xD8\xFF 签名）。
+func jpegBytes(size int) []byte {
+	sig := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	if size <= len(sig) {
+		return sig
+	}
+	out := make([]byte, size)
+	copy(out, sig)
+	return out
+}
+
+// TestShareService_Upload_JpegRoundTrip 终审 Important#1：.jpeg 上传后存盘扩展名
+// 必须与 shareExtOfMime 读取侧一致（统一 jpg），否则上传返回的 URL 立即 404。
+func TestShareService_Upload_JpegRoundTrip(t *testing.T) {
+	svc, _ := newShareService(t)
+	body := jpegBytes(64)
+	url, err := svc.Upload(t.Context(), 1, "card.jpeg", "https://h.example", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := url[strings.LastIndex(url, "/")+1:]
+
+	gotMime, data, err := svc.Get(t.Context(), key)
+	if err != nil {
+		t.Fatalf("jpeg 上传后应可公开读（存取扩展名一致）: %v", err)
+	}
+	if gotMime != "image/jpeg" || !bytes.Equal(data, body) {
+		t.Fatalf("读回应一致: mime=%s len=%d", gotMime, len(data))
+	}
+}

@@ -76,6 +76,11 @@ func (s *DailyService) DailyConfig(ctx context.Context, now time.Time) (*DailyCo
 	if err != nil {
 		return nil, err
 	}
+	// 周过滤（终审 Important#3）：week 非空时必须等于当前周，否则覆盖会永久粘住；
+	// week 空 = 仅窗口限定的无周覆盖（历史行为保留）。
+	if fkCfg != nil && fkCfg.Week != "" && fkCfg.Week != week {
+		fkCfg = nil
+	}
 	if fkCfg != nil && fkCfg.FishID != "" {
 		f, err := s.fishes.GetByFishID(ctx, fkCfg.FishID)
 		if err != nil {

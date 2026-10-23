@@ -440,6 +440,6 @@ func (s *AdminService) Stats(ctx context.Context, now time.Time) (*StatsOut, err
 		FunnelRatio: ratio,
 		SignCount:   counts["sign_in"],
 		BasketCount: counts["basket_claim"],
-		AdCount:     counts["ad"],
+		AdCount:     counts["ad_request"] + counts["ad_rewarded"] + counts["ad_skip"] + counts["ad_fail"],
 	}, nil
 }

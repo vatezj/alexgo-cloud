@@ -13,7 +13,18 @@ import (
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 	"alexGo-cloud/pkg/storage"
+	"alexGo-cloud/pkg/tenant"
 )
+
+// pinTidZero 游戏端不变式：ctx tenant 钉回 0（终审 Important#4）。
+// 全局 NewTenantMiddleware 会把客户端可控的 X-Tenant-ID 注入 ctx；ctx tid≠0 时
+// gormplugin 被激活，写侧 setIfZero 会把仓库显式 TenantID:0 覆盖成分家租户，
+// 同 openid 可裂多行（uk 是 tenant_id+openid）。插件对 tid=0 静默不激活，
+// 故钉 0 即完整关闭——仓库查询无需显式 tenant 过滤（照 scorecard 惯例）。
+func pinTidZero(c *gin.Context) {
+	c.Request = c.Request.WithContext(tenant.WithTenantID(c.Request.Context(), 0))
+	c.Next()
+}
 
 // FxModule fishgame 模块的 fx 装配。
 var FxModule = fx.Module("fishgame",
@@ -126,7 +137,8 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 			return
 		}
 	}
-	v1 := r.Group("/v1")
+	// pinTidZero：游戏段全量钉 tid=0（含 login/公开读），防 X-Tenant-ID 扰动。
+	v1 := r.Group("/v1", pinTidZero)
 	// login 不挂中间件（自鉴权入口）。
 	v1.POST("/auth/login", m.authCtrl.Login)
 	// Task 6-8 业务路由挂 v1Auth（X-Session）。
@@ -141,7 +153,7 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	v1Auth.GET("/friends/rank", m.friendCtrl.Rank)
 	v1Auth.POST("/share/image", m.shareCtrl.Upload)
 	// 公开读（免鉴权）：RegisterRoutes 入参是 /api group → 完整路径 /api/public/fishgame/share/:key。
-	r.GET("/public/fishgame/share/:key", m.publicCtrl.Share)
+	r.GET("/public/fishgame/share/:key", pinTidZero, m.publicCtrl.Share)
 
 	// admin 段（spec §4.2）：统一信封 + casbin 按 permissionRoutes 前缀鉴权。
 	admin := r.Group("/admin/fishgame")

@@ -190,3 +190,25 @@ func TestDailyService_Basket(t *testing.T) {
 		t.Fatalf("恰 8h: bait=%d capped=%v", bait, capped)
 	}
 }
+
+// TestDailyService_DailyConfig_FishKingWeekMismatch_Fallback 终审 Important#3：
+// fish_king 覆盖必须比对 config.week（周更玩法）；week 与当前周不一致 → 回退自算，
+// 否则运营设「本周鱼王」会永久粘住直到手工删除。
+func TestDailyService_DailyConfig_FishKingWeekMismatch_Fallback(t *testing.T) {
+	svc, db := newDailyService(t)
+	if err := db.Create(&model.Config{
+		TenantID: 0, Type: "fish_king", FishID: "epic_b", Week: "2000-W01", Status: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := svc.DailyConfig(t.Context(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FishKing.FishID == "epic_b" {
+		t.Fatal("week 不匹配的覆盖不应下发")
+	}
+	if cfg.FishKing.FishID != "rare_a" && cfg.FishKing.FishID != "epic_b" {
+		t.Fatalf("应回退自算池内: %q", cfg.FishKing.FishID)
+	}
+}

@@ -442,8 +442,11 @@ func TestAdminService_Stats(t *testing.T) {
 	mk("sign_in", d1.Unix())
 	mk("sign_in", d2.Unix())
 	mk("basket_claim", d1.Unix())
-	mk("ad", d1.Unix())
-	mk("ad", d1.Unix())
+	// 终审 Important#2：客户端实际上报 ad_request/ad_rewarded/ad_skip/ad_fail，
+	// 不存在名为 ad 的事件——广告计数须聚合真实事件名。
+	mk("ad_request", d1.Unix())
+	mk("ad_rewarded", d1.Unix())
+	mk("ad_skip", d2.Unix())
 	mk("page_view", d2.Unix())
 	mk("catch", now.Add(-8*24*time.Hour).Unix()) // 窗外，不计
 
@@ -473,8 +476,8 @@ func TestAdminService_Stats(t *testing.T) {
 	if r := st.FunnelRatio["catch"]; r < 0.49 || r > 0.51 {
 		t.Fatalf("catch 占比应 0.5, got %f", r)
 	}
-	if st.SignCount != 3 || st.BasketCount != 1 || st.AdCount != 2 {
-		t.Fatalf("签到/领筐/广告应 3/1/2, got %d/%d/%d",
+	if st.SignCount != 3 || st.BasketCount != 1 || st.AdCount != 3 {
+		t.Fatalf("签到/领筐/广告应 3/1/3（ad_* 三事件聚合）, got %d/%d/%d",
 			st.SignCount, st.BasketCount, st.AdCount)
 	}
 

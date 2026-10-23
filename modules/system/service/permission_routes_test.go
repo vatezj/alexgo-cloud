@@ -226,3 +226,60 @@ func TestSocialSeed_PermsRegistered(t *testing.T) {
 		t.Error("social 菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
 	}
 }
+
+// ---- fishgame（终审 Important#5：Task 9 Step 3 期望的 5 前缀覆盖守护） ----
+
+func TestPermissionRoutes_FishgameRegistered(t *testing.T) {
+	for code, want := range map[string][]string{
+		"fishgame:fish":   {"/api/admin/fishgame/fishes", "/api/admin/fishgame/fishes/*"},
+		"fishgame:config": {"/api/admin/fishgame/configs", "/api/admin/fishgame/configs/*"},
+		"fishgame:event":  {"/api/admin/fishgame/events", "/api/admin/fishgame/events/*"},
+		"fishgame:player": {"/api/admin/fishgame/players", "/api/admin/fishgame/players/*"},
+		"fishgame:stats":  {"/api/admin/fishgame/stats"},
+	} {
+		patterns, ok := permissionRoutes[code]
+		if !ok {
+			t.Fatalf(`permissionRoutes 缺 %q（fishgame 管理页会 403）`, code)
+		}
+		for _, w := range want {
+			found := false
+			for _, p := range patterns {
+				if p == w {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s 缺路由模式 %q, got %v", code, w, patterns)
+			}
+		}
+	}
+}
+
+// 扫 fishgame 菜单种子 SQL：出现的 fishgame:* 权限码前缀必须都已注册路由。
+func TestFishgameSeed_PermsRegistered(t *testing.T) {
+	migPath := filepath.Join("..", "migrations")
+	entries, err := os.ReadDir(migPath)
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	permRe := regexp.MustCompile(`'(fishgame:[a-z0-9_:]+)'`)
+	checked := 0
+	for _, e := range entries {
+		if !strings.Contains(e.Name(), "fishgame_menus") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(migPath, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range permRe.FindAllStringSubmatch(string(b), -1) {
+			checked++
+			if _, ok := permissionRoutes[permPrefix(m[1])]; !ok {
+				t.Errorf("%s 中权限码 %q 前缀 %q 未注册路由", e.Name(), m[1], permPrefix(m[1]))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("fishgame 菜单迁移未扫到任何权限码——文件名或正则失配，测试失效")
+	}
+}

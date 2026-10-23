@@ -58,6 +58,8 @@ func (s *ShareService) Upload(ctx context.Context, playerID uint64, filename, ba
 	if !ok {
 		return "", ErrShareExt
 	}
+	// 存盘扩展名归一（jpeg→jpg），与 Get 侧 shareExtOfMime 一致——否则上传返回的 URL 读 404。
+	ext = shareExtOfMime(wantMime)
 
 	// 头 512 字节双 MIME 探测（Peek 不消费，后续同一流传盘）。
 	br := bufio.NewReaderSize(r, 512)
