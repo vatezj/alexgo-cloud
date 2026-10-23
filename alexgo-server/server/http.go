@@ -8,10 +8,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 
 	"github.com/casbin/casbin/v2"
+
+	// 生成的 Swagger spec（`make swagger` 产出，init 时注册到 swag 注册表）。
+	_ "alexGo-cloud/docs/swagger"
 
 	"alexGo-cloud/pkg/audit"
 	"alexGo-cloud/pkg/circuitbreaker"
@@ -130,6 +135,12 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		r.GET("/debug/pprof/profile", gin.WrapF(pprof.Profile))
 		r.GET("/debug/pprof/symbol", gin.WrapF(pprof.Symbol))
 		r.GET("/debug/pprof/trace", gin.WrapF(pprof.Trace))
+	}
+	// Swagger UI：/swagger/index.html（与 /health 同级，不在 /api 下）。
+	// 默认开（loader server.swagger_enabled=true）；对外生产环境可显式关掉，避免接口形状外泄。
+	// tag 分组（后台管理 / App 端）见 docs/swagger-guide.md。
+	if p.Cfg.Server.SwaggerEnabled {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 	return r
 }

@@ -33,6 +33,7 @@ func LoadGlobalConfig() (*Config, error) {
 	v.SetDefault("server.http_addr", ":8080")
 	v.SetDefault("server.grpc_addr", ":50051")
 	v.SetDefault("server.pprof_enabled", false)
+	v.SetDefault("server.swagger_enabled", true)
 	v.SetDefault("migrate.auto", true)
 	v.SetDefault("outbox.enabled", true)
 	v.SetDefault("outbox.batch_size", 100)

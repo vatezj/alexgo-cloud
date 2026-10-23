@@ -20,6 +20,9 @@ type Config struct {
 		// PprofEnabled：是否挂载 /debug/pprof/**。
 		// 生产默认关闭：pprof 端点会泄露命令行参数、堆栈与运行时信息，应仅在本地/内网调试时开启。
 		PprofEnabled bool `mapstructure:"pprof_enabled"`
+		// SwaggerEnabled：是否挂载 /swagger/index.html（API 文档 UI）。
+		// 默认开（dev 联调方便）；对外暴露的生产环境可显式关掉，避免接口形状外泄。
+		SwaggerEnabled bool `mapstructure:"swagger_enabled"`
 	} `mapstructure:"server"`
 
 	// Database：数据库连接信息与连接池参数。

@@ -35,6 +35,31 @@ func TestPprof_MountedWhenEnabled(t *testing.T) {
 	}
 }
 
+// swagger：swagger_enabled 零值 = false → 不挂载（404）。
+func TestSwagger_NotMountedByDefault(t *testing.T) {
+	cfg := &config.Config{} // swagger_enabled 零值 = false
+	r := newRouter(HTTPServerParams{Cfg: cfg})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/swagger/index.html", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 when swagger disabled", w.Code)
+	}
+}
+
+// swagger：显式开启 → UI 页面 200（与 pprof 同款开关模式）。
+func TestSwagger_MountedWhenEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Server.SwaggerEnabled = true
+	r := newRouter(HTTPServerParams{Cfg: cfg})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/swagger/index.html", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 when swagger enabled", w.Code)
+	}
+}
+
 // liveness：不依赖 DB，永远 200（进程活着即可）。
 func TestHealth_LivenessWithoutDB(t *testing.T) {
 	r := newRouter(HTTPServerParams{Cfg: &config.Config{}})

@@ -1,4 +1,4 @@
-.PHONY: run run-system run-member build clean test proto generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke new-module
+.PHONY: run run-system run-member build clean test proto swagger generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke new-module
 
 MODULE ?= system
 TABLES ?=
@@ -17,6 +17,11 @@ build:
 
 proto:
 	bash scripts/gen_proto.sh
+
+SWAG ?= $(shell go env GOPATH)/bin/swag
+swagger: ## 生成 API 文档到 docs/swagger 并注入侧栏分组（后台管理 / App 端）；需先 go install github.com/swaggo/swag/cmd/swag@v1.16.4
+	$(SWAG) init -g alexgo-server/cmd/main.go -o docs/swagger --parseDepth 3
+	python3 scripts/swagger_inject_taggroups.py
 
 generate-crud: ## 从配置表生成已导入表（MODULE 过滤，默认 system；不覆盖已有文件）
 	go run ./tools/codegen $(if $(MODULE),-module=$(MODULE))
