@@ -5,16 +5,34 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/fishgame/controller/app"
+	"alexGo-cloud/modules/fishgame/middleware"
+	"alexGo-cloud/modules/fishgame/repository"
+	"alexGo-cloud/modules/fishgame/service"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
 )
 
 // FxModule fishgame 模块的 fx 装配。
-//
-// 脚手架期的实体 service/admin/app 控制器与前端 CRUD 视图已随 Task 1 删除
-// （scorecard 先例：脚手架产物全部重写/删除）；Task 5-9 将按业务重建
-// Auth/Session/Track/Dex/Friend/Share 服务与合一版 app/admin 控制器。
 var FxModule = fx.Module("fishgame",
+	fx.Provide(
+		repository.NewPlayerRepository,
+		repository.NewSessionRepository,
+		repository.NewFishRepository,
+		repository.NewDexRepository,
+		repository.NewTrackEventRepository,
+		repository.NewSignRepository,
+		repository.NewFriendRepository,
+		repository.NewConfigRepository,
+		repository.NewShareRepository,
+		// 微信 client：appid/secret 来自 cfg.Fishgame.Wechat（联调前可为空）。
+		func(cfg *config.Config) *service.WechatClient {
+			return service.NewWechatClient(cfg.Fishgame.Wechat.Appid, cfg.Fishgame.Wechat.Secret)
+		},
+		service.NewAuthService,
+		app.NewAuthController,
+		middleware.SessionAuth,
+	),
 	fx.Provide(
 		fx.Annotate(
 			NewModule,
@@ -35,16 +53,20 @@ var FxModule = fx.Module("fishgame",
 type ModuleParams struct {
 	fx.In
 
-	Cfg *config.Config
+	Cfg       *config.Config
+	AuthCtrl  *app.AuthController
+	SessionMW gin.HandlerFunc
 }
 
 type fishgameModule struct {
-	cfg *config.Config
+	cfg       *config.Config
+	authCtrl  *app.AuthController
+	sessionMW gin.HandlerFunc
 }
 
 // NewModule 产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
-	return &fishgameModule{cfg: p.Cfg}
+	return &fishgameModule{cfg: p.Cfg, authCtrl: p.AuthCtrl, sessionMW: p.SessionMW}
 }
 
 // RegisterRoutes 挂载 fishgame 路由。入参是 /api group（见 server/http.go），
@@ -56,5 +78,9 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 			return
 		}
 	}
-	// Task 5 起：v1 段（auth/session + 中间件）与 admin 段陆续接线。
+	v1 := r.Group("/v1")
+	// login 不挂中间件（自鉴权入口）。
+	v1.POST("/auth/login", m.authCtrl.Login)
+	// Task 6-8 业务路由挂 v1Auth（X-Session）。
+	_ = v1.Group("", m.sessionMW)
 }
