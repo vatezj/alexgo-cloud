@@ -1,0 +1,4 @@
+# fishgame 模块私有配置（newmodule 生成骨架，可为空）。
+# 加载规则：主配置 modules.fishgame: true 时本文件被继续加载，键以
+# "fishgame." 命名空间合并进全局配置（见 pkg/config/loader.go / config.go）。
+{}

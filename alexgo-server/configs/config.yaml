@@ -45,6 +45,13 @@ modules:
   system: true
   order: true
   scorecard: true
+  fishgame: true
+
+fishgame:
+  wechat:
+    appid: ""             # 小游戏 appid（联调时填）
+    secret: ""            # 小游戏 secret
+  public_base_url: ""     # 空 = 由请求 Host + https 拼接（share/image 的 url）
 
 storage:
   root: ./data/uploads        # 盘根，驱动构造时 MkdirAll

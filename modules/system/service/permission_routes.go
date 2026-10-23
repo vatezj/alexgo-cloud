@@ -20,9 +20,15 @@ import (
 // 种子通配策略（"/api/admin/*"）被移除后所有 UPDATE/DELETE/POST :id 路由会 403。
 // `/*` 经 keyMatch2 转为 "/.*"，同时覆盖集合与其全部子路径。
 var permissionRoutes = map[string][]string{
-	"infra:codegen": {"/api/admin/infra/codegen", "/api/admin/infra/codegen/*"},
-	"infra:file":    {"/api/admin/infra/file", "/api/admin/infra/file/*"},
-	"oauth2:client": {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"},
+	// fishgame 五前缀（spec §4.2）：路径与 Task 9 admin 段对齐（fishes 复数）。
+	"fishgame:fish":   {"/api/admin/fishgame/fishes", "/api/admin/fishgame/fishes/*"},
+	"fishgame:config": {"/api/admin/fishgame/configs", "/api/admin/fishgame/configs/*"},
+	"fishgame:event":  {"/api/admin/fishgame/events", "/api/admin/fishgame/events/*"},
+	"fishgame:player": {"/api/admin/fishgame/players", "/api/admin/fishgame/players/*"},
+	"fishgame:stats":  {"/api/admin/fishgame/stats"},
+	"infra:codegen":   {"/api/admin/infra/codegen", "/api/admin/infra/codegen/*"},
+	"infra:file":      {"/api/admin/infra/file", "/api/admin/infra/file/*"},
+	"oauth2:client":   {"/api/admin/oauth2/clients", "/api/admin/oauth2/clients/*"},
 	// scorecard 只保留 room/record/friend 三个前缀（Task 13：脚手架 6 实体
 	// 收敛为 3 个监管页；room_user/room_log/friend_black 无独立 admin 路由，
 	// 留键会产出指向不存在路由的 policy）。路径与 module.go admin 段对齐。

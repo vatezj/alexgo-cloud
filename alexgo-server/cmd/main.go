@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/fishgame"
 	"alexGo-cloud/modules/member"
 	"alexGo-cloud/modules/order"
 	"alexGo-cloud/modules/scorecard"
@@ -196,6 +197,7 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		system.FxModule,
 		order.FxModule,
 		scorecard.FxModule,
+		fishgame.FxModule,
 	}
 	// mono 模式（deployment.mode != "micro"）：member 路由同进程注册，
 	// TokenIssuer/AccountLimitChecker 都由本进程本地满足；

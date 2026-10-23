@@ -122,6 +122,17 @@ type Config struct {
 		UnitTestEnable bool `mapstructure:"unit_test_enable"`
 	} `mapstructure:"codegen"`
 
+	// Fishgame：fishgame《摸鱼》小游戏模块配置（spec §6）。
+	Fishgame struct {
+		// Wechat 小游戏 appid/secret（code2session 用），与 oauth2 social 渠道解耦。
+		Wechat struct {
+			Appid  string `mapstructure:"appid"`
+			Secret string `mapstructure:"secret"`
+		} `mapstructure:"wechat"`
+		// PublicBaseURL 分享图绝对 URL 前缀；空 = 由请求 Host + https 拼接。
+		PublicBaseURL string `mapstructure:"public_base_url"`
+	} `mapstructure:"fishgame"`
+
 	// Storage：文件存储（pkg/storage 本地盘驱动，子项目 B / P1-1）。
 	// 不做 Enabled 开关：本地盘无外部依赖（与 Redis/MQ 的可选依赖不同），YAGNI。
 	Storage struct {
