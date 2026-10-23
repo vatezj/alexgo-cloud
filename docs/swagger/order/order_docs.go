@@ -14,7 +14,104 @@ const docTemplateorder = `{
     },
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
-    "paths": {,"x-tagGroups": []},
+    "paths": {
+        "/admin/order/orders": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 order:order；无 page/size 入参，data 为订单数组（不顺手加分页）。租户隔离在 repo 层（user_id → system_users.tenant_id）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "order-admin"
+                ],
+                "summary": "订单全量列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 order:order；body 全字段平铺（user_id/product_id/amount 分/状态/订单号）。成功 data 为 null。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "order-admin"
+                ],
+                "summary": "创建订单",
+                "parameters": [
+                    {
+                        "description": "订单信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/order/orders/export": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 order:order；当前租户全量订单 Excel（ID/订单号/用户/产品/金额分/状态/时间）。Content-Disposition 附件下载。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "order-admin"
+                ],
+                "summary": "导出全量订单 xlsx",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        }
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["order-admin"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",

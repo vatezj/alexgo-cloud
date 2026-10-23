@@ -58,10 +58,31 @@ func (c *AdminOrderController) List(ctx *gin.Context) {
 	resp.OK(ctx, data)
 }
 
+// CreateOrder godoc
+//
+//	@Summary		创建订单
+//	@Description	权限 order:order；body 全字段平铺（user_id/product_id/amount 分/状态/订单号）。成功 data 为 null。
+//	@Tags			order-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			body	body	object	true	"订单信息"	Example({"user_id": 1, "product_id": 100, "amount": 9900, "status": 1, "order_no": "NO20261023001"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/order/orders [post]
 func (c *AdminOrderController) CreateOrder(ctx *gin.Context) {
 	c.Create(ctx)
 }
 
+// ListOrders godoc
+//
+//	@Summary		订单全量列表
+//	@Description	权限 order:order；无 page/size 入参，data 为订单数组（不顺手加分页）。租户隔离在 repo 层（user_id → system_users.tenant_id）。
+//	@Tags			order-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{object}	map[string]interface{}
+//	@Router			/admin/order/orders [get]
 func (c *AdminOrderController) ListOrders(ctx *gin.Context) {
 	c.List(ctx)
 }
@@ -69,6 +90,16 @@ func (c *AdminOrderController) ListOrders(ctx *gin.Context) {
 // ExportOrders 导出当前租户全量订单 xlsx（GET /orders/export）。
 // 复用既有 List：租户隔离在 repo 层显式做（user_id → system_users.tenant_id；
 // Order 模型无 TenantID 字段，gormplugin 不接管）；Build 失败字节未写，信封安全（RF②）。
+
+// ExportOrders godoc
+//
+//	@Summary		导出全量订单 xlsx
+//	@Description	权限 order:order；当前租户全量订单 Excel（ID/订单号/用户/产品/金额分/状态/时间）。Content-Disposition 附件下载。
+//	@Tags			order-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{file}	string
+//	@Router			/admin/order/orders/export [get]
 func (c *AdminOrderController) ExportOrders(ctx *gin.Context) {
 	orders, err := c.orderSvc.List(ctx.Request.Context())
 	if err != nil {

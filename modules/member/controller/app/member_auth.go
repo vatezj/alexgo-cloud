@@ -47,7 +47,17 @@ type unavailableBody struct {
 	Data any    `json:"data"`
 }
 
-// Register 注册会员（公开接口）。
+// Register godoc
+//
+//	@Summary		会员注册（公开）
+//	@Description	body {mobile,password,nickname}；查重 → 30009、字段校验 → 10001。响应 pkg/resp 信封，data 为会员行。免鉴权。
+//	@Tags			member-app
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body	object	true	"注册信息"	Example({"mobile": "13800138000", "password": "secret", "nickname": "阿飞"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/app/member/auth/register [post]
 func (c *AuthController) Register(ctx *gin.Context) {
 	var req registerRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -64,9 +74,19 @@ func (c *AuthController) Register(ctx *gin.Context) {
 	resp.OK(ctx, u)
 }
 
-// Login 会员登录（公开接口）——内部走统一登录（account_type=member，client=alexgo-app）。
-// 映射：签发/装配故障 → 503 信封 code 50000（I2 不冒充 401）；captcha 拒绝 → 30005 400；
-// 其余 → 20001 固定文案（vben 登录同构，防枚举）。
+// Login godoc
+//
+//	@Summary		会员登录（公开）
+//	@Description	统一登录（account_type=member，client=alexgo-app），带 captcha 两段。data={token,refresh_token,expires_in}。失败：captcha 拒 → 400/30005；签发/装配故障 → 503/50000；其余 401/20001 固定文案（防枚举）。免鉴权。
+//	@Tags			member-app
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body	object	true	"登录信息"	Example({"mobile": "13800138000", "password": "secret", "captcha_uuid": "uuid", "captcha_code": "abcd"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		401		{object}	map[string]interface{}
+//	@Failure		503		{object}	map[string]interface{}
+//	@Router			/app/member/auth/login [post]
 func (c *AuthController) Login(ctx *gin.Context) {
 	var req loginRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -101,8 +121,18 @@ func (c *AuthController) Login(ctx *gin.Context) {
 	resp.OK(ctx, res)
 }
 
-// Refresh 刷新令牌。possession-based：凭 body 里的 refresh_token，无须中间件登录态
-// （access 过期正是刷新的场景——见 I1，中间件不再拦 /api/app/**）。
+// Refresh godoc
+//
+//	@Summary		刷新令牌
+//	@Description	possession-based：凭 body 里的 refresh_token 刷新，无须登录态中间件（access 过期正是刷新场景）。失败 401。免 X-Session。
+//	@Tags			member-app
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body	object	true	"刷新令牌"	Example({"refresh_token": "..."})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		401		{object}	map[string]interface{}
+//	@Router			/app/member/auth/refresh [post]
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
@@ -124,8 +154,16 @@ func (c *AuthController) Refresh(ctx *gin.Context) {
 	resp.OK(ctx, res)
 }
 
-// Logout 注销当前 access token。possession-based：凭 Authorization 头的 access token
-// 自行撤销（无须中间件登录态，I1）。
+// Logout godoc
+//
+//	@Summary		注销当前 access token
+//	@Description	possession-based：凭 Authorization 头的 access token 自行撤销，无须登录态中间件（I1）。
+//	@Tags			member-app
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		400	{object}	map[string]interface{}
+//	@Router			/app/member/auth/logout [post]
 func (c *AuthController) Logout(ctx *gin.Context) {
 	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
 	if raw == "" {

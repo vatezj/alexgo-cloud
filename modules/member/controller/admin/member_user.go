@@ -22,7 +22,17 @@ type UserController struct {
 // NewUserController 构造控制器（fx 注入 MemberService）。
 func NewUserController(svc service.MemberService) *UserController { return &UserController{svc: svc} }
 
-// List 分页列出当前租户会员 → 统一分页信封 data:{list,total,page,size}。
+// List godoc
+//
+//	@Summary		会员分页
+//	@Description	权限 member:user；当前租户会员 → 统一分页信封 data:{list,total,page,size}。
+//	@Tags			member-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			page	query	integer	false	"页码，默认 1"	Example(1)
+//	@Param			size	query	integer	false	"每页条数，默认 10"	Example(10)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/member/users [get]
 func (c *UserController) List(ctx *gin.Context) {
 	var req resp.PageReq
 	if err := ctx.ShouldBindQuery(&req); err != nil {
@@ -38,9 +48,19 @@ func (c *UserController) List(ctx *gin.Context) {
 	resp.Page(ctx, items, total, req)
 }
 
-// UpdateStatus 启用/停用会员（PUT /users/:id/status）。
-// T5 deferred 关闭：status 用指针 bind——字段缺失（空 body/`{}`）或值 ∉ {0,1} 一律 400，
-// 不再出现"空 body 默认停用"；service 层再兜一层 ErrInvalidStatus 校验。
+// UpdateStatus godoc
+//
+//	@Summary		启用/停用会员
+//	@Description	权限 member:user；status 指针 bind——缺字段或值 ∉ {0,1} 一律 400（无"空 body 默认停用"）。
+//	@Tags			member-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id		path	integer	true	"会员行 id"
+//	@Param			body	body	object	true	"启停状态"	Example({"status": 1})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/member/users/{id}/status [put]
 func (c *UserController) UpdateStatus(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
@@ -74,9 +94,15 @@ func (c *UserController) UpdateStatus(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
-// ExportMemberUsers 导出当前租户全量会员 xlsx（GET /users/export）。
-// 租户隔离双层：svc.Export 取 ctx 租户 + repo.ListAll Where + gormplugin 经 ctx
-// 照常作用；Build 失败字节未写，信封安全（RF②）。
+// ExportMemberUsers godoc
+//
+//	@Summary		导出全量会员 xlsx
+//	@Description	权限 member:user；当前租户全量会员 Excel（ID/昵称/手机/状态/IP/时间）。Content-Disposition 附件下载。
+//	@Tags			member-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{file}	string
+//	@Router			/admin/member/users/export [get]
 func (c *UserController) ExportMemberUsers(ctx *gin.Context) {
 	members, err := c.svc.Export(ctx.Request.Context())
 	if err != nil {

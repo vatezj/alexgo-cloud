@@ -47,7 +47,16 @@ func (c *MeController) claims(ctx *gin.Context) (*token.Claims, bool) {
 	return cl, true
 }
 
-// Me 当前登录会员资料。data 键名 user_id/nickname/avatar/created_at 逐字（小程序前端消费面）。
+// Me godoc
+//
+//	@Summary		当前登录会员资料
+//	@Description	凭 Authorization Bearer 自鉴权（member 身份校验，非 X-Session）。data 键名 user_id/nickname/avatar/created_at 逐字（小程序前端消费面）。
+//	@Tags			member-app
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		401	{object}	map[string]interface{}
+//	@Router			/app/member/me [get]
 func (c *MeController) Me(ctx *gin.Context) {
 	cl, ok := c.claims(ctx)
 	if !ok {
@@ -68,7 +77,19 @@ type updateMeRequest struct {
 	Avatar   *string `json:"avatar"`
 }
 
-// UpdateMe 部分更新当前登录会员资料（只改提供的项）。
+// UpdateMe godoc
+//
+//	@Summary		部分更新会员资料
+//	@Description	凭 Bearer 自鉴权。指针字段缺省 nil=不改；nickname 空串 → 10001；avatar 空串=清空（合法）。
+//	@Tags			member-app
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			body	body	object	true	"要改的字段（可只给一项）"	Example({"nickname": "阿飞", "avatar": "https://cdn.example.com/a.png"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		401		{object}	map[string]interface{}
+//	@Router			/app/member/me [put]
 func (c *MeController) UpdateMe(ctx *gin.Context) {
 	cl, ok := c.claims(ctx)
 	if !ok {

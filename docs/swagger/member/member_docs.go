@@ -14,7 +14,394 @@ const docTemplatemember = `{
     },
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
-    "paths": {,"x-tagGroups": []},
+    "paths": {
+        "/admin/member/users": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 member:user；当前租户会员 → 统一分页信封 data:{list,total,page,size}。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-admin"
+                ],
+                "summary": "会员分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/member/users/export": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 member:user；当前租户全量会员 Excel（ID/昵称/手机/状态/IP/时间）。Content-Disposition 附件下载。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-admin"
+                ],
+                "summary": "导出全量会员 xlsx",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/member/users/{id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 member:user；status 指针 bind——缺字段或值 ∉ {0,1} 一律 400（无\"空 body 默认停用\"）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-admin"
+                ],
+                "summary": "启用/停用会员",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会员行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "启停状态",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/member/auth/login": {
+            "post": {
+                "description": "统一登录（account_type=member，client=alexgo-app），带 captcha 两段。data={token,refresh_token,expires_in}。失败：captcha 拒 → 400/30005；签发/装配故障 → 503/50000；其余 401/20001 固定文案（防枚举）。免鉴权。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "会员登录（公开）",
+                "parameters": [
+                    {
+                        "description": "登录信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/member/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "possession-based：凭 Authorization 头的 access token 自行撤销，无须登录态中间件（I1）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "注销当前 access token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/member/auth/refresh": {
+            "post": {
+                "description": "possession-based：凭 body 里的 refresh_token 刷新，无须登录态中间件（access 过期正是刷新场景）。失败 401。免 X-Session。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "刷新令牌",
+                "parameters": [
+                    {
+                        "description": "刷新令牌",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/member/auth/register": {
+            "post": {
+                "description": "body {mobile,password,nickname}；查重 → 30009、字段校验 → 10001。响应 pkg/resp 信封，data 为会员行。免鉴权。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "会员注册（公开）",
+                "parameters": [
+                    {
+                        "description": "注册信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/member/me": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "凭 Authorization Bearer 自鉴权（member 身份校验，非 X-Session）。data 键名 user_id/nickname/avatar/created_at 逐字（小程序前端消费面）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "当前登录会员资料",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "凭 Bearer 自鉴权。指针字段缺省 nil=不改；nickname 空串 → 10001；avatar 空串=清空（合法）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "member-app"
+                ],
+                "summary": "部分更新会员资料",
+                "parameters": [
+                    {
+                        "description": "要改的字段（可只给一项）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["member-admin"]}, {"name": "App 端", "tags": ["member-app"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",
