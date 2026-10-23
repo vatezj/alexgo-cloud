@@ -1003,6 +1003,129 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 
 ---
 
+## 12. fishgame — 摸鱼小游戏后端模块
+
+### 12.1 功能
+
+微信小游戏《摸鱼》后端：X-Session 自持会话、每日循环（签到/领筐/运气）、埋点批量上报、
+图鉴双路径记账（报告幂等合并 + 事件回放校正）、库内好友榜、分享图上传与公开读、
+确定性鱼王（周粒度 sha256）。设计见
+[`superpowers/specs/2026-10-23-fishgame-module-design.md`](superpowers/specs/2026-10-23-fishgame-module-design.md)；
+客户端为 Godot 小游戏（`scripts/online_service.gd`，本仓库外），接本节 v1 契约 10 端点。
+
+装配要点（`modules/fishgame/module.go`；`modules.fishgame: false` 时 `RegisterRoutes` 直接返回）：
+
+- **Repository**：Player / Session / Fish / Dex / TrackEvent / Sign / Friend / Config / Share 九类
+- **Service**：`AuthService`（code2session + X-Session）、`DailyService`、`TrackService`（canonical dedup）、
+  `DexService`（双路径合并）、`FriendService`（双口径排名）、`ShareService`、`AdminService`
+- **Controller**：`controller/app`（10 契约端点，**裸 JSON 直出**，错误 `{"error":"<english>"}`）
+  与 `controller/admin`（13 路由 5 组，统一信封 + casbin，不取 claims）
+- 用户体系**独立**：不复用 member/oauth2 token，身份 = `openid`（code2session 换取），
+  会话 = 自持 `X-Session` 随机串（`fishgame_session` 表）；game-end 类逻辑 ctx `tenant_id=0`
+
+### 12.2 权限与菜单
+
+| 端 | 范围 | 鉴权 |
+| --- | --- | --- |
+| app | `/api/v1/fishgame` 契约 10 条（实际挂 `/api/v1/**`） | `X-Session` 中间件（login 免挂）；缺/坏会话 401 |
+| public | `/api/public/fishgame/share/:key` | 免鉴权（签名 URL 公开读） |
+| admin | `/api/admin/fishgame/**`（13 路由 5 组） | 管理员 token + casbin，五前缀见 §9：`fishgame:fish` / `fishgame:config` / `fishgame:event` / `fishgame:player` / `fishgame:stats` |
+
+菜单种子在 system 模块迁移
+`modules/system/migrations/20261023000001_fishgame_menus.up.sql`（全部 `NOT EXISTS` 幂等、`tenant_id=0`）：
+目录「Fishgame」`/fishgame`（perm `fishgame`、`lucide:package`、sort=85）+ 5 页面
+Fishes/Configs/Events/Players/Stats（perm `fishgame:fish/config/event/player/stats`，
+component 指向 §12.8 五个页面）。启动 seed 全量绑 admin 并重建策略（§2.6）。
+
+### 12.3 契约端点（10 条，前缀 `/api/v1`，裸 JSON）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/auth/login` | code2session 换 openid → 建/续 `X-Session`；免中间件（自鉴权入口） |
+| GET | `/config/daily` | 每日配置（时段/水层权重，luck 配置生效态） |
+| POST | `/daily/sign` | 签到（幂等当日一次） |
+| GET | `/basket` | 领筐状态 |
+| POST | `/track` | 埋点批量上报（canonical dedup key 幂等） |
+| GET | `/dex/table` | 图鉴表（fish 元数据 + 我的点亮数） |
+| POST | `/dex/report` | 打捞报告（双路径记账：MergeReport 幂等 + 事件回放校正） |
+| POST | `/friends` | 加好友（库内关系，一期） |
+| GET | `/friends/rank` | 好友榜（点亮数 desc、nick asc 决胜；空好友集 → 全体榜） |
+| POST | `/share/image` | 分享图上传 → 返回签名 URL key |
+
+响应**无 `code` 顶层键**（`pkg/resp` 不经手）；错误统一裸形状 `{"error":"<english>"}`。
+完整字段形状见 spec §4.1 与 `docs/backend-api.md`。
+
+### 12.4 admin 端点（13 路由 5 组，前缀 `/api/admin/fishgame`）
+
+| 组 | 路由 | 权限码 | 说明 |
+| --- | --- | --- | --- |
+| fish | GET/POST `/fishes`、PUT/DELETE `/fishes/:id` | `fishgame:fish` | 图鉴条目 CRUD：`rarity` 筛选、`status` 缺省 -1 不过滤；重复 fish_id 30401；枚举校验 10001；删除引用检查（dex/事件 props LIKE）→ 30402 |
+| config | GET/POST `/configs`、PUT/DELETE `/configs/:id` | `fishgame:config` | 运营配置：type `luck`/`fish_king`；luck `depth_bias∈[0,0.3]`；fish_king fish_id+week 必填、鱼不存在/停用 30403；查无 30404 |
+| event | GET `/events` | `fishgame:event` | 埋点分页（name/player_id/起止时间筛选，id 倒序） |
+| player | GET `/players`、GET `/players/:id`、GET `/players/:id/rank` | `fishgame:player` | 玩家监管：openid/nick 模糊 + 行内点亮数；详情（点亮明细 count≥1 + 最近 20 事件）；榜单位次（客服排查）；查无 30002 |
+| stats | GET `/stats` | `fishgame:stats` | 近 7 日看板：玩家总数/今日新增、事件计数、按日趋势、四结果漏斗（catch/empty/escape/broken）+ 占比、签到/领筐/广告计数 |
+
+admin 全走 `resp.OK/Fail/Page` 统一信封；`resp.statusFor` 把 304xx 映射 HTTP 400。
+
+### 12.5 数据模型（9 表）
+
+迁移 `modules/fishgame/migrations/20261023000001_fishgame_tables.{up,down}.sql`
+（`CREATE TABLE IF NOT EXISTS`、无外键），48 条 fish 种子在
+`20261023000002_fishgame_fish_seed.up.sql`。**9 表全带 `tenant_id`** + `created_at`/`updated_at`：
+
+| 表 | 要点 |
+| --- | --- |
+| `fishgame_player` | `openid` 唯一、`nick`、`last_login_at` |
+| `fishgame_session` | `X-Session` 随机串、`player_id`、过期 |
+| `fishgame_fish` | 48 条种子：`fish_id` 唯一 token、`rarity` normal/misc/rare/epic、`period`（any,day,dusk,night 逗号可组合）、`depth` any/shallow/mid/deep、`flavor`、`sort`、`status` 启停 |
+| `fishgame_dex` | 点亮进度：`player_id`+`fish_id` 唯一、`count`（双路径记账的汇合点） |
+| `fishgame_track_event` | 埋点：`name`、`t`（秒）、`props` JSON、`dedup_key` 唯一（canonical JSON） |
+| `fishgame_sign` | 签到：玩家日粒度幂等 |
+| `fishgame_friend` | 库内好友（一期；微信关系链留位 `FriendSource` 抽象） |
+| `fishgame_config` | 运营配置：type `luck`（period+depth_bias）/ `fish_king`（fish_id+week） |
+| `fishgame_share` | 分享图：storage.Driver 落盘 + `public_base_url` 签名 key |
+
+### 12.6 关键机制
+
+- **双路径图鉴记账**：`POST /dex/report` 的报告走 `MergeReport` 幂等合并；`/track` 的 `catch`
+  事件异步回放校正——两路都汇入 `fishgame_dex.count`，对账以事件为准。
+- **确定性鱼王**：`SeedFromSHA256(week)` 驱动，admin 下发 `fish_king` 配置当周生效；
+  确定性保证同周全服同王、可复算。
+- **canonical dedup**：`dedup_key` 由 props 规范 JSON 序列化生成，字段序无关，客户端重试安全。
+- **好友榜双口径**：`rankEntries` 共享核心（点亮数 desc → nick asc）；空好友集降级全体榜。
+- **Stats 聚合**：`ListNameTSince` pluck 后 Go 内分桶（7 日窗口有界），mysql/sqlite 双兼容。
+
+### 12.7 错误码（30401–30404）
+
+`pkg/errors/code.go` 的 fishgame 段（HTTP 400）：
+
+| 码 | 含义 | 码 | 含义 |
+| --- | --- | --- | --- |
+| 30401 | 图鉴条目不存在（查无/跨租户；重复 fish_id 复用此码） | 30403 | 鱼王指定的条目不存在或已停用 |
+| 30402 | 条目已被进度或事件引用，不可删除 | 30404 | 运营配置不存在 |
+
+### 12.8 前端页面（apps/web-antd，5 页）
+
+| 路由 | 组件 | 功能 |
+| --- | --- | --- |
+| `/fishgame/fishes` | `views/fishgame/FishgameFishesPage.vue` | 图鉴条目分页 + rarity/状态筛选 + 新建/编辑/删除 + Switch 启停 |
+| `/fishgame/configs` | `FishgameConfigsPage.vue` | 配置列表 + type 切换 luck/fish_king（鱼王 fish_id 下拉取自启用 fishes） |
+| `/fishgame/events` | `FishgameEventsPage.vue` | 埋点分页 + name/player_id/时间范围筛选 + props JSON 折叠 |
+| `/fishgame/players` | `FishgamePlayersPage.vue` | 玩家模糊搜索 + 详情抽屉（点亮明细 + 最近 20 事件 + 榜单位次） |
+| `/fishgame/stats` | `FishgameStatsPage.vue` | 总数卡 + 四结果漏斗 + 事件计数 + 按日趋势 |
+
+API 封装 `src/api/fishgame.ts`（requestClient → `/api/admin/fishgame/**`）；
+页内不使用 `v-access`——可见性靠菜单、操作靠后端 casbin。
+
+### 12.9 联调要点
+
+1. 后端起服务，微信小游戏后台配置 request 合法域名。
+2. 客户端 `online_service.gd` 顶部 `base_url` 填后端地址。
+3. 微信开发者工具 Network 面板观察 `/track` 批量上报与 dedup 幂等。
+4. admin 下发指定 fish_id 的 `fish_king` 配置，验证游戏内当周鱼王切换。
+
+---
+
 ## 附：已知缺口与遗留（写文档时核实）
 
 - `orders` 表无 tenant_id，多租户隔离不生效（§7.4）。
