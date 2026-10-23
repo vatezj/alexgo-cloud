@@ -16,7 +16,18 @@ import (
 	"alexGo-cloud/modules/system/infra/model"
 	"alexGo-cloud/modules/system/infra/service"
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/token"
 )
+
+// stubValidator token.Validator 测试桩（与 member_me_test 同形，本包独立命名空间）。
+type stubValidator struct{ byToken map[string]*token.Claims }
+
+func (s stubValidator) Validate(_ context.Context, accessToken string) (*token.Claims, error) {
+	if cl, ok := s.byToken[accessToken]; ok {
+		return cl, nil
+	}
+	return nil, context.Canceled
+}
 
 // fileStub 记录调用、按 case 返回（直接实现 service.FileService）。
 type fileStub struct {
@@ -47,12 +58,17 @@ func (s *fileStub) Open(context.Context, *model.SystemFile) (io.ReadCloser, erro
 }
 func (s *fileStub) Delete(context.Context, uint64) error { return s.deleteErr }
 
-// newFileTestRouter 同时挂 admin 与 public 两组——照真实模块的相对前缀。
+// newFileTestRouter 同时挂 admin / app / public 三组——照真实模块的相对前缀。
+// app 组 Bearer 桩：tok-member → member、tok-admin → admin（类型门用例）。
 func newFileTestRouter(stub *fileStub) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	c := NewFileController(stub)
+	c := NewFileController(stub, stubValidator{byToken: map[string]*token.Claims{
+		"tok-member": {UserID: 7, Username: "tester", UserType: token.UserTypeMember, TenantID: 1},
+		"tok-admin":  {UserID: 1, Username: "root", UserType: token.UserTypeAdmin, TenantID: 1},
+	}})
 	c.RegisterAdminRoutes(r.Group("/api/admin/infra/file"))
+	c.RegisterAppRoutes(r.Group("/api/app/infra/file"))
 	c.RegisterPublicRoutes(r.Group("/api/public/infra/file"))
 	return r
 }
@@ -216,4 +232,61 @@ func codeOfBody(t *testing.T, w *httptest.ResponseRecorder) (int, string) {
 		t.Fatalf("unmarshal: %v body=%s", err, w.Body.String())
 	}
 	return env.Code, string(env.Data)
+}
+
+// app 面上传（POST /app/infra/file/upload）：claims 门（无 token 20001 / admin 类型 20003）；
+// 图片扩展名白名单（a.pdf → 30011，service 不被调用）；member png → 200 且
+// 强制 Public=true + BizType=avatar + public_url 走 public 面。
+func TestUploadApp_ClaimsImageGateAndPublic(t *testing.T) {
+	stub := &fileStub{upload: &model.SystemFile{
+		ID: 9, Name: "a.png", Size: 1, Mime: "image/png",
+		Public: true, PublicKey: strings.Repeat("d", 32),
+	}}
+	r := newFileTestRouter(stub)
+
+	// 无 Bearer → 20001（HTTP 401）
+	req := multipartReq(t, "/api/app/infra/file/upload", "a.png", []byte("x"), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if code, _ := codeOfBody(t, w); code != 20001 || w.Code != 401 {
+		t.Errorf("no bearer: http=%d code=%d, want 401/20001", w.Code, code)
+	}
+
+	// admin 类型 token → 20003（HTTP 403，app 面只收 member）
+	req2 := multipartReq(t, "/api/app/infra/file/upload", "a.png", []byte("x"), nil)
+	req2.Header.Set("Authorization", "Bearer tok-admin")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if code, _ := codeOfBody(t, w2); code != 20003 || w2.Code != 403 {
+		t.Errorf("admin token: http=%d code=%d, want 403/20003", w2.Code, code)
+	}
+
+	// member + 非图片扩展名 → 30011，service 不被调用
+	stubBefore := stub.gotIn
+	req3 := multipartReq(t, "/api/app/infra/file/upload", "a.pdf", []byte("x"), nil)
+	req3.Header.Set("Authorization", "Bearer tok-member")
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, req3)
+	if code, _ := codeOfBody(t, w3); code != 30011 || w3.Code != 400 {
+		t.Errorf("pdf reject: http=%d code=%d, want 400/30011", w3.Code, code)
+	}
+	if stub.gotIn != stubBefore {
+		t.Errorf("service should not be called for pdf, gotIn=%+v", stub.gotIn)
+	}
+
+	// member + png → 200；强制 Public=true + BizType=avatar；public_url 走 public 面
+	req4 := multipartReq(t, "/api/app/infra/file/upload", "a.png", []byte("x"), nil)
+	req4.Header.Set("Authorization", "Bearer tok-member")
+	w4 := httptest.NewRecorder()
+	r.ServeHTTP(w4, req4)
+	if w4.Code != 200 {
+		t.Fatalf("member png: http=%d body=%s", w4.Code, w4.Body)
+	}
+	code, data := codeOfBody(t, w4)
+	if code != 0 || !strings.Contains(data, "/api/public/infra/file/"+strings.Repeat("d", 32)) {
+		t.Errorf("envelope code=%d data=%s, want 0 with public_url", code, data)
+	}
+	if !stub.gotIn.Public || stub.gotIn.BizType != "avatar" || stub.gotIn.Name != "a.png" {
+		t.Errorf("service input = %+v, want Public=true BizType=avatar", stub.gotIn)
+	}
 }

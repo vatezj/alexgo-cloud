@@ -114,9 +114,10 @@ func NewModule(codegenCtrl *admin.CodegenController, fileCtrl *admin.FileControl
 }
 
 // RegisterRoutes 挂载 infra 路由。入参是 /api group（见 server/http.go），
-// 故这里用相对前缀：admin 受控组 + public 免鉴权组。
+// 故这里用相对前缀：admin 受控组 + app 会员组（Bearer 自鉴权）+ public 免鉴权组。
 func (m *infraModule) RegisterRoutes(r *gin.RouterGroup) {
 	m.codegenCtrl.RegisterRoutes(r.Group("/admin/infra/codegen"))
 	m.fileCtrl.RegisterAdminRoutes(r.Group("/admin/infra/file"))
+	m.fileCtrl.RegisterAppRoutes(r.Group("/app/infra/file"))
 	m.fileCtrl.RegisterPublicRoutes(r.Group("/public/infra/file"))
 }

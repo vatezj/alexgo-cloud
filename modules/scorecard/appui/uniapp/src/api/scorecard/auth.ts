@@ -3,7 +3,9 @@
  * 路径逐字对齐 modules/member/module.go（挂在 /api group 下）。
  */
 import type { LoginByMobileReq, LoginResult, MeResult, UpdateMeReq } from './types'
-import { scoreGet, scoreSend } from './http'
+import { ApiError } from '../core/handlers'
+import { apiBaseURL } from '../core/instance'
+import { scoreGet, scoreSend, scoreUpload } from './http'
 
 /** 手机号密码登录（公开）。POST /api/app/member/auth/login → LoginResult。 */
 export function loginByMobile(data: LoginByMobileReq): Promise<LoginResult> {
@@ -26,4 +28,20 @@ export function getMe(): Promise<MeResult> {
  */
 export function updateMe(data: UpdateMeReq): Promise<MeResult> {
   return scoreSend<MeResult>('PUT', '/api/app/member/me', data)
+}
+
+/**
+ * 上传头像并返回可直接入 <image> 的绝对地址。
+ * POST /api/app/infra/file/upload（multipart 字段 file）；后端仅收图片扩展名、
+ * 强制 Public=true（public_url 走 /api/public/infra/file/<key>，相对路径需拼 baseURL）。
+ */
+export function uploadAvatar(filePath: string): Promise<string> {
+  return scoreUpload<{ public_url: string }>('/api/app/infra/file/upload', filePath).then((res) => {
+    const url = res?.public_url
+    if (!url)
+      throw new ApiError('上传失败', -1)
+    if (url.startsWith('http'))
+      return url
+    return `${apiBaseURL.replace(/\/$/, '')}${url}`
+  })
 }

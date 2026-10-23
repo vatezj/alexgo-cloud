@@ -45,6 +45,41 @@ function handleUnauthorized(globalToast: ReturnType<typeof useGlobalToast>) {
   }, 500)
 }
 
+// Uint8Array → UTF-8 字符串（百分号编码 + decodeURIComponent；不依赖 TextDecoder，MP 也可用）
+function utf8Decode(bytes: Uint8Array): string {
+  let pct = ''
+  for (let i = 0; i < bytes.length; i++)
+    pct += `%${bytes[i].toString(16).padStart(2, '0')}`
+  return decodeURIComponent(pct)
+}
+
+// 错误体信封还原：responseType:'arraybuffer' 请求（如 scorecard wxacode）的错误体同样是
+// ArrayBuffer（uni 不做 JSON 解析），先按 UTF-8 解码再 JSON.parse，五位业务码才不丢
+// （30102/50001 否则退化成通用 400 文案）。普通请求 data 已是解析好的对象则原样返回；
+// 解码/解析失败返回 undefined，维持原通用 status 分支。
+function toErrEnvelope(data: unknown): ApiResponse | undefined {
+  try {
+    let text: string
+    if (data instanceof ArrayBuffer) {
+      text = utf8Decode(new Uint8Array(data))
+    }
+    else if (typeof data === 'string') {
+      text = data
+    }
+    else if (typeof data === 'object' && data !== null) {
+      return data as ApiResponse
+    }
+    else {
+      return undefined
+    }
+    const parsed = JSON.parse(text) as unknown
+    return typeof parsed === 'object' && parsed !== null ? parsed as ApiResponse : undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
 // Handle successful responses
 export async function handleAlovaResponse(
   response: UniApp.RequestSuccessCallbackResult | UniApp.UploadFileSuccessCallbackResult | UniApp.DownloadSuccessData,
@@ -65,7 +100,8 @@ export async function handleAlovaResponse(
   if (statusCode >= 400) {
     // 后端 pkg/resp.statusFor 把业务错误码映射成 HTTP 状态（3xxxx→400 等），
     // body 仍是 {code,msg,data} 信封——优先透出五位业务码，便于页面按码分支（如 30112 版本冲突）。
-    const errBody = data as ApiResponse | undefined
+    // arraybuffer 请求错误体不被 uni 解析，toErrEnvelope 先还原成信封再取码。
+    const errBody = toErrEnvelope(data)
     if (errBody && typeof errBody.code === 'number' && errBody.code !== 0) {
       throw new ApiError(errBody.msg || `Request failed with status: ${statusCode}`, errBody.code, errBody.data)
     }

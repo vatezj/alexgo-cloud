@@ -6,17 +6,23 @@
  * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
  * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次 → joinRoom 进房；
  *   未登录 → 留存 scene 去登录（登录后 afterLogin 消费进房，只进一次）
+ * - 冷启动回房：本启程首次以登录态显示首页时，若 lastRoomId 的房间仍进行中 → 直达房间页（不等 scene，
+ *   scene 优先级更高——scene 进房后 resume 不再触发）；房已结束/不存在/非成员 → 清 lastRoomId 停首页
+ * - 开房资料门：createRoom 前校验资料完整（有头像且昵称非登录占位）——不完整弹「完善资料」
+ *   （MP: chooseAvatar + nickname input / 非MP: chooseImage + wd-input）；保存成功续走开房；可取消留首页
  * - 未登录持有 scene：先去登录（scene 暂存保留，登录后 afterLogin 消费进房）；未登录点开房 → 跳登录（已知简化：登录后回首页，不回跳原动作）
  * - 业务错误 catch → 本页 toast（ApiError 非 401/403）；数据拉取失败降级空态，不阻塞渲染
  * - 色值零硬编码：全走主题 token 与全局工具类（.pcard/.btn.brass/.num/.win-n/.lose-n）
  */
-import type { RecordItem, StatResult } from '@/api/scorecard/types'
+import type { RecordItem, StatResult, UpdateMeReq } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
+import { updateMe, uploadAvatar } from '@/api/scorecard/auth'
 import { listFriends } from '@/api/scorecard/friend'
 import { myRecords, stat } from '@/api/scorecard/record'
-import { createRoom, joinRoom } from '@/api/scorecard/room'
+import { createRoom, joinRoom, snapshot } from '@/api/scorecard/room'
 import PlayCard from '@/components/scorecard/PlayCard.vue'
 import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 definePage({
@@ -29,6 +35,7 @@ const authStore = useScorecardAuthStore()
 const router = useRouter()
 const toast = useToast()
 const { pendingScene, consumeScene } = useSceneRoom()
+const { pageStyle } = useSystemBar()
 
 const statData = ref<StatResult | null>(null)
 const friendCount = ref(0)
@@ -38,6 +45,11 @@ const creating = ref(false)
 const joining = ref(false)
 const showJoinPopup = ref(false)
 const joinCode = ref('')
+/** 开房资料门（缺头像/占位昵称）：弹层草稿与保存态 */
+const showProfileGate = ref(false)
+const gateNickname = ref('')
+const gateAvatarPath = ref('')
+const savingProfile = ref(false)
 
 const isLoggedIn = computed(() => Boolean(authStore.token))
 
@@ -193,18 +205,21 @@ async function loadHomeData() {
   loadingData.value = false
 }
 
-/** scene 进房闭环：pendingScene 有值才处理——已登录消费进房（只消费一次）；未登录留存去登录（afterLogin 消费）。 */
-async function consumePendingScene() {
+/**
+ * scene 进房闭环：pendingScene 有值才处理——已登录消费进房（只消费一次）；未登录留存去登录（afterLogin 消费）。
+ * @returns true = scene 已消费（进房成功或失败都算，本启程不再回房）；false = 无 scene / 未登录未消费
+ */
+async function consumePendingScene(): Promise<boolean> {
   if (!isLoggedIn.value) {
     // 未登录：scene 不消费（留存），去登录（登录成功 afterLogin 消费进房，验收只进一次）
     if (pendingScene.value)
       router.push({ path: '/pages/login/index' })
-    return
+    return false
   }
   // 先消费后请求（读后即清）：onShow 连续触发/请求在途时不会重复进房
   const code = consumeScene()
   if (!code)
-    return
+    return false
   try {
     const snap = await joinRoom({ room_code: code })
     authStore.lastRoomId = snap.id
@@ -214,10 +229,54 @@ async function consumePendingScene() {
     // 已消费：失败停在首页 toast，不回环重试 scene
     toastApiError(err)
   }
+  return true
+}
+
+/**
+ * 冷启动回房：本启程首次以登录态显示首页时，若 lastRoomId 的房间仍进行中 → 直达房间页。
+ * - once 语义（模块级 flag）：每次启程只尝试一次；房间页 ⌂ 回首页不再被拽回，也避免回房循环
+ * - 不 toast：回访失败属安静路径（房没了就清 id 留首页），不打扰用户
+ */
+let resumeTried = false
+
+async function resumeLastRoom() {
+  if (resumeTried || !isLoggedIn.value)
+    return
+  // 先置位再请求：onShow 连续触发/请求在途时不重入（与 consumePendingScene 读后即清同思想）
+  resumeTried = true
+  const rid = authStore.lastRoomId
+  if (!rid)
+    return
+  try {
+    const snap = await snapshot(rid)
+    if (snap.status === 0) {
+      router.push({ path: '/pages/room/index', query: { roomId: String(rid) } })
+    }
+    else {
+      // 房已结束/关闭：回访语义结束，清 id 停首页
+      authStore.lastRoomId = 0
+    }
+  }
+  catch (err) {
+    // 30101 房不存在（跨租户同码）/ 30102 非成员：退房后遗留即此路径，清陈旧 id
+    // 网络类错误：保留 id 留首页（下次启程再试），不 toast
+    if (err instanceof ApiError && (err.code === 30101 || err.code === 30102))
+      authStore.lastRoomId = 0
+  }
+}
+
+/** onShow 入口：scene 优先（消费后本启程不再回房）；无 scene 才走 lastRoomId 冷启动回房。 */
+async function enterFromHome() {
+  const sceneConsumed = await consumePendingScene()
+  if (sceneConsumed) {
+    resumeTried = true // scene 进房/进房失败都已占用本启程的进房意图
+    return
+  }
+  await resumeLastRoom()
 }
 
 onShow(() => {
-  void consumePendingScene()
+  void enterFromHome()
   void loadHomeData()
 })
 
@@ -233,12 +292,117 @@ function goLogin() {
   router.push({ path: '/pages/login/index' })
 }
 
-/** 我要开房：默认配置全 0（brief 逐字）→ 进房间页。 */
+/** 登录占位昵称（后端缺省）：微信登录「微信用户」+ openid 尾 4 hex；手机注册「用户」+ 手机尾 4。 */
+function isPlaceholderNickname(name: string): boolean {
+  return /^微信用户[0-9a-f]{4}$/.test(name) || /^用户\d{4}$/.test(name)
+}
+
+/** 资料完整 = 有头像 且 昵称非空/非登录占位（开房门判定）。 */
+function isProfileComplete(user: { nickname: string, avatar: string } | null): boolean {
+  if (!user)
+    return false
+  const nick = (user.nickname || '').trim()
+  if (!nick || isPlaceholderNickname(nick))
+    return false
+  return Boolean((user.avatar || '').trim())
+}
+
+/** 弹窗头像预览：新选临时路径优先，其次已有资料头像（只改昵称时不重传头像）。 */
+const gateAvatarPreview = computed(() => gateAvatarPath.value || authStore.user?.avatar || '')
+
+/**
+ * MP 头像选择回调：open-type="chooseAvatar" → e.detail.avatarUrl 为临时路径，保存时才上传持久化。
+ * uni-app-types 的 ChooseavatarEvent = BaseEvent（无 detail 声明），运行时才有 → unknown 收窄。
+ */
+function onChooseAvatar(e: unknown) {
+  const url = (e as { detail?: { avatarUrl?: string } } | null)?.detail?.avatarUrl
+  if (url)
+    gateAvatarPath.value = url
+}
+
+/** 非 MP fallback：uni.chooseImage 选一张（取消静默）。 */
+async function pickAvatarFallback() {
+  try {
+    const res = await uni.chooseImage({ count: 1, sizeType: ['compressed'] })
+    const path = res.tempFilePaths?.[0]
+    if (path)
+      gateAvatarPath.value = path
+  }
+  catch {
+    // 取消/失败静默
+  }
+}
+
+function openProfileGate() {
+  const nick = authStore.user?.nickname || ''
+  gateNickname.value = nick && !isPlaceholderNickname(nick) ? nick : ''
+  gateAvatarPath.value = ''
+  showProfileGate.value = true
+}
+
+/**
+ * 保存并开房：昵称必填且非占位；有新选头像先 uploadAvatar 拿绝对地址；
+ * updateMe → 用响应回写 authStore.user → 关弹窗 → 续走 doCreateRoom。
+ */
+async function onSaveProfile() {
+  if (savingProfile.value)
+    return
+  const nick = gateNickname.value.trim()
+  if (!nick) {
+    toast.warning('请输入昵称')
+    return
+  }
+  if (isPlaceholderNickname(nick)) {
+    toast.warning('请设置自己的昵称')
+    return
+  }
+  if (!gateAvatarPreview.value) {
+    toast.warning('请选择头像')
+    return
+  }
+  savingProfile.value = true
+  try {
+    const req: UpdateMeReq = { nickname: nick }
+    if (gateAvatarPath.value)
+      req.avatar = await uploadAvatar(gateAvatarPath.value)
+    const res = await updateMe(req)
+    authStore.user = res
+    showProfileGate.value = false
+    await doCreateRoom()
+  }
+  catch (err) {
+    toastApiError(err)
+  }
+  finally {
+    savingProfile.value = false
+  }
+}
+
+/** 我要开房：先过资料门（缺头像/占位昵称 → 弹「完善资料」，保存后续走）→ 默认配置全 0 进房。 */
 async function onCreateRoom() {
-  if (creating.value || joining.value)
+  if (creating.value || joining.value || savingProfile.value)
     return
   if (!ensureLogin())
     return
+  if (!authStore.user) {
+    // persist 缓存空（首登/清缓存）：先拉一次再判；拉失败不进房（门需资料才能判）
+    try {
+      await authStore.fetchMe()
+    }
+    catch (err) {
+      toastApiError(err)
+      return
+    }
+  }
+  if (!isProfileComplete(authStore.user)) {
+    openProfileGate()
+    return
+  }
+  await doCreateRoom()
+}
+
+/** 真正开房：默认配置全 0（brief 逐字）→ 进房间页。 */
+async function doCreateRoom() {
   creating.value = true
   try {
     const snap = await createRoom({
@@ -345,7 +509,10 @@ function goManual() {
 </script>
 
 <template>
-  <view class="home-page">
+  <view
+    class="home-page"
+    :style="pageStyle"
+  >
     <!-- 自绘 nav -->
     <view class="nav">
       <view class="side">
@@ -357,6 +524,7 @@ function goManual() {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view class="capsule">
           <text class="cap-dots">
             •••
@@ -366,6 +534,7 @@ function goManual() {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -587,6 +756,104 @@ function goManual() {
         </button>
       </view>
     </wd-popup>
+
+    <!-- 开房资料完善门：缺头像/占位昵称时先补全再 createRoom（保存成功自动续走开房） -->
+    <wd-popup
+      v-model="showProfileGate"
+      position="center"
+      closable
+      custom-style="width: 320px; border-radius: 22px; background: var(--ink-700); border: 1.5px solid var(--brass-a50);"
+    >
+      <view class="gate-box">
+        <text class="gate-title">
+          完善资料
+        </text>
+        <text class="gate-cap">
+          开房前设置头像与昵称，方便牌友辨认
+        </text>
+
+        <!-- 头像：MP 官方 chooseAvatar 按钮（临时路径，保存时上传）；其他端 chooseImage -->
+        <view class="gate-av-wrap">
+          <!-- #ifdef MP-WEIXIN -->
+          <button
+            class="gate-av-btn"
+            open-type="chooseAvatar"
+            @chooseavatar="onChooseAvatar"
+          >
+            <image
+              v-if="gateAvatarPreview"
+              class="gate-av-img"
+              :src="gateAvatarPreview"
+              mode="aspectFill"
+            />
+            <text
+              v-else
+              class="gate-av-hint"
+            >
+              ＋ 头像
+            </text>
+          </button>
+          <!-- #endif -->
+          <!-- #ifndef MP-WEIXIN -->
+          <view
+            class="gate-av-btn"
+            @click="pickAvatarFallback"
+          >
+            <image
+              v-if="gateAvatarPreview"
+              class="gate-av-img"
+              :src="gateAvatarPreview"
+              mode="aspectFill"
+            />
+            <text
+              v-else
+              class="gate-av-hint"
+            >
+              ＋ 头像
+            </text>
+          </view>
+          <!-- #endif -->
+        </view>
+
+        <!-- 昵称：MP type=nickname 触发微信昵称快捷填充；其他端 wd-input -->
+        <!-- #ifdef MP-WEIXIN -->
+        <input
+          v-model="gateNickname"
+          class="gate-nick-input"
+          type="nickname"
+          :maxlength="24"
+          placeholder="昵称"
+          placeholder-class="gate-nick-ph"
+        >
+        <!-- #endif -->
+        <!-- #ifndef MP-WEIXIN -->
+        <wd-input
+          v-model="gateNickname"
+          class="gate-field"
+          :maxlength="24"
+          clearable
+          placeholder="昵称"
+        />
+        <!-- #endif -->
+
+        <view class="gate-btns">
+          <button
+            class="btn ghost"
+            :disabled="savingProfile"
+            @click="showProfileGate = false"
+          >
+            取消
+          </button>
+          <button
+            class="btn brass"
+            :disabled="savingProfile"
+            @click="onSaveProfile"
+          >
+            {{ savingProfile ? '保存中…' : '保存并开房' }}
+          </button>
+        </view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -596,7 +863,7 @@ function goManual() {
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 0;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -609,6 +876,8 @@ function goManual() {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+  /* 小程序：右侧让位微信真胶囊（--nav-right-pad = windowWidth - capsule.left + 8） */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {
@@ -1019,5 +1288,106 @@ function goManual() {
 
 .join-btn {
   flex: none;
+}
+
+/* ── 开房资料完善门弹层 ── */
+.gate-box {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 22px 20px 20px;
+}
+
+.gate-title {
+  color: var(--on-ink);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.gate-cap {
+  margin-top: 6px;
+  color: var(--dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+.gate-av-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 12px;
+}
+
+.gate-av-btn {
+  display: flex;
+  width: 72px;
+  height: 72px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  border: 2px dashed var(--on-ink-a28);
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
+/* mp button 默认伪元素边框清零（与 .fan-cta .fc::after 同款处理） */
+.gate-av-btn::after {
+  border: none;
+}
+
+.gate-av-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.gate-av-hint {
+  color: var(--brass);
+  font-size: 13px;
+}
+
+/* MP 原生 input（type=nickname）：对齐 wd-input 视觉 */
+.gate-nick-input {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--on-ink-a04);
+  color: var(--on-ink);
+  font-size: 14px;
+}
+
+.gate-nick-ph {
+  color: var(--dim);
+}
+
+.gate-field {
+  border-radius: 10px;
+  background: var(--on-ink-a04);
+}
+
+.gate-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.gate-btns .btn {
+  flex: 1;
+  height: 44px;
+  font-size: 14px;
+}
+
+.gate-btns .btn.brass[disabled] {
+  border: 1px solid var(--on-ink-a28);
+  background: var(--on-ink-a04);
+  box-shadow: none;
+  color: var(--dim);
+  opacity: 1;
 }
 </style>

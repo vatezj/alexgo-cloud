@@ -4,7 +4,9 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,17 +14,21 @@ import (
 	"alexGo-cloud/modules/system/infra/service"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/resp"
+	"alexGo-cloud/pkg/tenant"
+	"alexGo-cloud/pkg/token"
 )
 
-// FileController 统一文件端点：admin 受控面（JWT+权限码）+ public 免鉴权读。
+// FileController 统一文件端点：admin 受控面（JWT+权限码）+ app 会员面（Bearer 自鉴权）+ public 免鉴权读。
 // 免鉴权不免信封（spec §3）：JSON 分支全走 pkg/resp；流本体是唯一豁免。
 type FileController struct {
-	svc service.FileService
+	svc       service.FileService
+	validator token.Validator
 }
 
-// NewFileController 构造文件控制器。
-func NewFileController(svc service.FileService) *FileController {
-	return &FileController{svc: svc}
+// NewFileController 构造文件控制器（fx 注入 FileService + token.Validator；
+// Validator 的接口映射归入口 main.go，模块内不重复 Provide）。
+func NewFileController(svc service.FileService, validator token.Validator) *FileController {
+	return &FileController{svc: svc, validator: validator}
 }
 
 // RegisterAdminRoutes 挂 /admin/infra/file（入参为 /api group 下的子组）。
@@ -30,6 +36,12 @@ func (c *FileController) RegisterAdminRoutes(g *gin.RouterGroup) {
 	g.POST("/upload", c.upload)
 	g.GET("/:id", c.downloadByID)
 	g.DELETE("/:id", c.delete)
+}
+
+// RegisterAppRoutes 挂 /app/infra/file（app 会员面，入参为 /api group 下的子组）。
+// /api/app/** 全局 AuthMiddleware 放行（pkg/middleware/auth.go），登录态在 handler 内 claims 自鉴权。
+func (c *FileController) RegisterAppRoutes(g *gin.RouterGroup) {
+	g.POST("/upload", c.uploadApp)
 }
 
 // RegisterPublicRoutes 挂 /public/infra/file——AuthMiddleware 只拦 /api/admin/**
@@ -61,6 +73,81 @@ func (c *FileController) upload(ctx *gin.Context) {
 	})
 	if err != nil {
 		resp.Fail(ctx, err) // service 已返 BizError；DB 裸错兜底 50000
+		return
+	}
+	resp.OK(ctx, gin.H{
+		"id":         meta.ID,
+		"name":       meta.Name,
+		"size":       meta.Size,
+		"mime":       meta.Mime,
+		"public_url": publicURL(meta),
+	})
+}
+
+// avatarImageExts app 面上传白名单（仅图片——头像场景；比 admin config 白名单窄，
+// 拒 pdf/zip/xlsx 等非图片落到会员面）。
+var avatarImageExts = map[string]struct{}{"jpg": {}, "jpeg": {}, "png": {}, "gif": {}, "webp": {}}
+
+// avatarExtOK 按原始文件名扩展名查 app 图片白名单（无扩展名/未知扩展名拒）。
+func avatarExtOK(name string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+	_, ok := avatarImageExts[ext]
+	return ok
+}
+
+// appClaims 解析 Bearer 并校验 member 身份（与 member_me.go / scorecard app.go claims 同构）；
+// 成功后把 token 内租户写回请求 ctx（伪造 X-Tenant-ID 无法跨租户）；失败已写响应，ok=false 直接 return。
+func (c *FileController) appClaims(ctx *gin.Context) (*token.Claims, bool) {
+	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
+	if raw == "" {
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
+		return nil, false
+	}
+	cl, err := c.validator.Validate(ctx.Request.Context(), raw)
+	if err != nil {
+		resp.Fail(ctx, errs.New(errs.CodeUnauthorized, nil))
+		return nil, false
+	}
+	if cl.UserType != token.UserTypeMember {
+		resp.Fail(ctx, errs.New(errs.CodeForbidden, nil))
+		return nil, false
+	}
+	ctx.Request = ctx.Request.WithContext(tenant.WithTenantID(ctx.Request.Context(), cl.TenantID))
+	return cl, true
+}
+
+// uploadApp app 端文件上传（multipart 字段 file，仅图片）：claims 自鉴权 → 图片扩展名
+// 白名单 → 复用 FileService.Upload 全策略（大小/双 MIME/限流落库）。强制 Public=true
+// （小程序 <image> 走 /public 面直读），BizType 固定 "avatar" 归类。响应同 admin upload。
+func (c *FileController) uploadApp(ctx *gin.Context) {
+	if _, ok := c.appClaims(ctx); !ok {
+		return
+	}
+	fh, err := ctx.FormFile("file")
+	if err != nil {
+		resp.Fail(ctx, errs.New(errs.CodeParamMissing, err))
+		return
+	}
+	if !avatarExtOK(fh.Filename) {
+		resp.Fail(ctx, errs.New(errs.CodeFileTypeNotAllowed, nil))
+		return
+	}
+	src, err := fh.Open()
+	if err != nil {
+		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
+		return
+	}
+	defer src.Close()
+
+	meta, err := c.svc.Upload(ctx.Request.Context(), service.UploadInput{
+		Name:    fh.Filename,
+		Size:    fh.Size, // 仅预检；service 内按字节流限流兜底
+		Reader:  src,
+		Public:  true, // app 会员头像走 public 面直读，private 会得空 URL 死链
+		BizType: "avatar",
+	})
+	if err != nil {
+		resp.Fail(ctx, err)
 		return
 	}
 	resp.OK(ctx, gin.H{

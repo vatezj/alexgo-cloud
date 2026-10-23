@@ -2,9 +2,12 @@
 /**
  * 邀请弹层（设计 03：邀请 · 扇牌小程序码）
  *
+ * - 主次：小程序码为第一视觉（牌面主体，打开即拉）；房号退居牌下小胶囊
+ *   （码就绪时展示，点按复制）——扫码是主路径，报房号是辅路径
  * - 扇牌码：PlayCard（A♥ 骨白牌）内嵌 getRoomWxacode 的 PNG dataURL；
  *   打开时惰性拉取并按房间 id 缓存（同房间重开不重拉，换房间重拉）
- * - 失败降级（接口 throw / 空缓冲 / 非 PNG 字节）：牌面内改示房号大字 + 复制房号，不崩不回环
+ * - 失败降级（接口 throw / 空缓冲 / 非 PNG 字节）：牌面内改示房号大字 + 复制房号，
+ *   牌下胶囊同步隐藏（牌面已是房号主场，不重复），不崩不回环
  * - 转发给好友：MP 微信 button open-type="share"（触发房间页 onShareAppMessage，path 走 scene 进房协议）；
  *   H5 走复制房号（与降级复制同一动作，uni.setClipboardData）
  * - 文案：「邀请好友扫描牌背小程序码加入房间」（逐字 brief）；
@@ -50,14 +53,29 @@ function isPng(buf: ArrayBuffer): boolean {
   return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47
 }
 
-/** ArrayBuffer → base64 dataURL（分块转义，避免大缓冲直接展开爆栈）。 */
+/** base64 字母表：btoa 是浏览器 Window API，MP-WEIXIN 逻辑层没有，跨端须手写编码。 */
+const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** 字节流 → base64（纯 JS 逐三字节编码，不依赖 btoa / wx.arrayBufferToBase64，H5/小程序/App 一致）。 */
+function toBase64(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const has1 = i + 1 < bytes.length
+    const has2 = i + 2 < bytes.length
+    const b1 = has1 ? bytes[i + 1] : 0
+    const b2 = has2 ? bytes[i + 2] : 0
+    out += B64_CHARS[b0 >> 2]
+    out += B64_CHARS[((b0 & 0x03) << 4) | (b1 >> 4)]
+    out += has1 ? B64_CHARS[((b1 & 0x0F) << 2) | (b2 >> 6)] : '='
+    out += has2 ? B64_CHARS[b2 & 0x3F] : '='
+  }
+  return out
+}
+
+/** ArrayBuffer → base64 dataURL（逐字节直编，无大字符串展开、无平台 API 依赖）。 */
 function toDataUrl(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
-  let bin = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk)
-    bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + chunk)))
-  return `data:image/png;base64,${btoa(bin)}`
+  return `data:image/png;base64,${toBase64(new Uint8Array(buf))}`
 }
 
 /** 打开时取码：有缓存直接用；无缓存/换房间才请求。失败保持 dataUrl 空 → 牌面降级。 */
@@ -73,8 +91,6 @@ async function loadWxacode() {
   dataUrl.value = ''
   try {
     const buf = await getRoomWxacode(roomId)
-    if (!isPng(buf))
-      return
     const url = toDataUrl(buf)
     cache.value = { roomId, dataUrl: url }
     dataUrl.value = url
@@ -119,17 +135,7 @@ function copyRoomCode() {
     @update:model-value="emit('update:show', $event)"
   >
     <view class="qr-invite">
-      <!-- 房号大字 -->
-      <view class="head">
-        <text class="head-label">
-          房号
-        </text>
-        <text class="head-no num">
-          {{ roomCode || '····' }}
-        </text>
-      </view>
-
-      <!-- 扇牌小程序码（幽灵牌 + A♥ 牌面） -->
+      <!-- 扇牌小程序码（主视觉：幽灵牌 + A♥ 牌面） -->
       <view class="qr-stack">
         <view class="ghost g1" />
         <view class="ghost g2" />
@@ -169,6 +175,23 @@ function copyRoomCode() {
         </PlayCard>
       </view>
 
+      <!-- 房号辅行（码就绪时展示，点按复制；降级态牌面已是房号主场则隐藏） -->
+      <view
+        v-if="dataUrl && roomCode"
+        class="code-pill"
+        @click="copyRoomCode"
+      >
+        <text class="code-label">
+          房号
+        </text>
+        <text class="code-no num">
+          {{ roomCode }}
+        </text>
+        <text class="code-copy">
+          复制
+        </text>
+      </view>
+
       <text class="invite-sub">
         邀请好友扫描牌背小程序码加入房间
       </text>
@@ -205,37 +228,14 @@ function copyRoomCode() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px 28px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding: 22px 28px calc(env(safe-area-inset-bottom, 0px) + 24px);
 }
 
-/* ── 房号大字 ── */
-.head {
-  text-align: center;
-}
-
-.head-label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--on-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.3em;
-}
-
-.head-no {
-  color: var(--brass);
-  font-size: 56px;
-  line-height: 1;
-  letter-spacing: 0.05em;
-}
-
-/* ── 扇牌码 ── */
+/* ── 扇牌码（主视觉） ── */
 .qr-stack {
   position: relative;
   width: 230px;
   height: 250px;
-  margin-top: 22px;
 }
 
 .qr-stack .ghost {
@@ -268,63 +268,63 @@ function copyRoomCode() {
 
 .qr-body {
   display: flex;
-  height: 100%;
   flex-direction: column;
   align-items: center;
+  height: 100%;
   padding: 26px 14px 12px;
 }
 
 .qr-img {
   width: 168px;
   height: 168px;
+  background: var(--tile);
   border: 1px solid var(--tile-emboss);
   border-radius: 8px;
-  background: var(--tile);
 }
 
 /* 降级：没码 → 牌面内房号大字 + 复制按钮 */
 .qr-fallback {
+  box-sizing: border-box;
   display: flex;
-  width: 168px;
-  height: 168px;
   flex-direction: column;
+  gap: 8px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  box-sizing: border-box;
+  width: 168px;
+  height: 168px;
   padding: 12px;
   border: 1px dashed var(--tile-emboss);
   border-radius: 8px;
 }
 
 .fb-cap {
-  color: var(--tile-emboss);
   font-size: 10.5px;
   line-height: 1.5;
+  color: var(--tile-emboss);
   text-align: center;
 }
 
 .fb-code {
-  color: var(--jet);
   font-size: 34px;
   line-height: 1;
+  color: var(--jet);
   letter-spacing: 0.08em;
 }
 
 .fb-btn {
   display: inline-flex;
-  height: 34px;
   align-items: center;
   justify-content: center;
+  height: 34px;
   padding: 0 18px;
-  border: none;
-  border-radius: 999px;
-  background: linear-gradient(180deg, var(--brass-hi), var(--brass));
-  box-shadow: 0 3px 0 var(--brass-lo);
-  color: var(--ink-900);
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
+  color: var(--ink-900);
+  background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+  border: none;
+  border-radius: 999px;
+  box-shadow: 0 3px 0 var(--brass-lo);
 }
 
 .fb-btn::after {
@@ -333,16 +333,47 @@ function copyRoomCode() {
 
 .qr-cap {
   margin-top: 10px;
-  color: var(--tile-emboss);
   font-size: 11px;
+  color: var(--tile-emboss);
   text-align: center;
+}
+
+/* ── 房号辅行胶囊（点按复制） ── */
+.code-pill {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 16px;
+  margin-top: 18px;
+  background: var(--on-ink-a04);
+  border: 1px solid var(--on-ink-a28);
+  border-radius: 999px;
+}
+
+.code-label {
+  font-size: 12px;
+  color: var(--dim);
+  letter-spacing: 0.2em;
+}
+
+.code-no {
+  font-size: 17px;
+  line-height: 1;
+  color: var(--brass);
+  letter-spacing: 0.08em;
+}
+
+.code-copy {
+  font-size: 11px;
+  color: var(--on-ink);
+  opacity: 0.75;
 }
 
 /* ── 文案 + CTA ── */
 .invite-sub {
-  margin-top: 20px;
-  color: var(--dim);
+  margin-top: 18px;
   font-size: 12.5px;
+  color: var(--dim);
 }
 
 .invite-cta {

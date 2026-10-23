@@ -20,6 +20,7 @@ import { ApiError } from '@/api/core/handlers'
 import { addFriend, listFriends, removeFriend, setBlack, setRank } from '@/api/scorecard/friend'
 import { stat } from '@/api/scorecard/record'
 import FriendRow from '@/components/scorecard/FriendRow.vue'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 definePage({
@@ -33,6 +34,7 @@ const toast = useToast()
 const dialog = useDialog()
 const { closeOutside } = useQueue()
 const authStore = useScorecardAuthStore()
+const { pageStyle } = useSystemBar()
 
 const myUserId = computed(() => authStore.user?.user_id ?? 0)
 
@@ -260,6 +262,7 @@ onShow(() => {
 <template>
   <view
     class="friends-page"
+    :style="pageStyle"
     @click="closeOutside"
   >
     <!-- 自绘 nav（同战绩页）；右侧「+」进添加好友弹层 -->
@@ -380,7 +383,7 @@ onShow(() => {
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -393,6 +396,8 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+  /* 小程序：右侧让位微信真胶囊（「+」按钮跟随左移，不与真胶囊重叠） */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {

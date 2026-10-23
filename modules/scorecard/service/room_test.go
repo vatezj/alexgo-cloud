@@ -122,7 +122,7 @@ func TestCreate_PartialFailureRollsBack(t *testing.T) {
 	svc, db := newRoomServiceForTest(t)
 	ctx := tenant.WithTenantID(context.Background(), 1)
 	// 砍掉成员表制造第二步（member.Create）失败。
-	if err := db.Exec(`DROP TABLE room_user`).Error; err != nil {
+	if err := db.Exec(`DROP TABLE scorecard_room_user`).Error; err != nil {
 		t.Fatal(err)
 	}
 	_, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AB12"})
@@ -148,7 +148,7 @@ func TestJoin_PartialFailureRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 砍掉流水表制造第二步（log.Create）失败。
-	if err := db.Exec(`DROP TABLE room_log`).Error; err != nil {
+	if err := db.Exec(`DROP TABLE scorecard_room_log`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Join(ctx, 200, snap.RoomCode); err == nil {

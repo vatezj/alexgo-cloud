@@ -178,7 +178,7 @@
 | 入口 | 「茶/饭」设置弹窗内并列「茶饭设置 + 总分设置」两个 Tab；创建房间可预填默认值 |
 | 配置项 | `max_lose_score`（整数），0 = 不限制；支持「从下把生效」 |
 | 计算口径 | 本**会话**某玩家累计输分 `cum_lose_score`（仅支出方扣分累计，**不含茶饭**） |
-| 触发行为 | ① 写 `room_log(type=6)`；② 全房语音播报；③ 该玩家头像高亮/角标；④ WS 广播 `max_lose_alarm` |
+| 触发行为 | ① 写 `scorecard_room_log(type=6)`；② 全房语音播报；③ 该玩家头像高亮/角标；④ WS 广播 `max_lose_alarm` |
 | 后续动作 | **不强制拦截**，可继续记账或退房结算 |
 | 清零条件 | 结算、退房、房间关闭；**中途退房再进房重新计算**（V1.2 确认） |
 | 修改权限 | 房主可改，从下把生效；历史触发记录保留 |
@@ -241,8 +241,8 @@
 | 入口 | 点击自己头像（房主）→ 设置弹窗 →「转让房主」→ 选择房内成员 → 二次确认 |
 | 权限 | **仅当前房主**可发起；目标必须是**当前房间内成员**；结算后/关闭后不可转让 |
 | 交互 | 选择成员 → 提示「转让后你将变为普通玩家，房主权限交由对方」→ 确认 |
-| 生效 | 立即生效；`room.creator_id` 更新；`room_user.is_creator` 旧房主置 0、新房主置 1 |
-| 通知 | WS 广播 `transfer_owner`；全房语音/文字提示「XX 已成为新房主」；写 `room_log(type=9)` |
+| 生效 | 立即生效；`scorecard_room.creator_id` 更新；`scorecard_room_user.is_creator` 旧房主置 0、新房主置 1 |
+| 通知 | WS 广播 `transfer_owner`；全房语音/文字提示「XX 已成为新房主」；写 `scorecard_room_log(type=9)` |
 | 边界 | 转让后原房主仍是普通玩家可继续记分；新房主获得配置/结算/再转让权限；不可转让给已退房/拉黑成员 |
 | 是否需对方确认 | V1 简化：**直接转让 + 通知**（不做对方确认弹窗）；如产品要求双向确认，V2 再加 |
 | 验收 | 转让后权限即时切换；日志与广播正确；非房主无入口；结算后不可转让 |
@@ -259,14 +259,14 @@
    └─ 全员退房 → status=2 已关闭
 ```
 - 「无操作」：无支出/进房/退房/配置变更；心跳/刷新不计。
-- 状态流转写 `room_log(type=8)` 并广播 `room_status`。
+- 状态流转写 `scorecard_room_log(type=8)` 并广播 `room_status`。
 
 ### 5.2 「从下把生效」数据模型（通俗版 + 技术版）
 
 **通俗解释**：房间打到一半，房主改了茶饭百分比或输分上限。为了不跟已经算完的那一笔打架，**改完不马上生效，等下一次有人提交支出时才开始用新配置**。当前这一笔继续用旧配置。
 
 **技术实现**：
-- `room` 增加待生效字段：`pending_tea_target_amount`、`pending_tea_percent`、`pending_max_lose_score`、`pending_apply_round_no`。
+- `scorecard_room` 增加待生效字段：`pending_tea_target_amount`、`pending_tea_percent`、`pending_max_lose_score`、`pending_apply_round_no`。
 - 修改配置：写 `pending_*`，`pending_apply_round_no = 当前把序号 + 1`。
 - 每次支出提交：若 `pending_apply_round_no <= 当前把序号`，把 `pending_*` 刷入生效字段并清空 pending。
 - 当前把用旧配置，下一把用新配置。
@@ -283,11 +283,11 @@
 6. 接收方 cur_score += S
 7. 茶饭：T = round(S × percent)（若自动开启且未达标）
    → 公共池 tea_pool_total += T；赢家实得 S - T（默认模型）
-   → 写 room_log(type=2)
+   → 写 scorecard_room_log(type=2)
    → 若 tea_pool_total >= target：自动关闭自动开关，写日志+提示
-8. 写 room_log(type=1, score, tea, from, to)
+8. 写 scorecard_room_log(type=1, score, tea, from, to)
 9. 上限判断：cum_lose_score >= max_lose_score 且 >0
-   → 写 room_log(type=6)，标记触发（频控）
+   → 写 scorecard_room_log(type=6)，标记触发（频控）
 10. 提交事务
 11. WS 广播 expense / tea_pool_update / max_lose_alarm
 ```
@@ -302,7 +302,7 @@
 
 | 场景 | 行为 |
 |---|---|
-| 普通玩家退房 | 移除成员，写 `room_log(type=4)`；不影响他人 |
+| 普通玩家退房 | 移除成员，写 `scorecard_room_log(type=4)`；不影响他人 |
 | **开房人退房** | 弹确认 → **自动触发结算** → 房主退房；房间进入已结算只读态 |
 | 结算后玩家 | 只读，可退房；不可记分 |
 | **数据为零退房** | 允许，**生成空战绩快照** |
@@ -357,7 +357,7 @@
 
 > 语音偏好 V1 **不存服务端**（本地缓存），故无 `voice_pref` 字段。
 
-### 7.2 room（房间表）
+### 7.2 scorecard_room（房间表）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | bigint PK | 主键 |
@@ -377,7 +377,7 @@
 | pending_apply_round_no ★ | int | 待生效应用把序号 |
 | version ★ | int | 乐观锁版本 |
 
-### 7.3 room_user（房间玩家关联表）
+### 7.3 scorecard_room_user（房间玩家关联表）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | bigint PK | 主键 |
@@ -389,7 +389,7 @@
 
 > **V1.2 移除** `tea_income` / `tea_expense`（改公共池）；`voice_pref` 不存服务端。
 
-### 7.4 room_log（流水记录表）
+### 7.4 scorecard_room_log（流水记录表）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | bigint PK | 主键 |
@@ -403,11 +403,11 @@
 ### 7.5 其它表
 | 表 | 说明 |
 |---|---|
-| friend | 好友关系 |
-| friend_black | 拉黑 |
-| record / settlement | 对局快照（各玩家分数、茶饭池、配置、时间），历史战绩依据；**零数据也写空快照** |
+| scorecard_friend | 好友关系 |
+| scorecard_friend_black | 拉黑 |
+| scorecard_record / settlement | 对局快照（各玩家分数、茶饭池、配置、时间），历史战绩依据；**零数据也写空快照** |
 
-**索引**：`room_code`、`room_user(room_id,user_id)`、`room_log(room_id,created_at)`、`record(user_id,created_at)`。
+**索引**：`room_code`、`scorecard_room_user(room_id,user_id)`、`scorecard_room_log(room_id,created_at)`、`scorecard_record(user_id,created_at)`。
 
 ---
 
@@ -434,7 +434,7 @@
 
 **上限校验（后端必做）**：见 5.3，事务内完成，事务后广播。
 
-**转让房主校验**：`status=0`、操作人 `is_creator=1`、目标为房内成员、目标未被拉黑；更新 `room.creator_id` 与两个 `is_creator`；写日志；广播。
+**转让房主校验**：`status=0`、操作人 `is_creator=1`、目标为房内成员、目标未被拉黑；更新 `scorecard_room.creator_id` 与两个 `is_creator`；写日志；广播。
 
 ---
 

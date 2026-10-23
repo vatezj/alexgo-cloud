@@ -1,5 +1,5 @@
 server:
-  http_addr: ":8080"
+  http_addr: ":9090"
   grpc_addr: ":50051"
   pprof_enabled: true
 

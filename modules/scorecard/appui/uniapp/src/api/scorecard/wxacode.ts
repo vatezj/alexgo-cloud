@@ -8,6 +8,7 @@ import { alovaInstance } from '../core/instance'
 /** 取房间小程序码 PNG 字节（需登录态；非成员 30102 走 handlers 错误链路）。 */
 export function getRoomWxacode(roomId: number): Promise<ArrayBuffer> {
   // handleAlovaResponse 对非 JSON 响应原样返回 data（ArrayBuffer 直通，不做信封解包）；
+  // 错误体（≥400）同样是 ArrayBuffer，由 handlers.toErrEnvelope 解码回 {code,msg} 信封。
   // Method 继承 Promise<ArrayBuffer>，直接返回即可。
   return alovaInstance.Get<ArrayBuffer>(`/api/app/scorecard/rooms/${roomId}/wxacode`, {
     responseType: 'arraybuffer',

@@ -1,4 +1,4 @@
-.PHONY: run run-system run-member build clean test proto swagger generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke new-module
+.PHONY: run run-system run-member build build-linux clean test proto swagger generate-crud generate-db-crud generate-all migrate docker-up docker-down lint load-test pprof pprof-cpu helm-install helm-upgrade codegen-smoke new-module
 
 MODULE ?= system
 TABLES ?=
@@ -14,6 +14,10 @@ run-member: ## micro 模式 member-server（:8081，委托 system 签发）
 
 build:
 	go build -o bin/alexgo-server ./alexgo-server/cmd
+
+build-linux: ## 交叉编译 Linux amd64（GOARCH 可覆盖：make build-linux GOARCH=arm64）
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(or $(GOARCH),amd64) go build -ldflags '-s -w' -o bin/alexgo-server-linux ./alexgo-server/cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(or $(GOARCH),amd64) go build -ldflags '-s -w' -o bin/member-server-linux ./modules/member/cmd
 
 proto:
 	bash scripts/gen_proto.sh

@@ -4,8 +4,11 @@ import vueHook from 'alova/vue'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { handleAlovaError, handleAlovaResponse } from './handlers'
 
+/** API 根地址：alova baseURL 与手写 uploadFile（scoreUpload）共用同一取值，避免两处漂移。 */
+export const apiBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
+
 export const alovaInstance = createAlova({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080',
+  baseURL: apiBaseURL,
   ...AdapterUniapp(),
   statesHook: vueHook,
   beforeRequest: (method) => {

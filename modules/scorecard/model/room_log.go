@@ -20,4 +20,4 @@ type RoomLog struct {
 }
 
 // TableName 指定房间流水表名（单数，与迁移 DDL 一致）。
-func (RoomLog) TableName() string { return "room_log" }
+func (RoomLog) TableName() string { return "scorecard_room_log" }

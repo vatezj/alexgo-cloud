@@ -19,6 +19,7 @@ import ComplianceBanner from '@/components/scorecard/ComplianceBanner.vue'
 import ExpenseLane from '@/components/scorecard/ExpenseLane.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
 import { useVoice } from '@/composables/scorecard/useVoice'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 
@@ -33,6 +34,7 @@ const toast = useToast()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
 const { speak } = useVoice()
+const { pageStyle } = useSystemBar()
 
 /**
  * query.roomId → number（非法/缺失返回0）。
@@ -201,7 +203,10 @@ onShow(() => {
 </script>
 
 <template>
-  <view class="expense-page">
+  <view
+    class="expense-page"
+    :style="pageStyle"
+  >
     <!-- 自绘 nav -->
     <view class="nav">
       <view
@@ -219,6 +224,7 @@ onShow(() => {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view class="capsule">
           <text class="cap-dots">
             •••
@@ -228,6 +234,7 @@ onShow(() => {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -361,7 +368,7 @@ onShow(() => {
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 0;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -374,6 +381,8 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+  /* 小程序：右侧让位微信真胶囊 */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {

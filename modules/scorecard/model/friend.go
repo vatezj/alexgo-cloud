@@ -14,4 +14,4 @@ type Friend struct {
 }
 
 // TableName 指定好友关系表名（单数，与迁移 DDL 一致）。
-func (Friend) TableName() string { return "friend" }
+func (Friend) TableName() string { return "scorecard_friend" }

@@ -1,5 +1,6 @@
 -- scorecard：打牌记账 6 表（列与 modules/scorecard/model 严格同构）
-CREATE TABLE IF NOT EXISTS `room` (
+-- 表名模块前缀约定（对齐 fishgame_*/member_*）：scorecard_<entity>
+CREATE TABLE IF NOT EXISTS `scorecard_room` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `room_code` varchar(8) NOT NULL DEFAULT '' COMMENT '房号4位字母数字',
@@ -24,7 +25,7 @@ CREATE TABLE IF NOT EXISTS `room` (
   KEY `idx_room_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打牌记账房间';
 
-CREATE TABLE IF NOT EXISTS `room_user` (
+CREATE TABLE IF NOT EXISTS `scorecard_room_user` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `room_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '房间ID',
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `room_user` (
   KEY `idx_room_user_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房间成员';
 
-CREATE TABLE IF NOT EXISTS `room_log` (
+CREATE TABLE IF NOT EXISTS `scorecard_room_log` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `room_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '房间ID',
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS `room_log` (
   KEY `idx_room_log_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房间流水';
 
-CREATE TABLE IF NOT EXISTS `record` (
+CREATE TABLE IF NOT EXISTS `scorecard_record` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `room_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '房间ID',
@@ -78,7 +79,7 @@ CREATE TABLE IF NOT EXISTS `record` (
   KEY `idx_record_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='战绩每成员一行';
 
-CREATE TABLE IF NOT EXISTS `friend` (
+CREATE TABLE IF NOT EXISTS `scorecard_friend` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `user_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '用户ID',
@@ -91,7 +92,7 @@ CREATE TABLE IF NOT EXISTS `friend` (
   KEY `idx_friend_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='好友关系';
 
-CREATE TABLE IF NOT EXISTS `friend_black` (
+CREATE TABLE IF NOT EXISTS `scorecard_friend_black` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `tenant_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '租户ID',
   `user_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '拉黑人用户ID',

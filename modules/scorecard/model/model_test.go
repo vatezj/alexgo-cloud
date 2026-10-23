@@ -19,7 +19,7 @@ func TestAutoMigrateAll(t *testing.T) {
 		t.Fatalf("automigrate: %v", err)
 	}
 	var cols []string
-	if err := db.Raw(`SELECT name FROM pragma_table_info('room')`).Scan(&cols).Error; err != nil {
+	if err := db.Raw(`SELECT name FROM pragma_table_info('scorecard_room')`).Scan(&cols).Error; err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]bool{"room_code": true, "tea_pool_total": true, "tea_auto_enabled": true,
@@ -55,8 +55,8 @@ func tableCols(t *testing.T, db *gorm.DB, table string) []string {
 	return cols
 }
 
-// allTables 6 表清单（与迁移 DDL、TableName 对齐）。
-var allTables = []string{"room", "room_user", "room_log", "record", "friend", "friend_black"}
+// allTables 6 表清单（与迁移 DDL、TableName 对齐；模块前缀 scorecard_）。
+var allTables = []string{"scorecard_room", "scorecard_room_user", "scorecard_room_log", "scorecard_record", "scorecard_friend", "scorecard_friend_black"}
 
 // TestTenantStampColumns 钉住 spec 红线：全部 6 表带 tenant_id + created_at/updated_at。
 func TestTenantStampColumns(t *testing.T) {
@@ -83,13 +83,13 @@ func TestUniqueAndCompositeIndexes(t *testing.T) {
 		index  string
 		unique bool
 	}{
-		{"room", "uk_room_code", true},
-		{"room_user", "uk_room_user", true},
-		{"friend", "uk_friend", true},
-		{"friend_black", "uk_friend_black", true},
-		{"room_log", "idx_room_log_room_created", false},
-		{"record", "idx_record_user_created", false},
-		{"record", "idx_record_room", false},
+		{"scorecard_room", "uk_room_code", true},
+		{"scorecard_room_user", "uk_room_user", true},
+		{"scorecard_friend", "uk_friend", true},
+		{"scorecard_friend_black", "uk_friend_black", true},
+		{"scorecard_room_log", "idx_room_log_room_created", false},
+		{"scorecard_record", "idx_record_user_created", false},
+		{"scorecard_record", "idx_record_room", false},
 	}
 	for _, c := range cases {
 		var sql string

@@ -22,6 +22,7 @@ import PlayCard from '@/components/scorecard/PlayCard.vue'
 import RoomLedger from '@/components/scorecard/RoomLedger.vue'
 import ScoreText from '@/components/scorecard/ScoreText.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 import { calcIou } from '@/utils/scorecard/iou'
@@ -37,6 +38,7 @@ const toast = useToast()
 const dialog = useDialog()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
+const { pageStyle } = useSystemBar()
 
 /**
  * query.roomId → number（非法/缺失返回0）。
@@ -292,7 +294,10 @@ onUnload(() => {
 </script>
 
 <template>
-  <view class="settle-page">
+  <view
+    class="settle-page"
+    :style="pageStyle"
+  >
     <!-- 自绘 nav -->
     <view class="nav">
       <view
@@ -310,6 +315,7 @@ onUnload(() => {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view class="capsule">
           <text class="cap-dots">
             •••
@@ -319,6 +325,7 @@ onUnload(() => {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -593,7 +600,7 @@ onUnload(() => {
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 0;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -606,6 +613,8 @@ onUnload(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+  /* 小程序：右侧让位微信真胶囊 */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {

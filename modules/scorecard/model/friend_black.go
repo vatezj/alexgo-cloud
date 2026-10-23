@@ -13,4 +13,4 @@ type FriendBlack struct {
 }
 
 // TableName 指定拉黑关系表名（单数，与迁移 DDL 一致）。
-func (FriendBlack) TableName() string { return "friend_black" }
+func (FriendBlack) TableName() string { return "scorecard_friend_black" }

@@ -905,13 +905,13 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 | PUT | `/rooms/:id/config` | AppController.UpdateConfig | 改配置，仅房主 30105；数值项写 `pending_*` 且 `pending_apply_round_no = round_no+1`（**从下把生效**，下一笔支出整组刷入），`tea_auto_enabled` 提供即改生效字段；刷心跳 |
 | POST | `/rooms/:id/expense` | AppController.Expense | 记分支出核心事务：body `score` / `tea` / `to_user_id` / `client_request_id`（幂等键，必填）/ `tea_from_user_id`（手动 DIY 来源，缺省 = 支出方）；行锁 → 幂等回放 → `round_no+1` 应用到期 pending → 茶饭计算（自动 `T=round(S×percent)` 从赢家所得扣）→ 记账（总分守恒）→ 达标关池 → 上限频控（本会话首提醒全房）→ type=1 流水 → `version` 落库，任一步失败整体回滚 |
 | GET | `/rooms/:id/logs` | AppController.Logs | 流水分页（`page`/`size`，size ≤ 100，默认 1/10） |
-| POST | `/rooms/:id/settle` | AppController.Settle | 结算，仅房主：`status 0→1` + 批量写全员 `record` + type=5 流水，此后禁记分（30104） |
-| POST | `/rooms/:id/leave` | AppController.Leave | 退房：进行中房房主先自动结算（全员 `record`、`settle_type=2`）再退；普通成员先为自己写 `record`（全零 → `settle_type=4` 空战绩，否则 3）再删行 + type=4 流水；最后一人离开 → `status=2` |
+| POST | `/rooms/:id/settle` | AppController.Settle | 结算，仅房主：`status 0→1` + 批量写全员 `scorecard_record` + type=5 流水，此后禁记分（30104） |
+| POST | `/rooms/:id/leave` | AppController.Leave | 退房：进行中房房主先自动结算（全员 `scorecard_record`、`settle_type=2`）再退；普通成员先为自己写 `scorecard_record`（全零 → `settle_type=4` 空战绩，否则 3）再删行 + type=4 流水；最后一人离开 → `status=2` |
 | POST | `/rooms/:id/transfer-owner` | AppController.TransferOwner | 转让房主（`target_user_id`）：仅房主、`status=0`、目标在房 30113、非同人 30107、双方不互拉黑 30108 → `creator_id` 换、两行 `is_creator` 互换、type=9 流水；V1 不需对方确认 |
 | GET | `/records` | AppController.MyRecords | 我的战绩分页（时间倒序） |
 | GET | `/records/:recordId` | AppController.RecordDetail | 明细：不存在 30110 / 非本人 30111 → 按 `room_id` 反查全房成员行 |
 | DELETE | `/records/:recordId` | AppController.DeleteRecord | 删本人战绩行（30110 / 30111） |
-| GET | `/stat` | AppController.Stat | 我的统计（聚合 `record`：`total_score`/`win`/`lose`/`draw`/`win_rate`，胜率 = 胜/(胜+负)） |
+| GET | `/stat` | AppController.Stat | 我的统计（聚合 `scorecard_record`：`total_score`/`win`/`lose`/`draw`/`win_rate`，胜率 = 胜/(胜+负)） |
 | GET | `/friends` | AppController.ListFriends | 好友列表（含 `rank_enabled` 排名开关） |
 | POST | `/friends` | AppController.AddFriend | 加好友（`friend_user_id`）：对方存在性 → 已是好友 30109 → 双向拉黑 30108 → 双向各写一行 |
 | DELETE | `/friends/:userId` | AppController.RemoveFriend | 删好友 |
@@ -937,12 +937,12 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 
 | 表 | 要点 |
 | --- | --- |
-| `room` | `room_code`（唯一，4 位）、`creator_id`（当前房主）、`status` 0 进行中 / 1 已结算 / 2 已关闭、`expire_time`、茶饭配置 `tea_target_amount`/`tea_percent`/`tea_pool_total`/`tea_auto_enabled`、`max_lose_score`、`round_no` + `pending_tea_*`/`pending_max_lose_score`/`pending_apply_round_no`（从下把生效）、**`version` 乐观锁** |
-| `room_user` | `room_id`+`user_id` 唯一键、`cur_score`、`cum_lose_score`、`is_creator`、`session_no`（本行进房序次；退房硬删、重进从 1 起） |
-| `room_log` | 流水：`from_user_id`/`to_user_id`、`score`、`tea`、`type` 1 记分 / 2 茶饭 / 3 进房 / 4 退房 / 5 结算 / 6 上限提醒 / 7 配置变更 / 8 状态变更 / 9 转让房主、`client_request_id`（幂等键）、`extra`（json 扩展备注）；索引 `(room_id,created_at)` |
-| `record` | **每成员一行**：`score`/`cum_lose_score` + 终局配置冗余（`tea_pool_total`/`tea_percent`/`tea_target_amount`/`max_lose_score`，统计不 JOIN）、`settle_type` 1 正常结算 / 2 房主退房自动结算 / 3 退房 / 4 零数据空战绩；索引 `(user_id,created_at)`、`(room_id)` |
-| `friend` | `user_id`+`friend_user_id` 唯一键、`rank_enabled` 排名开关 |
-| `friend_black` | `user_id`+`blocked_user_id` 唯一键；任一方向命中即双向拦截 |
+| `scorecard_room` | `room_code`（唯一，4 位）、`creator_id`（当前房主）、`status` 0 进行中 / 1 已结算 / 2 已关闭、`expire_time`、茶饭配置 `tea_target_amount`/`tea_percent`/`tea_pool_total`/`tea_auto_enabled`、`max_lose_score`、`round_no` + `pending_tea_*`/`pending_max_lose_score`/`pending_apply_round_no`（从下把生效）、**`version` 乐观锁** |
+| `scorecard_room_user` | `room_id`+`user_id` 唯一键、`cur_score`、`cum_lose_score`、`is_creator`、`session_no`（本行进房序次；退房硬删、重进从 1 起） |
+| `scorecard_room_log` | 流水：`from_user_id`/`to_user_id`、`score`、`tea`、`type` 1 记分 / 2 茶饭 / 3 进房 / 4 退房 / 5 结算 / 6 上限提醒 / 7 配置变更 / 8 状态变更 / 9 转让房主、`client_request_id`（幂等键）、`extra`（json 扩展备注）；索引 `(room_id,created_at)` |
+| `scorecard_record` | **每成员一行**：`score`/`cum_lose_score` + 终局配置冗余（`tea_pool_total`/`tea_percent`/`tea_target_amount`/`max_lose_score`，统计不 JOIN）、`settle_type` 1 正常结算 / 2 房主退房自动结算 / 3 退房 / 4 零数据空战绩；索引 `(user_id,created_at)`、`(room_id)` |
+| `scorecard_friend` | `user_id`+`friend_user_id` 唯一键、`rank_enabled` 排名开关 |
+| `scorecard_friend_black` | `user_id`+`blocked_user_id` 唯一键；任一方向命中即双向拦截 |
 
 仓内「不存在」与「跨租户」统一软查为 `nil` 再由 service 映射 30101（房）/ 30110（战绩）——
 租户插件过滤在前，两种原因不可区分。

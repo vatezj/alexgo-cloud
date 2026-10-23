@@ -26,6 +26,7 @@ import RoomRoster from '@/components/scorecard/RoomRoster.vue'
 import ScoreText from '@/components/scorecard/ScoreText.vue'
 import TeaConfigSheet from '@/components/scorecard/TeaConfigSheet.vue'
 import { useRoomPolling } from '@/composables/scorecard/useRoomPolling'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
 
@@ -40,6 +41,7 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
+const { pageStyle } = useSystemBar()
 
 /**
  * query.roomId → number（非法/缺失返回0）。
@@ -288,7 +290,10 @@ onPullDownRefresh(() => {
 </script>
 
 <template>
-  <view class="room-page">
+  <view
+    class="room-page"
+    :style="pageStyle"
+  >
     <!-- 自绘 nav -->
     <view class="nav">
       <view
@@ -309,6 +314,7 @@ onPullDownRefresh(() => {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view
           class="capsule"
           @click="onInviteClick"
@@ -321,6 +327,7 @@ onPullDownRefresh(() => {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -336,6 +343,7 @@ onPullDownRefresh(() => {
         :my-user-id="myUserId"
         :creator-id="creatorId"
         @member-click="onMemberClick"
+        @invite="onInviteClick"
       />
 
       <view class="center-stack">
@@ -517,14 +525,14 @@ onPullDownRefresh(() => {
 
 <style lang="scss" scoped>
 .room-page {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 0;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
+  color: var(--on-ink);
   background: var(--ink-900);
   background-image: var(--spot);
-  color: var(--on-ink);
 }
 
 /* ── 自绘 nav ── */
@@ -534,12 +542,15 @@ onPullDownRefresh(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+
+  /* 小程序：右侧让位微信真胶囊 */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {
   display: flex;
-  min-width: 60px;
   align-items: center;
+  min-width: 60px;
 }
 
 .nav .side.right {
@@ -548,49 +559,49 @@ onPullDownRefresh(() => {
 
 .navicon {
   margin-right: 8px;
-  color: var(--brass);
   font-family: 'Noto Serif SC', serif;
   font-size: 20px;
   line-height: 1;
+  color: var(--brass);
 }
 
 .ntitle {
-  color: var(--on-ink);
   font-family: 'Noto Serif SC', serif;
   font-size: 17px;
   font-weight: 500;
-  letter-spacing: 0.06em;
+  color: var(--on-ink);
   text-align: center;
+  letter-spacing: 0.06em;
 }
 
 .nsub {
   display: block;
   margin-top: 2px;
-  color: var(--dim);
   font-family: 'Noto Sans SC', sans-serif;
   font-size: 10.5px;
   font-weight: 400;
+  color: var(--dim);
   letter-spacing: 0.02em;
 }
 
 /* 胶囊占位（装饰，对齐源稿右上 capsule） */
 .capsule {
   display: flex;
+  align-items: center;
   width: 88px;
   height: 32px;
-  align-items: center;
+  background: var(--on-ink-a04);
   border: 1px solid var(--on-ink-a28);
   border-radius: 999px;
-  background: var(--on-ink-a04);
 }
 
 .cap-dots {
   flex: 1;
-  color: var(--on-ink);
   font-size: 14px;
-  letter-spacing: 1.5px;
   line-height: 1;
+  color: var(--on-ink);
   text-align: center;
+  letter-spacing: 1.5px;
 }
 
 .capsule .sep {
@@ -617,20 +628,20 @@ onPullDownRefresh(() => {
 .capsule .ring::after {
   position: absolute;
   inset: 3px;
-  border-radius: 50%;
-  background: var(--on-ink);
   content: '';
+  background: var(--on-ink);
+  border-radius: 50%;
 }
 
 /* ── 牌桌 ── */
 .table {
   position: relative;
   height: 252px;
-  margin: 12px 14px 0;
   padding: 14px 0 0;
+  margin: 12px 14px 0;
+  background: radial-gradient(85% 65% at 50% 38%, var(--felt-hi) 0%, var(--felt) 55%, var(--felt-deep) 100%);
   border: 1px solid var(--brass-a50);
   border-radius: 44px;
-  background: radial-gradient(85% 65% at 50% 38%, var(--felt-hi) 0%, var(--felt) 55%, var(--felt-deep) 100%);
   box-shadow: var(--shadow-tile), inset 0 0 0 2px var(--brass-a50);
 }
 
@@ -651,8 +662,8 @@ onPullDownRefresh(() => {
   left: -85px;
   width: 340px;
   height: 1.5px;
-  background: linear-gradient(90deg, transparent, var(--brass-a50), transparent);
   content: '';
+  background: linear-gradient(90deg, transparent, var(--brass-a50), transparent);
 }
 
 /* 中央堆叠：最近一手 + 茶饭池铭牌 */
@@ -661,31 +672,31 @@ onPullDownRefresh(() => {
   bottom: 18px;
   left: 50%;
   display: flex;
-  width: 300px;
   flex-direction: column;
-  align-items: center;
   gap: 9px;
+  align-items: center;
+  width: 300px;
   transform: translateX(-50%);
 }
 
 .center-flow {
   width: 290px;
   padding: 12px 14px 10px;
+  text-align: center;
+  background: var(--felt-deep);
   border: 1.5px solid var(--brass-a50);
   border-radius: 14px;
-  background: var(--felt-deep);
   box-shadow: 0 10px 26px var(--felt-deep);
-  text-align: center;
 }
 
 .center-flow .cf {
   display: flex;
-  align-items: center;
-  justify-content: center;
   flex-wrap: wrap;
   gap: 2px;
-  color: var(--on-ink);
+  align-items: center;
+  justify-content: center;
   font-size: 13.5px;
+  color: var(--on-ink);
 }
 
 .center-flow .cf .amt-p,
@@ -694,37 +705,37 @@ onPullDownRefresh(() => {
 }
 
 .center-flow .arr {
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
 }
 
 .center-flow .cap {
-  color: var(--dim);
   font-size: 12.5px;
+  color: var(--dim);
 }
 
 .center-flow .t {
   display: block;
   margin-top: 5px;
-  color: var(--dim);
   font-size: 10px;
+  color: var(--dim);
 }
 
 /* 茶饭池铭牌 */
 .base-pot {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   padding: 7px 18px;
+  cursor: pointer;
+  background: var(--felt-deep);
   border: 1px solid var(--brass-a50);
   border-radius: 999px;
-  background: var(--felt-deep);
-  cursor: pointer;
 }
 
 .base-pot .bp {
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
   letter-spacing: 0.1em;
 }
 
@@ -740,25 +751,25 @@ onPullDownRefresh(() => {
 
 /* ── 筹码轨 ── */
 .rail {
+  z-index: 4;
   display: flex;
   flex: none;
+  gap: 30px;
   align-items: flex-start;
   justify-content: center;
-  gap: 30px;
   padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
   background: linear-gradient(180deg, transparent, var(--ink-900) 34%);
-  z-index: 4;
 }
 
 .rail .side {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 5px;
+  align-items: center;
   padding-top: 6px;
+  font-size: 11px;
   color: var(--dim);
   cursor: pointer;
-  font-size: 11px;
 }
 
 .rail .side .ico {
@@ -769,66 +780,66 @@ onPullDownRefresh(() => {
 .rail .main {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 6px;
+  align-items: center;
   cursor: pointer;
 }
 
 .rail .main .bigchip {
   position: relative;
   display: flex;
-  width: 84px;
-  height: 84px;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  width: 84px;
+  height: 84px;
   background: repeating-conic-gradient(from 8deg, var(--brass-lo) 0 18deg, var(--brass) 18deg 36deg);
+  border-radius: 50%;
   box-shadow: 0 5px 0 var(--brass-lo), 0 14px 26px var(--ink-900);
 }
 
 .rail .main .bigchip::before {
   position: absolute;
   inset: 8px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 36%, var(--brass-hi), var(--brass) 78%);
   content: '';
+  background: radial-gradient(circle at 50% 36%, var(--brass-hi), var(--brass) 78%);
+  border-radius: 50%;
 }
 
 .rail .main .bigchip text {
   position: relative;
   z-index: 1;
-  color: var(--ink-900);
   font-size: 19px;
   font-weight: 700;
+  color: var(--ink-900);
   letter-spacing: 0.05em;
 }
 
 .rail .main .cap2 {
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
 }
 
 /* ── 全部流水弹层 ── */
 .ledger-popup {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   padding: 18px 0 calc(env(safe-area-inset-bottom, 0px) + 8px);
 }
 
 .lp-title {
   padding: 0 20px;
-  color: var(--on-ink);
   font-family: 'Noto Serif SC', serif;
   font-size: 17px;
   font-weight: 700;
+  color: var(--on-ink);
   letter-spacing: 0.05em;
 }
 
 .lp-cap {
   padding: 4px 20px 10px;
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
 }
 
 .lp-scroll {
@@ -842,8 +853,8 @@ onPullDownRefresh(() => {
 .lp-foot {
   display: block;
   padding: 10px 0 6px;
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
   text-align: center;
 }
 </style>

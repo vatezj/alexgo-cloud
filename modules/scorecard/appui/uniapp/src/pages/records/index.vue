@@ -18,6 +18,7 @@ import { ApiError } from '@/api/core/handlers'
 import { deleteRecord, myRecords, recordDetail, stat } from '@/api/scorecard/record'
 import RecordSwipable from '@/components/scorecard/RecordSwipable.vue'
 import ScoreText from '@/components/scorecard/ScoreText.vue'
+import { useSystemBar } from '@/composables/useSystemBar'
 
 definePage({
   style: {
@@ -29,6 +30,7 @@ const router = useRouter()
 const toast = useToast()
 const dialog = useDialog()
 const { closeOutside } = useQueue()
+const { pageStyle } = useSystemBar()
 
 /* ── 顶部统计条 ── */
 
@@ -180,6 +182,7 @@ onShow(() => {
 <template>
   <view
     class="records-page"
+    :style="pageStyle"
     @click="closeOutside"
   >
     <!-- 自绘 nav（同结算页） -->
@@ -199,6 +202,7 @@ onShow(() => {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view class="capsule">
           <text class="cap-dots">
             •••
@@ -208,6 +212,7 @@ onShow(() => {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -376,7 +381,7 @@ onShow(() => {
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -389,6 +394,8 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px 8px;
+  /* 小程序：右侧让位微信真胶囊 */
+  padding-right: var(--nav-right-pad, 16px);
 }
 
 .nav .side {

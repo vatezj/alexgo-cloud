@@ -48,19 +48,13 @@
   },
   "quickapp": {},
   "mp-weixin": {
-    "appid": "",
+    "appid": "wx0c9dd653a49e1884",
     "setting": {
       "urlCheck": false
     },
     "usingComponents": true,
     "optimization": {
       "subPackages": true
-    },
-    "plugins": {
-      "WechatSI": {
-        "version": "0.3.6",
-        "provider": "wx069ba97219f66d99"
-      }
     },
     "darkmode": true,
     "themeLocation": "theme.json"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlayCard from '@/components/scorecard/PlayCard.vue'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 /**
  * 使用手册页 · 设计 06（Task 15 整体重写占位页）
@@ -24,6 +25,7 @@ definePage({
 
 const router = useRouter()
 const authStore = useScorecardAuthStore()
+const { pageStyle } = useSystemBar()
 
 /** package.json version（设计稿 5.3.1 为源稿示意值，实现取真实版本号）。 */
 const version = pkg.version
@@ -41,7 +43,10 @@ function goBack() {
 </script>
 
 <template>
-  <view class="manual-page">
+  <view
+    class="manual-page"
+    :style="pageStyle"
+  >
     <!-- 自绘 nav（同结算/战绩页） -->
     <view class="nav">
       <view
@@ -59,6 +64,7 @@ function goBack() {
         </text>
       </view>
       <view class="side right">
+        <!-- #ifndef MP-WEIXIN -->
         <view class="capsule">
           <text class="cap-dots">
             •••
@@ -68,6 +74,7 @@ function goBack() {
             <view class="ring" />
           </view>
         </view>
+        <!-- #endif -->
       </view>
     </view>
 
@@ -361,7 +368,7 @@ function goBack() {
 .manual-page {
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
   background: var(--ink-900);
   background-image: var(--spot);
   color: var(--on-ink);
@@ -373,6 +380,8 @@ function goBack() {
   align-items: center;
   justify-content: space-between;
   padding: 6px 0 8px;
+  /* 小程序：右侧让位微信真胶囊（页面根已有水平 16px，变量需扣掉避免双倍缩进） */
+  padding-right: calc(var(--nav-right-pad, 16px) - 16px);
 }
 
 .nav .side {

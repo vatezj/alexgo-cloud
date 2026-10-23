@@ -21,4 +21,4 @@ type Record struct {
 }
 
 // TableName 指定战绩表名（单数，与迁移 DDL 一致）。
-func (Record) TableName() string { return "record" }
+func (Record) TableName() string { return "scorecard_record" }

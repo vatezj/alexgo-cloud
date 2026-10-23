@@ -17,4 +17,4 @@ type RoomUser struct {
 }
 
 // TableName 指定房间成员表名（单数，与迁移 DDL 一致）。
-func (RoomUser) TableName() string { return "room_user" }
+func (RoomUser) TableName() string { return "scorecard_room_user" }

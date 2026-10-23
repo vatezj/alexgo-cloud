@@ -7,8 +7,9 @@
  * 注意 alova 语义：onSuccess 内抛出的错误直接透传给调用方、不会再进 onError，
  * 所以业务信封错误不会触发 handlers 的全局 toast，由页面自行提示。
  */
+import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { ApiError } from '../core/handlers'
-import { alovaInstance } from '../core/instance'
+import { alovaInstance, apiBaseURL } from '../core/instance'
 
 /** 后端统一响应信封。 */
 export interface ApiEnvelope<T = unknown> {
@@ -49,4 +50,50 @@ export function scoreSend<T>(type: ScoreSendType, url: string, data?: any): Prom
     method = alovaInstance.Delete<ApiEnvelope<T>>(url, data)
   }
   return method.then(unwrap)
+}
+
+/**
+ * multipart 文件上传（uni.uploadFile）+ 信封解包——头像等小程序临时文件持久化用
+ * （alova uniapp 适配不走 uploadFile，这里手写补位）。
+ * Bearer 从 auth store 取（与 alova beforeRequest 同源）；401/403 与其他非 2xx
+ * 一律 throw ApiError（页面 toastApiError 按码分支；登录态清理交给后续 alova 请求的 handlers）。
+ */
+export function scoreUpload<T>(url: string, filePath: string, name = 'file'): Promise<T> {
+  const { token } = useScorecardAuthStore()
+  return new Promise<T>((resolve, reject) => {
+    uni.uploadFile({
+      url: `${apiBaseURL.replace(/\/$/, '')}${url}`,
+      filePath,
+      name,
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode !== 200) {
+          // 401/403 信封也可能是 JSON；解析出 msg 优先透出，否则按状态码兜底文案
+          let msg = `上传失败（${res.statusCode}）`
+          let code = res.statusCode
+          try {
+            const env = JSON.parse(res.data as string) as ApiEnvelope
+            if (env && typeof env.code === 'number') {
+              code = env.code
+              msg = env.msg || msg
+            }
+          }
+          catch {
+            // 非 JSON 体（网关 HTML 等）：保留状态码兜底
+          }
+          reject(new ApiError(msg, code))
+          return
+        }
+        try {
+          resolve(unwrap<T>(JSON.parse(res.data as string) as ApiEnvelope<T>))
+        }
+        catch (err) {
+          reject(err)
+        }
+      },
+      fail: (err) => {
+        reject(new ApiError(err?.errMsg || '上传失败，请检查网络', -1))
+      },
+    })
+  })
 }

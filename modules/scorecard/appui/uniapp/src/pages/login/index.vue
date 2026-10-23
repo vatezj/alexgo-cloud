@@ -11,6 +11,7 @@ import { ApiError } from '@/api/core/handlers'
 import { loginByMobile, wxLogin } from '@/api/scorecard/auth'
 import { joinRoom } from '@/api/scorecard/room'
 import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
 definePage({
@@ -23,6 +24,7 @@ const authStore = useScorecardAuthStore()
 const router = useRouter()
 const toast = useToast()
 const { consumeScene } = useSceneRoom()
+const { pageStyle } = useSystemBar()
 
 const logging = ref(false)
 const mobile = ref('')
@@ -123,7 +125,10 @@ async function onPasswordLogin() {
 </script>
 
 <template>
-  <view class="login-page">
+  <view
+    class="login-page"
+    :style="pageStyle"
+  >
     <view class="brand">
       <text class="brand-title">
         打牌记账
@@ -195,7 +200,7 @@ async function onPasswordLogin() {
 .login-page {
   box-sizing: border-box;
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top, 0px) + 48px) 28px 32px;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 48px) 28px 32px;
   background: var(--ink-900);
 }
 
