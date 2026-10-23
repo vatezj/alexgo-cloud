@@ -29,10 +29,19 @@ type wxacodeCacheEntry struct {
 	expAt time.Time
 }
 
-// Wxacode 房间小程序码：GET /app/scorecard/rooms/:id/wxacode → 200 image/png 字节直出
-// （Produces 契约，非 JSON 信封；错误路径仍走五位码信封）。
-// 门：登录态 → 房存在+成员（复用 Snapshot 的 30101/30102，防外人批量取码）
-// → 渠道配置（未配置/停用 → 50001 明确 msg）→ getwxacodeunlimit（scene 前缀 qr= 在此拼）。
+// Wxacode godoc
+//
+//	@Summary		房间小程序码
+//	@Description	200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号，进程内按房号缓存 5min。
+//	@Tags			scorecard-app
+//	@Produce		png
+//	@Security		Bearer
+//	@Param			id	path	integer	true	"房间 ID"	Example(1)
+//	@Success		200		{file}		string
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		401		{object}	map[string]interface{}
+//	@Failure		500		{object}	map[string]interface{}
+//	@Router			/app/scorecard/rooms/{id}/wxacode [get]
 func (c *AppController) Wxacode(ctx *gin.Context) {
 	cl, ok := c.claims(ctx)
 	if !ok {

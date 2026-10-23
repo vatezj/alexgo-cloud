@@ -1,4 +1,44 @@
 basePath: /api
+definitions:
+  service.ConfigReq:
+    properties:
+      max_lose_score:
+        type: integer
+      tea_auto_enabled:
+        type: boolean
+      tea_percent:
+        type: number
+      tea_target_amount:
+        type: integer
+    type: object
+  service.CreateRoomReq:
+    properties:
+      max_lose_score:
+        type: integer
+      room_code:
+        description: 可空=服务端生成
+        type: string
+      tea_auto_enabled:
+        type: boolean
+      tea_percent:
+        type: number
+      tea_target_amount:
+        type: integer
+    type: object
+  service.ExpenseReq:
+    properties:
+      client_request_id:
+        type: string
+      score:
+        type: integer
+      tea:
+        type: integer
+      tea_from_user_id:
+        description: 手动 DIY 来源，缺省=支出方；非 0 时须在房（30113）
+        type: integer
+      to_user_id:
+        type: integer
+    type: object
 info:
   contact: {}
   description: |-
@@ -6,7 +46,827 @@ info:
     admin 侧（/admin/**）统一 pkg/resp 信封 {code,msg,data}；app 契约侧为裸 JSON 无信封。
   title: alexGo-cloud scorecard API
   version: "1.0"
-paths: {}
+paths:
+  /admin/scorecard/friends:
+    get:
+      description: 权限 scorecard:friend；统一 pkg/resp 信封。全租户关系行（gorm 租户插件隔离），不做 userID
+        维度过滤。
+      parameters:
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10，≤100
+        example: 10
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 好友关系分页
+      tags:
+      - scorecard-admin
+  /admin/scorecard/records:
+    get:
+      description: 权限 scorecard:record；统一 pkg/resp 信封。user_id/room_id 为 0 = 不过滤。
+      parameters:
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10，≤100
+        example: 10
+        in: query
+        name: size
+        type: integer
+      - description: 按玩家过滤，0 不过滤
+        example: 1001
+        in: query
+        name: user_id
+        type: integer
+      - description: 按房间过滤，0 不过滤
+        example: 1
+        in: query
+        name: room_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 战绩分页
+      tags:
+      - scorecard-admin
+  /admin/scorecard/rooms:
+    get:
+      description: 权限 scorecard:room；统一 pkg/resp 信封。status 缺省 -1 不过滤；room_code 空不过滤、非空按房号精确等值（spec
+        §4.2）。
+      parameters:
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10，≤100
+        example: 10
+        in: query
+        name: size
+        type: integer
+      - description: 房态过滤，缺省 -1 不过滤
+        example: 0
+        in: query
+        name: status
+        type: integer
+      - description: 房号精确等值，空不过滤
+        example: PK888
+        in: query
+        name: room_code
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 房间分页
+      tags:
+      - scorecard-admin
+  /admin/scorecard/rooms/{id}:
+    get:
+      description: 权限 scorecard:room；统一 pkg/resp 信封。房不存在/跨租户 30101。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 房间详情（房行 + 成员 + 最近流水）
+      tags:
+      - scorecard-admin
+  /admin/scorecard/rooms/{id}/close:
+    post:
+      description: 权限 scorecard:room；监管强制关房，无房主校验。房不存在 30101、已关 30103。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 强制关房
+      tags:
+      - scorecard-admin
+  /app/scorecard/friends:
+    get:
+      description: 统一 pkg/resp 信封，data = FriendItem 数组直出（user_id/nickname/avatar/rank_enabled/total_score/win_rate/is_blocked），非分页。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 我的好友列表
+      tags:
+      - scorecard-app
+    post:
+      consumes:
+      - application/json
+      description: 双向各写一行单事务；已是好友 30109、任一方向被拉黑 30108、目标不存在 30002、自加/0 10001。统一 pkg/resp
+        信封。
+      parameters:
+      - description: 好友用户 ID
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 添加好友
+      tags:
+      - scorecard-app
+  /app/scorecard/friends/{userId}:
+    delete:
+      description: 双向删行单事务，幂等（无关系也成功）；自删/0 10001。统一 pkg/resp 信封。
+      parameters:
+      - description: 好友用户 ID
+        example: 1002
+        in: path
+        name: userId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除好友
+      tags:
+      - scorecard-app
+  /app/scorecard/friends/{userId}/black:
+    post:
+      consumes:
+      - application/json
+      description: blocked=1 幂等拉黑（已存在直接成功），0 幂等解除（不存在也是成功）；仅接受 0/1，自拉黑 10001。统一 pkg/resp
+        信封。
+      parameters:
+      - description: 目标用户 ID
+        example: 1002
+        in: path
+        name: userId
+        required: true
+        type: integer
+      - description: 0 解除 1 拉黑
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 拉黑 / 解除拉黑
+      tags:
+      - scorecard-app
+  /app/scorecard/friends/{userId}/rank:
+    put:
+      consumes:
+      - application/json
+      description: enabled=1 参与 / 0 退出，只更新我方单行，行不存在空更新（幂等）；仅接受 0/1，10001 校验失败。统一 pkg/resp
+        信封。
+      parameters:
+      - description: 好友用户 ID
+        example: 1002
+        in: path
+        name: userId
+        required: true
+        type: integer
+      - description: 0 退出 1 参与
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 好友排名参与开关
+      tags:
+      - scorecard-app
+  /app/scorecard/records:
+    get:
+      description: 仅本人行，统一 pkg/resp 信封（list/total/page/size）。
+      parameters:
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10，≤100
+        example: 10
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 我的战绩分页
+      tags:
+      - scorecard-app
+  /app/scorecard/records/{recordId}:
+    delete:
+      description: 统一 pkg/resp 信封。记录不存在 30110、非本人记录 30111（仅本人可删）。
+      parameters:
+      - description: 战绩 ID
+        example: 1
+        in: path
+        name: recordId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除我的战绩
+      tags:
+      - scorecard-app
+    get:
+      description: 统一 pkg/resp 信封。记录不存在 30110、非本人记录 30111。
+      parameters:
+      - description: 战绩 ID
+        example: 1
+        in: path
+        name: recordId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 战绩详情（全房流水行）
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms:
+    post:
+      consumes:
+      - application/json
+      description: 创建入参见 service.CreateRoomReq；统一 pkg/resp 信封。room_code 可空=服务端生成，指定被占
+        30106；data 为最新房间快照。
+      parameters:
+      - description: 建房参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateRoomReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 创建房间
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/config:
+    put:
+      consumes:
+      - application/json
+      description: 指针字段只改提供的项，数值项「从下把生效」写 pending_*（spec §3.2）。仅房主 30105；房不存在 30101、已结算
+        30104、已关闭 30103。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 改配置（缺省项不改）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.ConfigReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新房间配置（仅房主）
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/expense:
+    post:
+      consumes:
+      - application/json
+      description: 入参见 service.ExpenseReq：score>0、to_user_id≠0 且≠自己、client_request_id
+        必填（幂等键，重放回放原结果）；茶饭单笔 ≤1000000。房不存在 30101、已结算 30104、已关闭 30103、非成员 30102、收/付方不在房
+        30113。data 含最新快照 + 流水号。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 记账入参
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.ExpenseReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 记一笔分支出
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/leave:
+    post:
+      description: 统一 pkg/resp 信封。房不存在 30101、非成员 30102。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 成员离房
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/logs:
+    get:
+      description: 统一 pkg/resp 信封（list/total/page/size）。房不存在 30101、非成员 30102。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10，≤100
+        example: 10
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 房间流水分页
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/settle:
+    post:
+      description: 统一 pkg/resp 信封。房不存在 30101、非房主 30105、已结算 30104、已关闭 30103。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 结算牌局（仅房主）
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/snapshot:
+    get:
+      description: 房行 + 成员 + 累计；统一 pkg/resp 信封。房不存在/跨租户 30101、非成员 30102（防外人窥房）。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 房间快照
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/transfer-owner:
+    post:
+      consumes:
+      - application/json
+      description: 统一 pkg/resp 信封。同人转让 30107、目标不在房 30113；房不存在 30101、非房主 30105、已结算
+        30104、已关闭 30103。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 转让目标
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 转让房主（仅房主）
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/{id}/wxacode:
+    get:
+      description: 200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102
+        非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号，进程内按房号缓存 5min。
+      parameters:
+      - description: 房间 ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 房间小程序码
+      tags:
+      - scorecard-app
+  /app/scorecard/rooms/join:
+    post:
+      consumes:
+      - application/json
+      description: 统一 pkg/resp 信封，data 为最新房间快照。房不存在 30101、已关闭 30103、已结算 30104、任一方向被拉黑
+        30108。
+      parameters:
+      - description: 房号
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 按房号加入房间
+      tags:
+      - scorecard-app
+  /app/scorecard/stat:
+    get:
+      description: 统一 pkg/resp 信封，data = {total_score, win, lose, draw, win_rate}（分母
+        0 → 0）。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 我的战绩统计
+      tags:
+      - scorecard-app
 securityDefinitions:
   Bearer:
     description: admin 侧统一登录令牌，格式 `Bearer <token>`。

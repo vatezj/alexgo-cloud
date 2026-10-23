@@ -25,8 +25,19 @@ func NewAdminController(rooms service.RoomService, records service.RecordService
 	return &AdminController{rooms: rooms, records: records, friends: friends}
 }
 
-// ListRooms GET /admin/scorecard/rooms：房间分页，status 缺省 -1 不过滤；
-// room_code 缺省空串 = 不过滤，非空按房号精确等值（spec §4.2 房间列表筛选）。
+// ListRooms godoc
+//
+//	@Summary		房间分页
+//	@Description	权限 scorecard:room；统一 pkg/resp 信封。status 缺省 -1 不过滤；room_code 空不过滤、非空按房号精确等值（spec §4.2）。
+//	@Tags			scorecard-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			page	query	integer	false	"页码，默认 1"	Example(1)
+//	@Param			size	query	integer	false	"每页条数，默认 10，≤100"	Example(10)
+//	@Param			status	query	integer	false	"房态过滤，缺省 -1 不过滤"	Example(0)
+//	@Param			room_code	query	string	false	"房号精确等值，空不过滤"	Example(PK888)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/scorecard/rooms [get]
 func (c *AdminController) ListRooms(ctx *gin.Context) {
 	var req struct {
 		resp.PageReq
@@ -50,7 +61,16 @@ func (c *AdminController) ListRooms(ctx *gin.Context) {
 	resp.Page(ctx, list, total, req.PageReq)
 }
 
-// RoomDetail GET /admin/scorecard/rooms/:id：房行 + 成员 + 最近流水（30101 房不存在）。
+// RoomDetail godoc
+//
+//	@Summary		房间详情（房行 + 成员 + 最近流水）
+//	@Description	权限 scorecard:room；统一 pkg/resp 信封。房不存在/跨租户 30101。
+//	@Tags			scorecard-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id	path	integer	true	"房间 ID"	Example(1)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/scorecard/rooms/{id} [get]
 func (c *AdminController) RoomDetail(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if err != nil || id == 0 {
@@ -65,7 +85,16 @@ func (c *AdminController) RoomDetail(ctx *gin.Context) {
 	resp.OK(ctx, d)
 }
 
-// CloseRoom POST /admin/scorecard/rooms/:id/close：强制关房（无房主校验，已关 30103）。
+// CloseRoom godoc
+//
+//	@Summary		强制关房
+//	@Description	权限 scorecard:room；监管强制关房，无房主校验。房不存在 30101、已关 30103。
+//	@Tags			scorecard-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id	path	integer	true	"房间 ID"	Example(1)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/scorecard/rooms/{id}/close [post]
 func (c *AdminController) CloseRoom(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if err != nil || id == 0 {
@@ -79,7 +108,19 @@ func (c *AdminController) CloseRoom(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
-// ListRecords GET /admin/scorecard/records：战绩分页，user_id/room_id 0 = 不过滤。
+// ListRecords godoc
+//
+//	@Summary		战绩分页
+//	@Description	权限 scorecard:record；统一 pkg/resp 信封。user_id/room_id 为 0 = 不过滤。
+//	@Tags			scorecard-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			page	query	integer	false	"页码，默认 1"	Example(1)
+//	@Param			size	query	integer	false	"每页条数，默认 10，≤100"	Example(10)
+//	@Param			user_id	query	integer	false	"按玩家过滤，0 不过滤"	Example(1001)
+//	@Param			room_id	query	integer	false	"按房间过滤，0 不过滤"	Example(1)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/scorecard/records [get]
 func (c *AdminController) ListRecords(ctx *gin.Context) {
 	var req struct {
 		resp.PageReq
@@ -99,7 +140,17 @@ func (c *AdminController) ListRecords(ctx *gin.Context) {
 	resp.Page(ctx, list, total, req.PageReq)
 }
 
-// ListFriends GET /admin/scorecard/friends：好友关系分页。
+// ListFriends godoc
+//
+//	@Summary		好友关系分页
+//	@Description	权限 scorecard:friend；统一 pkg/resp 信封。全租户关系行（gorm 租户插件隔离），不做 userID 维度过滤。
+//	@Tags			scorecard-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			page	query	integer	false	"页码，默认 1"	Example(1)
+//	@Param			size	query	integer	false	"每页条数，默认 10，≤100"	Example(10)
+//	@Success		200		{object}	map[string]interface{}
+//	@Router			/admin/scorecard/friends [get]
 func (c *AdminController) ListFriends(ctx *gin.Context) {
 	var req resp.PageReq
 	if err := ctx.ShouldBindQuery(&req); err != nil {

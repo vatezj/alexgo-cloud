@@ -14,7 +14,1298 @@ const docTemplatescorecard = `{
     },
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
-    "paths": {,"x-tagGroups": []},
+    "paths": {
+        "/admin/scorecard/friends": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 scorecard:friend；统一 pkg/resp 信封。全租户关系行（gorm 租户插件隔离），不做 userID 维度过滤。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-admin"
+                ],
+                "summary": "好友关系分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10，≤100",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/scorecard/records": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 scorecard:record；统一 pkg/resp 信封。user_id/room_id 为 0 = 不过滤。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-admin"
+                ],
+                "summary": "战绩分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10，≤100",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1001,
+                        "description": "按玩家过滤，0 不过滤",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "按房间过滤，0 不过滤",
+                        "name": "room_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/scorecard/rooms": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 scorecard:room；统一 pkg/resp 信封。status 缺省 -1 不过滤；room_code 空不过滤、非空按房号精确等值（spec §4.2）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-admin"
+                ],
+                "summary": "房间分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10，≤100",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 0,
+                        "description": "房态过滤，缺省 -1 不过滤",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "PK888",
+                        "description": "房号精确等值，空不过滤",
+                        "name": "room_code",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/scorecard/rooms/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 scorecard:room；统一 pkg/resp 信封。房不存在/跨租户 30101。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-admin"
+                ],
+                "summary": "房间详情（房行 + 成员 + 最近流水）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/scorecard/rooms/{id}/close": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 scorecard:room；监管强制关房，无房主校验。房不存在 30101、已关 30103。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-admin"
+                ],
+                "summary": "强制关房",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/friends": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封，data = FriendItem 数组直出（user_id/nickname/avatar/rank_enabled/total_score/win_rate/is_blocked），非分页。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "我的好友列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "双向各写一行单事务；已是好友 30109、任一方向被拉黑 30108、目标不存在 30002、自加/0 10001。统一 pkg/resp 信封。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "添加好友",
+                "parameters": [
+                    {
+                        "description": "好友用户 ID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/friends/{userId}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "双向删行单事务，幂等（无关系也成功）；自删/0 10001。统一 pkg/resp 信封。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "删除好友",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1002,
+                        "description": "好友用户 ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/friends/{userId}/black": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "blocked=1 幂等拉黑（已存在直接成功），0 幂等解除（不存在也是成功）；仅接受 0/1，自拉黑 10001。统一 pkg/resp 信封。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "拉黑 / 解除拉黑",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1002,
+                        "description": "目标用户 ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "0 解除 1 拉黑",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/friends/{userId}/rank": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "enabled=1 参与 / 0 退出，只更新我方单行，行不存在空更新（幂等）；仅接受 0/1，10001 校验失败。统一 pkg/resp 信封。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "好友排名参与开关",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1002,
+                        "description": "好友用户 ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "0 退出 1 参与",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/records": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "仅本人行，统一 pkg/resp 信封（list/total/page/size）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "我的战绩分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10，≤100",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/records/{recordId}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封。记录不存在 30110、非本人记录 30111。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "战绩详情（全房流水行）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "战绩 ID",
+                        "name": "recordId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封。记录不存在 30110、非本人记录 30111（仅本人可删）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "删除我的战绩",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "战绩 ID",
+                        "name": "recordId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "创建入参见 service.CreateRoomReq；统一 pkg/resp 信封。room_code 可空=服务端生成，指定被占 30106；data 为最新房间快照。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "创建房间",
+                "parameters": [
+                    {
+                        "description": "建房参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.CreateRoomReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/join": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封，data 为最新房间快照。房不存在 30101、已关闭 30103、已结算 30104、任一方向被拉黑 30108。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "按房号加入房间",
+                "parameters": [
+                    {
+                        "description": "房号",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/config": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "指针字段只改提供的项，数值项「从下把生效」写 pending_*（spec §3.2）。仅房主 30105；房不存在 30101、已结算 30104、已关闭 30103。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "更新房间配置（仅房主）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "改配置（缺省项不改）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.ConfigReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/expense": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "入参见 service.ExpenseReq：score\u003e0、to_user_id≠0 且≠自己、client_request_id 必填（幂等键，重放回放原结果）；茶饭单笔 ≤1000000。房不存在 30101、已结算 30104、已关闭 30103、非成员 30102、收/付方不在房 30113。data 含最新快照 + 流水号。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "记一笔分支出",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "记账入参",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.ExpenseReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/leave": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封。房不存在 30101、非成员 30102。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "成员离房",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/logs": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封（list/total/page/size）。房不存在 30101、非成员 30102。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "房间流水分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10，≤100",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/settle": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封。房不存在 30101、非房主 30105、已结算 30104、已关闭 30103。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "结算牌局（仅房主）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/snapshot": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "房行 + 成员 + 累计；统一 pkg/resp 信封。房不存在/跨租户 30101、非成员 30102（防外人窥房）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "房间快照",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/transfer-owner": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封。同人转让 30107、目标不在房 30113；房不存在 30101、非房主 30105、已结算 30104、已关闭 30103。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "转让房主（仅房主）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "转让目标",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/rooms/{id}/wxacode": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号，进程内按房号缓存 5min。",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "房间小程序码",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "房间 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/app/scorecard/stat": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "统一 pkg/resp 信封，data = {total_score, win, lose, draw, win_rate}（分母 0 → 0）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "我的战绩统计",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "service.ConfigReq": {
+            "type": "object",
+            "properties": {
+                "max_lose_score": {
+                    "type": "integer"
+                },
+                "tea_auto_enabled": {
+                    "type": "boolean"
+                },
+                "tea_percent": {
+                    "type": "number"
+                },
+                "tea_target_amount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.CreateRoomReq": {
+            "type": "object",
+            "properties": {
+                "max_lose_score": {
+                    "type": "integer"
+                },
+                "room_code": {
+                    "description": "可空=服务端生成",
+                    "type": "string"
+                },
+                "tea_auto_enabled": {
+                    "type": "boolean"
+                },
+                "tea_percent": {
+                    "type": "number"
+                },
+                "tea_target_amount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.ExpenseReq": {
+            "type": "object",
+            "properties": {
+                "client_request_id": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "tea": {
+                    "type": "integer"
+                },
+                "tea_from_user_id": {
+                    "description": "手动 DIY 来源，缺省=支出方；非 0 时须在房（30113）",
+                    "type": "integer"
+                },
+                "to_user_id": {
+                    "type": "integer"
+                }
+            }
+        }
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["scorecard-admin"]}, {"name": "App 端", "tags": ["scorecard-app"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",
