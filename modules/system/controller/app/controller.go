@@ -25,8 +25,18 @@ type loginRequest struct {
 	CaptchaCode string `json:"captcha_code"`
 }
 
-// Login app 端登录（怪癖保留：除 captcha 与 bind 外一律 500——既有前端契约）。
-// 审计归统一登录（D13），本层不再记账。
+// Login godoc
+//
+//	@Summary		app 端登录（用户名密码 + 图形验证码）
+//	@Description	免鉴权（自鉴权入口）；统一 pkg/resp 信封。验证码错 → CodeCaptchaInvalid；其余失败透传 → 50000（怪癖保留：除 captcha 外一律 HTTP 500，既有前端契约）。data={token,refresh_token,expires_in}。
+//	@Tags			system-app
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body	object	true	"登录参数"	Example({"username": "admin", "password": "secret", "captcha_uuid": "uuid-x", "captcha_code": "abcd"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		500		{object}	map[string]interface{}
+//	@Router			/app/system/auth/login [post]
 func (ctrl *AppController) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

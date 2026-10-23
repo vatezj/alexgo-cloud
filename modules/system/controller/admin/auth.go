@@ -28,6 +28,16 @@ type profileResponse struct {
 	Routes any          `json:"routes"`
 }
 
+// Profile godoc
+//
+//	@Summary		当前登录用户资料
+//	@Description	登录即可（system:auth）；返回 claims + 角色码 + 权限码 + 菜单/路由树。统一 pkg/resp 信封。
+//	@Tags			system-admin
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		401	{object}	map[string]interface{}
+//	@Router			/admin/system/auth/profile [get]
 func (c *AuthController) Profile(ctx *gin.Context) {
 	claimsAny, ok := ctx.Get("claims")
 	if !ok {
@@ -81,7 +91,19 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// Refresh 用 refresh_token 换取新令牌对。
+// Refresh godoc
+//
+//	@Summary		刷新令牌
+//	@Description	凭 body refresh_token 换新令牌对（凭据即 token，无需 Authorization）；缺失 → CodeParamMissing，无效 → 401。同一 handler 挂 admin 与 app 两侧。统一 pkg/resp 信封。
+//	@Tags			system-admin, system-app
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		object		true	"refresh_token"	Example({"refresh_token": "rt_xxx"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		401		{object}	map[string]interface{}
+//	@Router			/admin/system/auth/refresh [post]
+//	@Router			/app/system/auth/refresh [post]
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var req refreshRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
@@ -96,7 +118,17 @@ func (c *AuthController) Refresh(ctx *gin.Context) {
 	resp.OK(ctx, res)
 }
 
-// Logout 注销当前 access token（从 Authorization 头取）。
+// Logout godoc
+//
+//	@Summary		注销当前 access token
+//	@Description	从 Authorization 头取 Bearer token 后吊销；缺失 → CodeParamMissing。同一 handler 挂 admin 与 app 两侧。统一 pkg/resp 信封。
+//	@Tags			system-admin, system-app
+//	@Produce		json
+//	@Security		Bearer
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		400	{object}	map[string]interface{}
+//	@Router			/admin/system/auth/logout [post]
+//	@Router			/app/system/auth/logout [post]
 func (c *AuthController) Logout(ctx *gin.Context) {
 	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ctx.GetHeader("Authorization")), "Bearer "))
 	if raw == "" {

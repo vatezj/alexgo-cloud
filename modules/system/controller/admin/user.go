@@ -40,6 +40,18 @@ type setRolesRequest struct {
 	RoleIDs []uint64 `json:"role_ids"`
 }
 
+// Create godoc
+//
+//	@Summary		新建用户
+//	@Description	权限 system:user；username 查重冲突 → CodeUsernameTaken。统一 pkg/resp 信封。
+//	@Tags			system-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			body	body		object		true	"用户信息"	Example({"username": "alice", "nickname": "爱丽丝", "password": "secret"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/system/users [post]
 func (c *UserController) Create(ctx *gin.Context) {
 	var req createUserRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -54,6 +66,19 @@ func (c *UserController) Create(ctx *gin.Context) {
 	resp.OK(ctx, u)
 }
 
+// Update godoc
+//
+//	@Summary		更新用户（昵称/状态）
+//	@Description	权限 system:user；仅改 nickname/status，不支持改用户名/密码。统一 pkg/resp 信封。
+//	@Tags			system-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id	path	integer		true	"用户 ID"
+//	@Param			body	body		object		true	"昵称与状态"	Example({"nickname": "新昵称", "status": 1})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/system/users/{id} [put]
 func (c *UserController) Update(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
@@ -72,6 +97,19 @@ func (c *UserController) Update(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
+// ResetPassword godoc
+//
+//	@Summary		重置用户密码
+//	@Description	权限 system:user；直接设置新明文密码（service 内哈希）。统一 pkg/resp 信封。
+//	@Tags			system-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id	path	integer		true	"用户 ID"
+//	@Param			body	body		object		true	"新密码"	Example({"password": "new-secret"})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/system/users/{id}/reset-password [post]
 func (c *UserController) ResetPassword(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
@@ -90,6 +128,19 @@ func (c *UserController) ResetPassword(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
+// SetRoles godoc
+//
+//	@Summary		设置用户角色（全量覆盖）
+//	@Description	权限 system:user；role_ids 全量替换该用户角色集合。统一 pkg/resp 信封。
+//	@Tags			system-admin
+//	@Accept			json
+//	@Produce		json
+//	@Security		Bearer
+//	@Param			id	path	integer		true	"用户 ID"
+//	@Param			body	body		object		true	"角色 ID 列表"	Example({"role_ids": [1, 2]})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]interface{}
+//	@Router			/admin/system/users/{id}/roles [post]
 func (c *UserController) SetRoles(ctx *gin.Context) {
 	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if id == 0 {
@@ -108,7 +159,17 @@ func (c *UserController) SetRoles(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
-// ExportUsers 导出当前租户全量用户 xlsx（GET /users/export）。
+// ExportUsers godoc
+//
+//	@Summary		导出用户 xlsx
+//	@Description	权限 system:user；导出当前租户全量用户为 xlsx 流（非 JSON 信封）。Build 失败 → 400 信封（30013）。
+//	@Tags			system-admin
+//	@Produce		octet-stream
+//	@Security		Bearer
+//	@Success		200	{file}	file
+//	@Failure		400	{object}	map[string]interface{}
+//	@Router			/admin/system/users/export [get]
+//
 // 先取行、再 Build、最后 ctx.Data——Build 返回 error 时一个字节未写，信封安全
 // （RF② 先查后写；codegen download 同款豁免只发生在 ctx.Data 之后）。
 func (c *UserController) ExportUsers(ctx *gin.Context) {

@@ -1,4 +1,160 @@
 basePath: /api
+definitions:
+  model.Dept:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      parent_id:
+        type: integer
+      sort:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  model.DictData:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      label:
+        type: string
+      remark:
+        type: string
+      sort:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      type_id:
+        type: integer
+      updated_at:
+        type: string
+      value:
+        type: string
+    type: object
+  model.DictType:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      remark:
+        type: string
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.Menu:
+    properties:
+      component:
+        type: string
+      created_at:
+        type: string
+      creator:
+        type: string
+      icon:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      parent_id:
+        type: integer
+      path:
+        type: string
+      permission:
+        type: string
+      sort:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      type:
+        type: string
+      updated_at:
+        type: string
+      updater:
+        type: string
+    type: object
+  model.Post:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      sort:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  model.SystemConfig:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      key:
+        type: string
+      name:
+        type: string
+      remark:
+        type: string
+      tenant_id:
+        type: integer
+      updated_at:
+        type: string
+      value:
+        type: string
+    type: object
+  model.SystemNotice:
+    properties:
+      attachments:
+        description: |-
+          Attachments 附件 JSON 数组文本（元素 {id,name,size,url}，url=/api/public/infra/file/<key>）。
+          照 DataScopeDeptIDs 的 string 惯例（spec §2）：后端原样存取不解析——
+          公告内容本就是 admin 受信富文本。size 4096 防 MySQL 默认 varchar(191) 截断。
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      status:
+        type: integer
+      tenant_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
 info:
   contact: {}
   description: |-
@@ -7,6 +163,823 @@ info:
   title: alexGo-cloud system API
   version: "1.0"
 paths:
+  /admin/system/auth/logout:
+    post:
+      description: 从 Authorization 头取 Bearer token 后吊销；缺失 → CodeParamMissing。同一 handler
+        挂 admin 与 app 两侧。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 注销当前 access token
+      tags:
+      - system-admin
+      - system-app
+  /admin/system/auth/profile:
+    get:
+      description: 登录即可（system:auth）；返回 claims + 角色码 + 权限码 + 菜单/路由树。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 当前登录用户资料
+      tags:
+      - system-admin
+  /admin/system/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 凭 body refresh_token 换新令牌对（凭据即 token，无需 Authorization）；缺失 → CodeParamMissing，无效
+        → 401。同一 handler 挂 admin 与 app 两侧。统一 pkg/resp 信封。
+      parameters:
+      - description: refresh_token
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 刷新令牌
+      tags:
+      - system-admin
+      - system-app
+  /admin/system/configs:
+    get:
+      description: 权限 system:config；当前租户全量配置，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 系统配置列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:config。统一 pkg/resp 信封。
+      parameters:
+      - description: 系统配置
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.SystemConfig'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建系统配置
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:config；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 系统配置（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.SystemConfig'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新系统配置
+      tags:
+      - system-admin
+  /admin/system/configs/{id}:
+    delete:
+      description: 权限 system:config。统一 pkg/resp 信封。
+      parameters:
+      - description: 配置 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除系统配置
+      tags:
+      - system-admin
+  /admin/system/depts:
+    get:
+      description: 权限 system:dept；当前租户全量部门树，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 部门列表（全量树）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:dept。统一 pkg/resp 信封。
+      parameters:
+      - description: 部门
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Dept'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建部门
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:dept；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 部门（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Dept'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新部门
+      tags:
+      - system-admin
+  /admin/system/depts/{id}:
+    delete:
+      description: 权限 system:dept。统一 pkg/resp 信封。
+      parameters:
+      - description: 部门 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除部门
+      tags:
+      - system-admin
+  /admin/system/dict/datas:
+    get:
+      description: 权限 system:dict；type_id 必填，缺失/为 0 → 10001。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典类型 ID
+        in: query
+        name: type_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 字典数据列表（按类型）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:dict。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典数据
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.DictData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建字典数据
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:dict；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典数据（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.DictData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新字典数据
+      tags:
+      - system-admin
+  /admin/system/dict/datas/{id}:
+    delete:
+      description: 权限 system:dict。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典数据 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除字典数据
+      tags:
+      - system-admin
+  /admin/system/dict/types:
+    get:
+      description: 权限 system:dict；当前租户全量字典类型，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 字典类型列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:dict。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典类型
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.DictType'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建字典类型
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:dict；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典类型（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.DictType'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新字典类型
+      tags:
+      - system-admin
+  /admin/system/dict/types/{id}:
+    delete:
+      description: 权限 system:dict。统一 pkg/resp 信封。
+      parameters:
+      - description: 字典类型 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除字典类型
+      tags:
+      - system-admin
+  /admin/system/logs/login:
+    get:
+      description: 权限 system:log；limit 控制返回条数（query string Atoi，非 page/size 分页）。统一
+        pkg/resp 信封。
+      parameters:
+      - description: 返回条数上限
+        example: 20
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 登录日志列表
+      tags:
+      - system-admin
+  /admin/system/logs/operate:
+    get:
+      description: 权限 system:log；limit 控制返回条数（query string Atoi，非 page/size 分页）。统一
+        pkg/resp 信封。
+      parameters:
+      - description: 返回条数上限
+        example: 20
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 操作日志列表
+      tags:
+      - system-admin
+  /admin/system/menus:
+    get:
+      description: 权限 system:menu；当前租户全量菜单树，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 菜单列表（全量树）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:menu。统一 pkg/resp 信封。
+      parameters:
+      - description: 菜单
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Menu'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建菜单
+      tags:
+      - system-admin
+  /admin/system/menus/{id}:
+    delete:
+      description: 权限 system:menu。统一 pkg/resp 信封。
+      parameters:
+      - description: 菜单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除菜单
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:menu；路径 :id 覆盖 body 内 ID。统一 pkg/resp 信封。
+      parameters:
+      - description: 菜单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 菜单
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Menu'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新菜单
+      tags:
+      - system-admin
+  /admin/system/notices:
+    get:
+      description: 权限 system:notice；当前租户全量公告，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 公告列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:notice。统一 pkg/resp 信封。
+      parameters:
+      - description: 公告
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.SystemNotice'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建公告
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:notice；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 公告（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.SystemNotice'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新公告
+      tags:
+      - system-admin
+  /admin/system/notices/{id}:
+    delete:
+      description: 权限 system:notice。统一 pkg/resp 信封。
+      parameters:
+      - description: 公告 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除公告
+      tags:
+      - system-admin
+  /admin/system/notices/{id}/read:
+    post:
+      description: 权限 system:notice；幂等。公告不存在或跨租户 → CodeNoticeNotFound 400。统一 pkg/resp
+        信封。
+      parameters:
+      - description: 公告 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 标记单条通知已读
+      tags:
+      - system-admin
+  /admin/system/notices/mine:
+    get:
+      description: 权限 system:notice；P0-1 我的通知：本租户公告附带当前用户已读标记。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 我的通知（本租户公告 + 已读标记）
+      tags:
+      - system-admin
+  /admin/system/notices/read-all:
+    post:
+      description: 权限 system:notice；幂等，无请求体。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 一键全部标记已读
+      tags:
+      - system-admin
   /admin/system/online:
     get:
       description: 权限 system:online；本租户未过期管理员会话，统一 pkg/resp 信封。明文 token 不出接口。
@@ -92,6 +1065,583 @@ paths:
       summary: 代登录到会员
       tags:
       - system-admin
+  /admin/system/posts:
+    get:
+      description: 权限 system:post；当前租户全量岗位，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 岗位列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:post。统一 pkg/resp 信封。
+      parameters:
+      - description: 岗位
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Post'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建岗位
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:post；无 :id 路径参数，目标 ID 在 body 内。统一 pkg/resp 信封。
+      parameters:
+      - description: 岗位（含 ID）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Post'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新岗位
+      tags:
+      - system-admin
+  /admin/system/posts/{id}:
+    delete:
+      description: 权限 system:post。统一 pkg/resp 信封。
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除岗位
+      tags:
+      - system-admin
+  /admin/system/roles:
+    get:
+      description: 权限 system:role；当前租户全量角色，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 角色列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:role；code 查重冲突 → CodeRoleTaken。统一 pkg/resp 信封。
+      parameters:
+      - description: 角色信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建角色
+      tags:
+      - system-admin
+  /admin/system/roles/{id}:
+    delete:
+      description: 权限 system:role。统一 pkg/resp 信封。
+      parameters:
+      - description: 角色 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除角色
+      tags:
+      - system-admin
+  /admin/system/roles/{id}/menus:
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:role；menu_ids 全量替换该角色的菜单授权。统一 pkg/resp 信封。
+      parameters:
+      - description: 角色 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 菜单 ID 列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 分配角色菜单（全量覆盖）
+      tags:
+      - system-admin
+  /admin/system/tenants:
+    get:
+      description: 权限 system:tenant；全量返回不分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 租户列表
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:tenant；status 恒 1=启用；account_limit 缺省 0 → 归一为 -1 不限。
+      parameters:
+      - description: 租户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建租户
+      tags:
+      - system-admin
+  /admin/system/tenants/{id}:
+    delete:
+      description: 权限 system:tenant；id 非法 → 10001。
+      parameters:
+      - description: 租户 id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除租户（软删）
+      tags:
+      - system-admin
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:tenant；name/domain/status/account_limit 全量更新；id 非法 →
+        10001。
+      parameters:
+      - description: 租户 id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 租户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新租户
+      tags:
+      - system-admin
+  /admin/system/users:
+    get:
+      description: 权限 system:user；当前租户全量用户，无分页。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 用户列表（全量）
+      tags:
+      - system-admin
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:user；username 查重冲突 → CodeUsernameTaken。统一 pkg/resp 信封。
+      parameters:
+      - description: 用户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 新建用户
+      tags:
+      - system-admin
+  /admin/system/users/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 权限 system:user；仅改 nickname/status，不支持改用户名/密码。统一 pkg/resp 信封。
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 昵称与状态
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新用户（昵称/状态）
+      tags:
+      - system-admin
+  /admin/system/users/{id}/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:user；直接设置新明文密码（service 内哈希）。统一 pkg/resp 信封。
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 新密码
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 重置用户密码
+      tags:
+      - system-admin
+  /admin/system/users/{id}/roles:
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:user；role_ids 全量替换该用户角色集合。统一 pkg/resp 信封。
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 角色 ID 列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 设置用户角色（全量覆盖）
+      tags:
+      - system-admin
+  /admin/system/users/export:
+    get:
+      description: 权限 system:user；导出当前租户全量用户为 xlsx 流（非 JSON 信封）。Build 失败 → 400 信封（30013）。
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 导出用户 xlsx
+      tags:
+      - system-admin
+  /app/system/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 免鉴权（自鉴权入口）；统一 pkg/resp 信封。验证码错 → CodeCaptchaInvalid；其余失败透传 → 50000（怪癖保留：除
+        captcha 外一律 HTTP 500，既有前端契约）。data={token,refresh_token,expires_in}。
+      parameters:
+      - description: 登录参数
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: app 端登录（用户名密码 + 图形验证码）
+      tags:
+      - system-app
+  /app/system/auth/logout:
+    post:
+      description: 从 Authorization 头取 Bearer token 后吊销；缺失 → CodeParamMissing。同一 handler
+        挂 admin 与 app 两侧。统一 pkg/resp 信封。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 注销当前 access token
+      tags:
+      - system-admin
+      - system-app
+  /app/system/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 凭 body refresh_token 换新令牌对（凭据即 token，无需 Authorization）；缺失 → CodeParamMissing，无效
+        → 401。同一 handler 挂 admin 与 app 两侧。统一 pkg/resp 信封。
+      parameters:
+      - description: refresh_token
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 刷新令牌
+      tags:
+      - system-admin
+      - system-app
 securityDefinitions:
   Bearer:
     description: admin 侧统一登录令牌，格式 `Bearer <token>`。
