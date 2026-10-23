@@ -11,6 +11,7 @@ import (
 	"alexGo-cloud/modules/fishgame/service"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/migrate"
+	"alexGo-cloud/pkg/storage"
 )
 
 // FxModule fishgame 模块的 fx 装配。
@@ -33,10 +34,23 @@ var FxModule = fx.Module("fishgame",
 		service.NewDailyService,
 		service.NewTrackService,
 		service.NewDexService,
+		service.NewFriendService,
+		// FriendSource 抽象：一期库内关系（微信关系链留位，spec §4.6）。
+		fx.Annotate(
+			service.NewStoredFriendSource,
+			fx.As(new(service.FriendSource)),
+		),
+		// ShareService：public_base_url 从 cfg 取（storage.Driver 由 system 模块提供）。
+		func(cfg *config.Config, shares repository.ShareRepository, driver storage.Driver) *service.ShareService {
+			return service.NewShareService(shares, driver, cfg.Fishgame.PublicBaseURL)
+		},
 		app.NewAuthController,
 		app.NewDailyController,
 		app.NewTrackController,
 		app.NewDexController,
+		app.NewFriendController,
+		app.NewShareController,
+		app.NewPublicController,
 		middleware.SessionAuth,
 	),
 	fx.Provide(
@@ -59,32 +73,41 @@ var FxModule = fx.Module("fishgame",
 type ModuleParams struct {
 	fx.In
 
-	Cfg       *config.Config
-	AuthCtrl  *app.AuthController
-	DailyCtrl *app.DailyController
-	TrackCtrl *app.TrackController
-	DexCtrl   *app.DexController
-	SessionMW gin.HandlerFunc
+	Cfg        *config.Config
+	AuthCtrl   *app.AuthController
+	DailyCtrl  *app.DailyController
+	TrackCtrl  *app.TrackController
+	DexCtrl    *app.DexController
+	FriendCtrl *app.FriendController
+	ShareCtrl  *app.ShareController
+	PublicCtrl *app.PublicController
+	SessionMW  gin.HandlerFunc
 }
 
 type fishgameModule struct {
-	cfg       *config.Config
-	authCtrl  *app.AuthController
-	dailyCtrl *app.DailyController
-	trackCtrl *app.TrackController
-	dexCtrl   *app.DexController
-	sessionMW gin.HandlerFunc
+	cfg        *config.Config
+	authCtrl   *app.AuthController
+	dailyCtrl  *app.DailyController
+	trackCtrl  *app.TrackController
+	dexCtrl    *app.DexController
+	friendCtrl *app.FriendController
+	shareCtrl  *app.ShareController
+	publicCtrl *app.PublicController
+	sessionMW  gin.HandlerFunc
 }
 
 // NewModule 产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
 	return &fishgameModule{
-		cfg:       p.Cfg,
-		authCtrl:  p.AuthCtrl,
-		dailyCtrl: p.DailyCtrl,
-		trackCtrl: p.TrackCtrl,
-		dexCtrl:   p.DexCtrl,
-		sessionMW: p.SessionMW,
+		cfg:        p.Cfg,
+		authCtrl:   p.AuthCtrl,
+		dailyCtrl:  p.DailyCtrl,
+		trackCtrl:  p.TrackCtrl,
+		dexCtrl:    p.DexCtrl,
+		friendCtrl: p.FriendCtrl,
+		shareCtrl:  p.ShareCtrl,
+		publicCtrl: p.PublicCtrl,
+		sessionMW:  p.SessionMW,
 	}
 }
 
@@ -108,4 +131,9 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	v1Auth.POST("/track", m.trackCtrl.Track)
 	v1Auth.GET("/dex/table", m.dexCtrl.Table)
 	v1Auth.POST("/dex/report", m.dexCtrl.Report)
+	v1Auth.POST("/friends", m.friendCtrl.Add)
+	v1Auth.GET("/friends/rank", m.friendCtrl.Rank)
+	v1Auth.POST("/share/image", m.shareCtrl.Upload)
+	// 公开读（免鉴权）：RegisterRoutes 入参是 /api group → 完整路径 /api/public/fishgame/share/:key。
+	r.GET("/public/fishgame/share/:key", m.publicCtrl.Share)
 }

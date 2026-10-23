@@ -17,6 +17,8 @@ type DexRepository interface {
 	MergeReport(ctx context.Context, playerID uint64, counts map[string]int) error
 	CountByPlayer(ctx context.Context, playerID uint64) (int64, error) // 点亮数 = 行数 where count≥1
 	ListByPlayer(ctx context.Context, playerID uint64) ([]*model.Dex, error)
+	// CountMapByPlayers 批量点亮数 {player_id: 行数}；无点亮的 player 不出现在 map（好友榜聚合用）。
+	CountMapByPlayers(ctx context.Context, playerIDs []uint64) (map[uint64]int64, error)
 }
 
 type dexRepo struct{ db *gorm.DB }
@@ -85,4 +87,28 @@ func (r *dexRepo) ListByPlayer(ctx context.Context, playerID uint64) ([]*model.D
 	var list []*model.Dex
 	err := r.db.WithContext(ctx).Where("player_id = ?", playerID).Order("fish_id asc").Find(&list).Error
 	return list, err
+}
+
+func (r *dexRepo) CountMapByPlayers(ctx context.Context, playerIDs []uint64) (map[uint64]int64, error) {
+	out := make(map[uint64]int64, len(playerIDs))
+	if len(playerIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		PlayerID uint64
+		N        int64
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Model(&model.Dex{}).
+		Select("player_id, COUNT(*) AS n").
+		Where("player_id IN ? AND count >= 1", playerIDs).
+		Group("player_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range rows {
+		out[v.PlayerID] = v.N
+	}
+	return out, nil
 }

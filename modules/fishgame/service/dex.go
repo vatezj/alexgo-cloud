@@ -9,12 +9,12 @@ import (
 
 // FishRow /dex/table 契约行。
 type FishRow struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Rarity  string `json:"rarity"`
-	Period  string `json:"period"`
-	Depth   string `json:"depth"`
-	Flavor  string `json:"flavor"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Rarity string `json:"rarity"`
+	Period string `json:"period"`
+	Depth  string `json:"depth"`
+	Flavor string `json:"flavor"`
 }
 
 // DexService 图鉴双路：Table 全量启用条目；Report max 合并（spec §4.3）。

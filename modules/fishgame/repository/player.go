@@ -17,6 +17,8 @@ type PlayerRepository interface {
 	UpsertByOpenID(ctx context.Context, openid, nick, avatar string) (*model.Player, error)
 	GetByID(ctx context.Context, id uint64) (*model.Player, error) // 软查：不存在 → (nil, nil)
 	GetByOpenID(ctx context.Context, openid string) (*model.Player, error)
+	// ListAll 全体玩家（好友榜空回退口径，spec §4.6）；租户插件按 ctx tid 过滤。
+	ListAll(ctx context.Context) ([]*model.Player, error)
 }
 
 type playerRepo struct{ db *gorm.DB }
@@ -58,4 +60,10 @@ func (r *playerRepo) GetByOpenID(ctx context.Context, openid string) (*model.Pla
 		return nil, nil
 	}
 	return &out, err
+}
+
+func (r *playerRepo) ListAll(ctx context.Context) ([]*model.Player, error) {
+	var list []*model.Player
+	err := r.db.WithContext(ctx).Order("id asc").Find(&list).Error
+	return list, err
 }

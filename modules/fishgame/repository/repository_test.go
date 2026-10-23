@@ -307,3 +307,51 @@ func TestSign_GetByPlayerDate(t *testing.T) {
 		t.Fatalf("无记录应 nil: %+v", miss)
 	}
 }
+
+func TestPlayer_ListAll(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewPlayerRepository(db)
+	ctx := gameCtx()
+
+	if _, err := repo.UpsertByOpenID(ctx, "oid-1", "甲", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertByOpenID(ctx, "oid-2", "乙", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := repo.ListAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("应全体 2 人, got %d", len(list))
+	}
+}
+
+func TestDex_CountMapByPlayers(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewDexRepository(db)
+	ctx := gameCtx()
+
+	if _, err := repo.UpsertCatch(ctx, 1, "inkfish"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCatch(ctx, 1, "ghostfin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCatch(ctx, 2, "inkfish"); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := repo.CountMapByPlayers(ctx, []uint64{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m[1] != 2 || m[2] != 1 {
+		t.Fatalf("点亮数应 1→2, 2→1, got %v", m)
+	}
+	if _, ok := m[3]; ok {
+		t.Fatalf("无点亮的 3 不应出现: %v", m)
+	}
+}
