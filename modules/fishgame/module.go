@@ -31,8 +31,12 @@ var FxModule = fx.Module("fishgame",
 		},
 		service.NewAuthService,
 		service.NewDailyService,
+		service.NewTrackService,
+		service.NewDexService,
 		app.NewAuthController,
 		app.NewDailyController,
+		app.NewTrackController,
+		app.NewDexController,
 		middleware.SessionAuth,
 	),
 	fx.Provide(
@@ -58,6 +62,8 @@ type ModuleParams struct {
 	Cfg       *config.Config
 	AuthCtrl  *app.AuthController
 	DailyCtrl *app.DailyController
+	TrackCtrl *app.TrackController
+	DexCtrl   *app.DexController
 	SessionMW gin.HandlerFunc
 }
 
@@ -65,6 +71,8 @@ type fishgameModule struct {
 	cfg       *config.Config
 	authCtrl  *app.AuthController
 	dailyCtrl *app.DailyController
+	trackCtrl *app.TrackController
+	dexCtrl   *app.DexController
 	sessionMW gin.HandlerFunc
 }
 
@@ -74,6 +82,8 @@ func NewModule(p ModuleParams) server.Module {
 		cfg:       p.Cfg,
 		authCtrl:  p.AuthCtrl,
 		dailyCtrl: p.DailyCtrl,
+		trackCtrl: p.TrackCtrl,
+		dexCtrl:   p.DexCtrl,
 		sessionMW: p.SessionMW,
 	}
 }
@@ -95,4 +105,7 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	v1Auth.GET("/config/daily", m.dailyCtrl.DailyConfig)
 	v1Auth.POST("/daily/sign", m.dailyCtrl.Sign)
 	v1Auth.GET("/basket", m.dailyCtrl.Basket)
+	v1Auth.POST("/track", m.trackCtrl.Track)
+	v1Auth.GET("/dex/table", m.dexCtrl.Table)
+	v1Auth.POST("/dex/report", m.dexCtrl.Report)
 }

@@ -185,12 +185,12 @@ func TestTrackEvent_BatchInsertIgnoreDup(t *testing.T) {
 		{TenantID: 0, PlayerID: 1, Name: "catch", T: 100, Props: `{"fish_id":"inkfish"}`, DedupKey: "dup-key-1"}, // 重复
 		{TenantID: 0, PlayerID: 1, Name: "sign_in", T: 101, Props: `{}`, DedupKey: "dup-key-2"},
 	}
-	inserted, err := repo.BatchInsertIgnoreDup(ctx, events)
+	insertedIdx, err := repo.BatchInsertIgnoreDup(ctx, events)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inserted != 2 {
-		t.Fatalf("应只插入 2 条（去重）, got %d", inserted)
+	if len(insertedIdx) != 2 {
+		t.Fatalf("应只插入 2 条（去重）, got %v", insertedIdx)
 	}
 	var n int64
 	if err := db.Model(&model.TrackEvent{}).Count(&n).Error; err != nil {

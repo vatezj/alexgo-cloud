@@ -12,8 +12,9 @@ import (
 
 // TrackEventRepository 埋点事实流：追加型 + dedup_key 唯一防重发。
 type TrackEventRepository interface {
-	// BatchInsertIgnoreDup ON DUPLICATE KEY IGNORE（dedup_key 冲突跳过），返回实际插入条数。
-	BatchInsertIgnoreDup(ctx context.Context, events []*model.TrackEvent) (int, error)
+	// BatchInsertIgnoreDup 逐条 OnConflict DoNothing；返回实际插入的下标（与入参对齐，
+	// 供 catch→dex 推导只对首次插入递增，防重发膨胀）。
+	BatchInsertIgnoreDup(ctx context.Context, events []*model.TrackEvent) ([]int, error)
 	ListAdmin(ctx context.Context, name string, playerID uint64, startT, endT int64, page, size int) ([]*model.TrackEvent, int64, error)
 }
 
@@ -21,28 +22,23 @@ type trackEventRepo struct{ db *gorm.DB }
 
 func NewTrackEventRepository(db *gorm.DB) TrackEventRepository { return &trackEventRepo{db: db} }
 
-func (r *trackEventRepo) BatchInsertIgnoreDup(ctx context.Context, events []*model.TrackEvent) (int, error) {
-	if len(events) == 0 {
-		return 0, nil
-	}
-	for _, e := range events {
+func (r *trackEventRepo) BatchInsertIgnoreDup(ctx context.Context, events []*model.TrackEvent) ([]int, error) {
+	inserted := make([]int, 0, len(events))
+	for i, e := range events {
 		if e.TenantID == 0 {
 			e.TenantID = 0
 		}
+		res := r.db.WithContext(ctx).
+			Clauses(clause.OnConflict{DoNothing: true}).
+			Create(e)
+		if res.Error != nil {
+			return inserted, res.Error
+		}
+		if res.RowsAffected > 0 {
+			inserted = append(inserted, i)
+		}
 	}
-	before := int64(0)
-	if err := r.db.WithContext(ctx).Model(&model.TrackEvent{}).Count(&before).Error; err != nil {
-		return 0, err
-	}
-	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(events).Error
-	if err != nil {
-		return 0, err
-	}
-	var after int64
-	if err := r.db.WithContext(ctx).Model(&model.TrackEvent{}).Count(&after).Error; err != nil {
-		return 0, err
-	}
-	return int(after - before), nil
+	return inserted, nil
 }
 
 func (r *trackEventRepo) ListAdmin(ctx context.Context, name string, playerID uint64, startT, endT int64, page, size int) ([]*model.TrackEvent, int64, error) {
