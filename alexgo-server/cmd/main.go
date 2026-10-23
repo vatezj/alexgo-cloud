@@ -1,17 +1,5 @@
-// @title alexGo-cloud API
-// @version 1.0
-// @description alexGo-cloud 后端 API 文档（swaggo 生成，`make swagger` 刷新）。
-// @description 两侧响应约定不同：admin 侧（/admin/**）统一 pkg/resp 信封；app 契约侧（/v1/**）为裸 JSON 无信封。
-// @description tag 命名 = 模块-侧（如 fishgame-admin / fishgame-app），UI 侧栏按 后台管理 / App 端 两组分——详见 docs/swagger-guide.md。
-// @BasePath /api
-// @securityDefinitions.apikey Bearer
-// @in header
-// @name Authorization
-// @description admin 侧统一登录令牌，格式 `Bearer <token>`。
-// @securityDefinitions.apikey X-Session
-// @in header
-// @name X-Session
-// @description app 契约侧自鉴权会话令牌（/auth/login 签发）。
+// Swagger 通用注解（@title/@BasePath/安全定义）已迁至各模块 swagger_doc.go，
+// 每模块独立 spec 挂 /swagger/<模块>/ —— 见 docs/swagger-guide.md。
 package main
 
 import (

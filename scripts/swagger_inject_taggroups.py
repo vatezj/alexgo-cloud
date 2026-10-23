@@ -49,7 +49,7 @@ def inject_json(path: Path, groups: list) -> None:
 def inject_docs_go(path: Path, groups: list) -> None:
     """docTemplate 是 Go 反引号 raw string 里的 JSON——把 x-tagGroups 插到最后一个 `}` 前。"""
     src = path.read_text(encoding="utf-8")
-    m = re.search(r"const docTemplate = `(.*?)`", src, re.DOTALL)
+    m = re.search(r"const docTemplate\w* = `(.*?)`", src, re.DOTALL)
     if not m:
         sys.exit("docs.go: 未找到 docTemplate 常量")
     tpl = m.group(1)
@@ -62,15 +62,20 @@ def inject_docs_go(path: Path, groups: list) -> None:
 
 
 def main() -> None:
-    json_path = SWAGGER_DIR / "swagger.json"
-    gengo = SWAGGER_DIR / "docs.go"
-    if not json_path.exists() or not gengo.exists():
-        sys.exit(f"先跑 swag init 生成 {SWAGGER_DIR} 下的文件")
-    spec = json.loads(json_path.read_text(encoding="utf-8"))
-    groups = build_tag_groups(operation_tags(spec))
-    inject_json(json_path, groups)
-    inject_docs_go(gengo, groups)
-    print(f"injected x-tagGroups: {json.dumps(groups, ensure_ascii=False)}")
+    """每模块一个 spec 目录：docs/swagger/<module>/<instance>_{swagger.json,docs.go}（--instanceName 前缀）。"""
+    dirs = sorted(d for d in SWAGGER_DIR.iterdir() if d.is_dir())
+    if not dirs:
+        sys.exit(f"先跑 swag init 生成 {SWAGGER_DIR}/<module>/ 下的文件")
+    for d in dirs:
+        json_path = d / f"{d.name}_swagger.json"
+        gengo = d / f"{d.name}_docs.go"
+        if not json_path.exists() or not gengo.exists():
+            sys.exit(f"缺少 {json_path} 或 {gengo}（先跑 make swagger 的 swag init）")
+        spec = json.loads(json_path.read_text(encoding="utf-8"))
+        groups = build_tag_groups(operation_tags(spec))
+        inject_json(json_path, groups)
+        inject_docs_go(gengo, groups)
+        print(f"[{d.name}] injected x-tagGroups: {json.dumps(groups, ensure_ascii=False)}")
 
 
 if __name__ == "__main__":

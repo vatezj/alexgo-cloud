@@ -15,8 +15,12 @@ import (
 
 	"github.com/casbin/casbin/v2"
 
-	// 生成的 Swagger spec（`make swagger` 产出，init 时注册到 swag 注册表）。
-	_ "alexGo-cloud/docs/swagger"
+	// 每模块独立的生成 Swagger spec（`make swagger` 产出，init 时按 instanceName 注册）。
+	_ "alexGo-cloud/docs/swagger/fishgame"
+	_ "alexGo-cloud/docs/swagger/member"
+	_ "alexGo-cloud/docs/swagger/order"
+	_ "alexGo-cloud/docs/swagger/scorecard"
+	_ "alexGo-cloud/docs/swagger/system"
 
 	"alexGo-cloud/pkg/audit"
 	"alexGo-cloud/pkg/circuitbreaker"
@@ -136,11 +140,19 @@ func newRouter(p HTTPServerParams) *gin.Engine {
 		r.GET("/debug/pprof/symbol", gin.WrapF(pprof.Symbol))
 		r.GET("/debug/pprof/trace", gin.WrapF(pprof.Trace))
 	}
-	// Swagger UI：/swagger/index.html（与 /health 同级，不在 /api 下）。
+	// Swagger UI：每模块独立 spec，挂 /swagger/<模块>/index.html（与 /health 同级，不在 /api 下）。
 	// 默认开（loader server.swagger_enabled=true）；对外生产环境可显式关掉，避免接口形状外泄。
-	// tag 分组（后台管理 / App 端）见 docs/swagger-guide.md。
+	// 模块清单与 Makefile SWAG_MODULES 保持一致；tag 分组（后台管理 / App 端）见 docs/swagger-guide.md。
 	if p.Cfg.Server.SwaggerEnabled {
-		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		for _, m := range []string{"fishgame", "system", "scorecard", "member", "order"} {
+			mod := m // 循环变量捕获
+			r.GET("/swagger/"+mod+"/*any",
+				ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.InstanceName(mod)))
+		}
+		// /swagger 根路径重定向到首个模块 UI。
+		r.GET("/swagger", func(c *gin.Context) {
+			c.Redirect(http.StatusFound, "/swagger/fishgame/index.html")
+		})
 	}
 	return r
 }

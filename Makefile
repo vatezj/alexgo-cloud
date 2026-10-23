@@ -19,8 +19,13 @@ proto:
 	bash scripts/gen_proto.sh
 
 SWAG ?= $(shell go env GOPATH)/bin/swag
-swagger: ## 生成 API 文档到 docs/swagger 并注入侧栏分组（后台管理 / App 端）；需先 go install github.com/swaggo/swag/cmd/swag@v1.16.4
-	$(SWAG) init -g alexgo-server/cmd/main.go -o docs/swagger --parseDepth 3
+SWAG_MODULES := fishgame system scorecard member order
+
+swagger: ## 每模块独立生成 API 文档到 docs/swagger/<模块>/ 并注入侧栏分组；需先 go install github.com/swaggo/swag/cmd/swag@v1.16.4
+	@for m in $(SWAG_MODULES); do \
+		echo "== swag init $$m =="; \
+		$(SWAG) init -g swagger_doc.go --dir modules/$$m -o docs/swagger/$$m --instanceName $$m --parseDepth 3 || exit 1; \
+	done
 	python3 scripts/swagger_inject_taggroups.py
 
 generate-crud: ## 从配置表生成已导入表（MODULE 过滤，默认 system；不覆盖已有文件）
