@@ -85,6 +85,16 @@ const (
 	// CodeSocialUnbindLast social：解绑后将失去唯一登录方式。
 	CodeSocialUnbindLast Code = 30306
 
+	// ---- 304xx fishgame ----
+	// CodeFishgameFishNotFound fishgame：图鉴条目不存在（查无/跨租户）。
+	CodeFishgameFishNotFound Code = 30401
+	// CodeFishgameFishReferenced fishgame：条目已被进度或事件引用，不可删除（引导改启停）。
+	CodeFishgameFishReferenced Code = 30402
+	// CodeFishgameFishKingInvalid fishgame：鱼王指定的条目不存在或已停用。
+	CodeFishgameFishKingInvalid Code = 30403
+	// CodeFishgameConfigNotFound fishgame：运营配置不存在（查无/跨租户）。
+	CodeFishgameConfigNotFound Code = 30404
+
 	// 5xxxx 系统
 	CodeInternal Code = 50000
 	// CodeWxacodeNotConfigured scorecard 小程序码：租户未配置（或已停用）微信小程序渠道，
@@ -140,6 +150,11 @@ var registry = map[Code]string{
 	CodeSocialMobileBound:      "当前账号已绑定手机号",
 	CodeSocialMergeRefused:     "手机号已被占用，当前账号不满足自动合并条件",
 	CodeSocialUnbindLast:       "解绑后将失去唯一登录方式",
+
+	CodeFishgameFishNotFound:    "图鉴条目不存在",
+	CodeFishgameFishReferenced:  "条目已被进度或事件引用，不可删除",
+	CodeFishgameFishKingInvalid: "鱼王指定的条目不存在或已停用",
+	CodeFishgameConfigNotFound:  "运营配置不存在",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 
