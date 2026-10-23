@@ -5,6 +5,7 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/fishgame/controller/admin"
 	"alexGo-cloud/modules/fishgame/controller/app"
 	"alexGo-cloud/modules/fishgame/middleware"
 	"alexGo-cloud/modules/fishgame/repository"
@@ -44,6 +45,7 @@ var FxModule = fx.Module("fishgame",
 		func(cfg *config.Config, shares repository.ShareRepository, driver storage.Driver) *service.ShareService {
 			return service.NewShareService(shares, driver, cfg.Fishgame.PublicBaseURL)
 		},
+		service.NewAdminService,
 		app.NewAuthController,
 		app.NewDailyController,
 		app.NewTrackController,
@@ -51,6 +53,7 @@ var FxModule = fx.Module("fishgame",
 		app.NewFriendController,
 		app.NewShareController,
 		app.NewPublicController,
+		admin.NewAdminController,
 		middleware.SessionAuth,
 	),
 	fx.Provide(
@@ -81,6 +84,7 @@ type ModuleParams struct {
 	FriendCtrl *app.FriendController
 	ShareCtrl  *app.ShareController
 	PublicCtrl *app.PublicController
+	AdminCtrl  *admin.AdminController
 	SessionMW  gin.HandlerFunc
 }
 
@@ -93,6 +97,7 @@ type fishgameModule struct {
 	friendCtrl *app.FriendController
 	shareCtrl  *app.ShareController
 	publicCtrl *app.PublicController
+	adminCtrl  *admin.AdminController
 	sessionMW  gin.HandlerFunc
 }
 
@@ -107,6 +112,7 @@ func NewModule(p ModuleParams) server.Module {
 		friendCtrl: p.FriendCtrl,
 		shareCtrl:  p.ShareCtrl,
 		publicCtrl: p.PublicCtrl,
+		adminCtrl:  p.AdminCtrl,
 		sessionMW:  p.SessionMW,
 	}
 }
@@ -136,4 +142,20 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	v1Auth.POST("/share/image", m.shareCtrl.Upload)
 	// 公开读（免鉴权）：RegisterRoutes 入参是 /api group → 完整路径 /api/public/fishgame/share/:key。
 	r.GET("/public/fishgame/share/:key", m.publicCtrl.Share)
+
+	// admin 段（spec §4.2）：统一信封 + casbin 按 permissionRoutes 前缀鉴权。
+	admin := r.Group("/admin/fishgame")
+	admin.GET("/fishes", m.adminCtrl.ListFish)
+	admin.POST("/fishes", m.adminCtrl.CreateFish)
+	admin.PUT("/fishes/:id", m.adminCtrl.UpdateFish)
+	admin.DELETE("/fishes/:id", m.adminCtrl.DeleteFish)
+	admin.GET("/configs", m.adminCtrl.ListConfig)
+	admin.POST("/configs", m.adminCtrl.CreateConfig)
+	admin.PUT("/configs/:id", m.adminCtrl.UpdateConfig)
+	admin.DELETE("/configs/:id", m.adminCtrl.DeleteConfig)
+	admin.GET("/events", m.adminCtrl.ListEvents)
+	admin.GET("/players", m.adminCtrl.ListPlayers)
+	admin.GET("/players/:id", m.adminCtrl.PlayerDetail)
+	admin.GET("/players/:id/rank", m.adminCtrl.PlayerRank)
+	admin.GET("/stats", m.adminCtrl.Stats)
 }

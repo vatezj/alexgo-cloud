@@ -19,6 +19,8 @@ type DexRepository interface {
 	ListByPlayer(ctx context.Context, playerID uint64) ([]*model.Dex, error)
 	// CountMapByPlayers 批量点亮数 {player_id: 行数}；无点亮的 player 不出现在 map（好友榜聚合用）。
 	CountMapByPlayers(ctx context.Context, playerIDs []uint64) (map[uint64]int64, error)
+	// ExistsFish 是否存在该 fish_id 的进度行（删除前引用检查 → 30402）。
+	ExistsFish(ctx context.Context, fishID string) (bool, error)
 }
 
 type dexRepo struct{ db *gorm.DB }
@@ -111,4 +113,12 @@ func (r *dexRepo) CountMapByPlayers(ctx context.Context, playerIDs []uint64) (ma
 		out[v.PlayerID] = v.N
 	}
 	return out, nil
+}
+
+// ExistsFish 是否存在该 fish_id 的进度行（删除前引用检查，spec §4.2 → 30402）。
+func (r *dexRepo) ExistsFish(ctx context.Context, fishID string) (bool, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.Dex{}).
+		Where("fish_id = ?", fishID).Count(&n).Error
+	return n > 0, err
 }

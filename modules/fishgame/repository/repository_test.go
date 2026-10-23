@@ -355,3 +355,131 @@ func TestDex_CountMapByPlayers(t *testing.T) {
 		t.Fatalf("无点亮的 3 不应出现: %v", m)
 	}
 }
+
+// ---- Task 9 admin 聚合新方法 ----
+
+func TestPlayer_ListAdmin_FuzzyAndPage(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewPlayerRepository(db)
+	ctx := gameCtx()
+	for _, p := range [][2]string{
+		{"openid-alpha", "阿尔法"},
+		{"openid-beta", "贝塔"},
+		{"openid-gamma", "gamma-x"},
+	} {
+		if _, err := repo.UpsertByOpenID(ctx, p[0], p[1], ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, total, err := repo.ListAdmin(ctx, "alpha", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || list[0].OpenID != "openid-alpha" {
+		t.Fatalf("openid 模糊: total=%d %+v", total, list)
+	}
+	_, total, err = repo.ListAdmin(ctx, "贝", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("nick 模糊应 1, got %d", total)
+	}
+	list, total, err = repo.ListAdmin(ctx, "", 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 || len(list) != 1 {
+		t.Fatalf("分页 page=2 size=2: total=%d len=%d", total, len(list))
+	}
+}
+
+func TestPlayer_CountAndCountCreatedSince(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewPlayerRepository(db)
+	ctx := gameCtx()
+	a, err := repo.UpsertByOpenID(ctx, "openid-a", "a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertByOpenID(ctx, "openid-b", "b", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.Player{}).Where("id = ?", a.ID).
+		Update("created_at", time.Now().Add(-48*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	n, err := repo.CountAll(ctx)
+	if err != nil || n != 2 {
+		t.Fatalf("CountAll 应 2, got %d (%v)", n, err)
+	}
+	today := time.Now().Add(-time.Hour)
+	n, err = repo.CountCreatedSince(ctx, today)
+	if err != nil || n != 1 {
+		t.Fatalf("今日新增应 1, got %d (%v)", n, err)
+	}
+}
+
+func TestTrackEvent_ListNameTSince(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewTrackEventRepository(db)
+	ctx := gameCtx()
+	now := time.Now()
+	for i, e := range []*model.TrackEvent{
+		{TenantID: 0, PlayerID: 1, Name: "catch", T: now.Add(-24 * time.Hour).Unix(), Props: `{}`, DedupKey: "nt-1"},
+		{TenantID: 0, PlayerID: 1, Name: "catch", T: now.Add(-24 * time.Hour).Unix(), Props: `{}`, DedupKey: "nt-2"},
+		{TenantID: 0, PlayerID: 1, Name: "old", T: now.Add(-9 * 24 * time.Hour).Unix(), Props: `{}`, DedupKey: "nt-3"},
+	} {
+		if err := db.Create(e).Error; err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+	rows, err := repo.ListNameTSince(ctx, now.Add(-7*24*time.Hour).Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("窗内应 2 行（窗外 old 不计）, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.Name != "catch" {
+			t.Fatalf("应只返回 catch: %+v", r)
+		}
+	}
+}
+
+func TestDex_ExistsFish(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewDexRepository(db)
+	ctx := gameCtx()
+	if err := repo.MergeReport(ctx, 1, map[string]int{"inkfish": 2}); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := repo.ExistsFish(ctx, "inkfish")
+	if err != nil || !ok {
+		t.Fatalf("应存在: ok=%v err=%v", ok, err)
+	}
+	ok, err = repo.ExistsFish(ctx, "ghostfin")
+	if err != nil || ok {
+		t.Fatalf("不应存在: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestTrackEvent_ExistsFishRef(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewTrackEventRepository(db)
+	ctx := gameCtx()
+	e := &model.TrackEvent{TenantID: 0, PlayerID: 1, Name: "catch", T: 100,
+		Props: `{"fish_id":"inkfish","kind":"fish"}`, DedupKey: "fr-1"}
+	if err := db.Create(e).Error; err != nil {
+		t.Fatal(err)
+	}
+	ok, err := repo.ExistsFishRef(ctx, "inkfish")
+	if err != nil || !ok {
+		t.Fatalf("应命中引用: ok=%v err=%v", ok, err)
+	}
+	ok, err = repo.ExistsFishRef(ctx, "ghostfin")
+	if err != nil || ok {
+		t.Fatalf("不应命中: ok=%v err=%v", ok, err)
+	}
+}

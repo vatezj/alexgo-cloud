@@ -95,8 +95,16 @@ func (s *FriendService) Add(ctx context.Context, player *model.Player, targetOpe
 	return s.friends.AddPair(ctx, player.ID, target.ID)
 }
 
-// Rank 好友榜：好友源非空 → 好友 ∪ 自己按 dex 降序；空 → 同租户全体玩家。
-func (s *FriendService) Rank(ctx context.Context, player *model.Player) ([]RankRow, error) {
+// rankEntry 榜单中间行（带 player_id：admin 次位查询复用同一双口径逻辑）。
+type rankEntry struct {
+	PlayerID uint64
+	Nick     string
+	Dex      int64
+}
+
+// rankEntries 双口径榜单：好友源非空 → 好友 ∪ 自己；空 → 同租户全体；
+// dex 降序、nick 升序决胜（Rank 与 admin /players/:id/rank 共用）。
+func (s *FriendService) rankEntries(ctx context.Context, player *model.Player) ([]rankEntry, error) {
 	friendOpenIDs, err := s.source.FriendsOf(ctx, player.OpenID)
 	if err != nil {
 		return nil, err
@@ -129,9 +137,9 @@ func (s *FriendService) Rank(ctx context.Context, player *model.Player) ([]RankR
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]RankRow, 0, len(set))
+	rows := make([]rankEntry, 0, len(set))
 	for _, p := range set {
-		rows = append(rows, RankRow{Nick: p.Nick, Dex: counts[p.ID]})
+		rows = append(rows, rankEntry{PlayerID: p.ID, Nick: p.Nick, Dex: counts[p.ID]})
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Dex != rows[j].Dex {
@@ -139,5 +147,18 @@ func (s *FriendService) Rank(ctx context.Context, player *model.Player) ([]RankR
 		}
 		return rows[i].Nick < rows[j].Nick
 	})
+	return rows, nil
+}
+
+// Rank 好友榜契约行（rankEntries 的投影）。
+func (s *FriendService) Rank(ctx context.Context, player *model.Player) ([]RankRow, error) {
+	entries, err := s.rankEntries(ctx, player)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]RankRow, len(entries))
+	for i, e := range entries {
+		rows[i] = RankRow{Nick: e.Nick, Dex: e.Dex}
+	}
 	return rows, nil
 }
