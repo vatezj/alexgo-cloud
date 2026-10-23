@@ -30,7 +30,9 @@ var FxModule = fx.Module("fishgame",
 			return service.NewWechatClient(cfg.Fishgame.Wechat.Appid, cfg.Fishgame.Wechat.Secret)
 		},
 		service.NewAuthService,
+		service.NewDailyService,
 		app.NewAuthController,
+		app.NewDailyController,
 		middleware.SessionAuth,
 	),
 	fx.Provide(
@@ -55,18 +57,25 @@ type ModuleParams struct {
 
 	Cfg       *config.Config
 	AuthCtrl  *app.AuthController
+	DailyCtrl *app.DailyController
 	SessionMW gin.HandlerFunc
 }
 
 type fishgameModule struct {
 	cfg       *config.Config
 	authCtrl  *app.AuthController
+	dailyCtrl *app.DailyController
 	sessionMW gin.HandlerFunc
 }
 
 // NewModule 产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
-	return &fishgameModule{cfg: p.Cfg, authCtrl: p.AuthCtrl, sessionMW: p.SessionMW}
+	return &fishgameModule{
+		cfg:       p.Cfg,
+		authCtrl:  p.AuthCtrl,
+		dailyCtrl: p.DailyCtrl,
+		sessionMW: p.SessionMW,
+	}
 }
 
 // RegisterRoutes 挂载 fishgame 路由。入参是 /api group（见 server/http.go），
@@ -82,5 +91,8 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	// login 不挂中间件（自鉴权入口）。
 	v1.POST("/auth/login", m.authCtrl.Login)
 	// Task 6-8 业务路由挂 v1Auth（X-Session）。
-	_ = v1.Group("", m.sessionMW)
+	v1Auth := v1.Group("", m.sessionMW)
+	v1Auth.GET("/config/daily", m.dailyCtrl.DailyConfig)
+	v1Auth.POST("/daily/sign", m.dailyCtrl.Sign)
+	v1Auth.GET("/basket", m.dailyCtrl.Basket)
 }
