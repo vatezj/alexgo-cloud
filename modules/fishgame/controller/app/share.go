@@ -21,8 +21,19 @@ func NewShareController(svc *service.ShareService, cfg *config.Config) *ShareCon
 	return &ShareController{svc: svc, cfg: cfg}
 }
 
-// Upload POST /share/image multipart image → {"url":"<绝对 URL>"}。
-// base 优先级：cfg.Fishgame.PublicBaseURL → https + 请求 Host。
+// Upload godoc
+//
+//	@Summary		分享图上传
+//	@Description	multipart 字段 image；扩展名白名单（jpeg 归一存 jpg）；≤2MB。URL base 优先级：cfg.Fishgame.PublicBaseURL → https+Host。
+//	@Tags			fishgame-app
+//	@Accept			mpfd
+//	@Produce		json
+//	@Security		X-Session
+//	@Param			image	formData	file		true	"分享图（jpg/png/jpeg）"
+//	@Success		200		{object}	map[string]string
+//	@Failure		400		{object}	map[string]string
+//	@Failure		401		{object}	map[string]string
+//	@Router			/v1/share/image [post]
 func (c *ShareController) Upload(ctx *gin.Context) {
 	p, ok := middleware.PlayerFrom(ctx)
 	if !ok {

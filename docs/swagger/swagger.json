@@ -7,7 +7,1286 @@
         "version": "1.0"
     },
     "basePath": "/api",
-    "paths": {},
+    "paths": {
+        "/admin/fishgame/configs": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:config；type 空不过滤（luck|fish_king）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "运营覆盖分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "fish_king",
+                        "description": "luck|fish_king，空不过滤",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:config；luck 校验 period/depth_bias≤0.3；fish_king 的 fish_id 必须表内启用（30403）且 week 必填。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "新建运营覆盖",
+                "parameters": [
+                    {
+                        "description": "运营覆盖",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.ConfigInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/configs/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:config；查无 → 30404；校验同新建。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "更新运营覆盖（含启停）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "运营覆盖",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.ConfigInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:config；查无 → 30404。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "删除运营覆盖",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/events": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:event；name/player_id/起止时间（客户端本地 epoch 秒）筛选，id 倒序。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "埋点事件分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "catch",
+                        "description": "事件名，如 catch/sign_in",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "玩家行 id",
+                        "name": "player_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1760600000,
+                        "description": "起（含）unix 秒",
+                        "name": "start_t",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1761200000,
+                        "description": "止（含）unix 秒",
+                        "name": "end_t",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/fishes": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:fish；统一 pkg/resp 信封。rarity 空不过滤，status 缺省 -1 不过滤。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "图鉴条目分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "rare",
+                        "description": "normal|misc|rare|epic，空不过滤",
+                        "name": "rarity",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "0 停用 1 启用，缺省 -1 不过滤",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:fish；fish_id 查重（30401）+ rarity/period/depth 枚举校验（10001）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "新建图鉴条目",
+                "parameters": [
+                    {
+                        "description": "图鉴条目",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.FishInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/fishes/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:fish；查无 → 30401；枚举校验同新建。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "更新图鉴条目（含启停）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "图鉴条目",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.FishInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:fish；被 dex/事件引用 → 30402（改启停即可）；查无 → 30401。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "删除图鉴条目",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/players": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:player；openid/nick 模糊 + 行内点亮数（只聚合当页）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "玩家分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "阿",
+                        "description": "openid/nick 模糊",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/players/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:player；基本 + 点亮明细（count≥1）+ 最近 20 事件；查无 → 30002。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "玩家详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "玩家行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/players/{id}/rank": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:player；复用好友榜双口径找本人位置（客服排查用）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "玩家榜单位次",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "玩家行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/fishgame/stats": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 fishgame:stats；玩家总量/今日新增、事件计数、按日趋势、钓鱼漏斗（catch/empty/escape/broken）、签到/茶篓/广告计数。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-admin"
+                ],
+                "summary": "运营看板聚合（近 7 日）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.StatsOut"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/fishgame/share/{key}": {
+            "get": {
+                "description": "按 key 直出图片字节（Content-Disposition: inline）；miss 404 {\"error\":\"not_found\"}。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "分享图公开读（免鉴权）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "上传返回 URL 中的 key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/login": {
+            "post": {
+                "description": "body {\"code\":\"...\"} → {\"session\":\"...\"}；失败 401 {\"error\":\"login_failed\"}。免 X-Session（自鉴权入口，全裸 JSON 无 pkg/resp 信封）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "游戏端登录（微信 code 换会话）",
+                "parameters": [
+                    {
+                        "description": "微信登录 code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/basket": {
+            "get": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "elapsed = now-since → bait=min(elapsed/2400,12)，elapsed≥8h 时 capped=true；since 缺省为服务端当前时刻。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "茶篓产出（纯计算，不落表）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1761200000,
+                        "description": "客户端本地起算点（unix 秒）",
+                        "name": "since",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/config/daily": {
+            "get": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "运营覆盖优先，否则确定性自算；响应 {\"luck\":{\"period\",\"depth_bias\"},\"fish_king\":{\"fish_id\",\"week\"}}。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "每日配置（运势 + 鱼王）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.DailyConfigResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/daily/sign": {
+            "post": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "streak 作对账参考，服务端权威计算连击；同日重复 {\"ok\":false}；date 必须 YYYY-MM-DD。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "每日签到",
+                "parameters": [
+                    {
+                        "description": "签到请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/dex/report": {
+            "post": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "body {\"dex\":{\"<fish_id>\":N}}；服务端双路合并取 max（非 sum），响应 {\"ok\":true,\"dex\":总数}。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "图鉴进度上报（客户端镜像对账）",
+                "parameters": [
+                    {
+                        "description": "点亮镜像",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/dex/table": {
+            "get": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "响应 {\"list\":[{id,name,rarity,period,depth,flavor}]}，仅 status=1。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "图鉴表（只发启用条目）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/friends": {
+            "post": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "自身 → self_friend；目标不存在 → target_not_found；成功 {\"ok\":true}。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "添加好友（按 openid）",
+                "parameters": [
+                    {
+                        "description": "目标玩家",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/friends/rank": {
+            "get": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "好友源非空 → 好友 ∪ 自己；空 → 同租户全体；dex 降序、nick 升序决胜。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "好友榜（双口径）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/share/image": {
+            "post": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "multipart 字段 image；扩展名白名单（jpeg 归一存 jpg）；≤2MB。URL base 优先级：cfg.Fishgame.PublicBaseURL → https+Host。",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "分享图上传",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "分享图（jpg/png/jpeg）",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/track": {
+            "post": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "单条非法跳过、整批非法仍 204（契约只认 2xx）；dedup_key=sha1(openid|name|t|canonical JSON) 幂等。catch 事件驱动图鉴点亮。",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "埋点上报（批量）",
+                "parameters": [
+                    {
+                        "description": "事件批次",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "service.ConfigInput": {
+            "type": "object",
+            "properties": {
+                "depth_bias": {
+                    "type": "number"
+                },
+                "end_at": {
+                    "type": "string"
+                },
+                "fish_id": {
+                    "type": "string"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "start_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "week": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.DailyConfigResponse": {
+            "type": "object",
+            "properties": {
+                "fish_king": {
+                    "type": "object",
+                    "properties": {
+                        "fish_id": {
+                            "type": "string"
+                        },
+                        "week": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "luck": {
+                    "type": "object",
+                    "properties": {
+                        "depth_bias": {
+                            "type": "number"
+                        },
+                        "period": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "service.DailyStat": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "day": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.FishInput": {
+            "type": "object",
+            "properties": {
+                "depth": {
+                    "type": "string"
+                },
+                "fish_id": {
+                    "type": "string"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "rarity": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.StatsOut": {
+            "type": "object",
+            "properties": {
+                "ad_count": {
+                    "type": "integer"
+                },
+                "basket_count": {
+                    "type": "integer"
+                },
+                "daily": {
+                    "description": "按日趋势（day asc, name asc）",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.DailyStat"
+                    }
+                },
+                "event_counts": {
+                    "description": "近 7 日按 name",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "funnel": {
+                    "description": "catch/empty/escape/broken",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "funnel_ratio": {
+                    "description": "各结果 / 四类合计",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number",
+                        "format": "float64"
+                    }
+                },
+                "player_today": {
+                    "type": "integer"
+                },
+                "player_total": {
+                    "type": "integer"
+                },
+                "sign_count": {
+                    "type": "integer"
+                }
+            }
+        }
+    },
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 `Bearer <token>`。",
@@ -22,5 +1301,18 @@
             "in": "header"
         }
     },
-    "x-tagGroups": []
+    "x-tagGroups": [
+        {
+            "name": "后台管理",
+            "tags": [
+                "fishgame-admin"
+            ]
+        },
+        {
+            "name": "App 端",
+            "tags": [
+                "fishgame-app"
+            ]
+        }
+    ]
 }

@@ -18,8 +18,19 @@ func NewTrackController(svc *service.TrackService) *TrackController {
 	return &TrackController{svc: svc}
 }
 
-// Track POST /track body {"events":[...]} → 204。
-// 单条非法跳过、整批非法仍 204（契约只认 2xx）；失败 500 裸 error。
+// Track godoc
+//
+//	@Summary		埋点上报（批量）
+//	@Description	单条非法跳过、整批非法仍 204（契约只认 2xx）；dedup_key=sha1(openid|name|t|canonical JSON) 幂等。catch 事件驱动图鉴点亮。
+//	@Tags			fishgame-app
+//	@Accept			json
+//	@Security		X-Session
+//	@Param			body	body		object		true	"事件批次"	Example({"events": [{"name": "catch", "t": 1761200000, "props": {"fish_id": "crucian", "result": "success"}}]})
+//	@Success		204
+//	@Failure		400		{object}	map[string]string
+//	@Failure		401		{object}	map[string]string
+//	@Failure		500		{object}	map[string]string
+//	@Router			/v1/track [post]
 func (c *TrackController) Track(ctx *gin.Context) {
 	var body struct {
 		Events []service.TrackEventReq `json:"events"`

@@ -18,7 +18,17 @@ func NewDexController(svc *service.DexService) *DexController {
 	return &DexController{svc: svc}
 }
 
-// Table GET /dex/table → {"list":[...]}（只发 status=1）。
+// Table godoc
+//
+//	@Summary		图鉴表（只发启用条目）
+//	@Description	响应 {"list":[{id,name,rarity,period,depth,flavor}]}，仅 status=1。
+//	@Tags			fishgame-app
+//	@Produce		json
+//	@Security		X-Session
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		401	{object}	map[string]string
+//	@Failure		500	{object}	map[string]string
+//	@Router			/v1/dex/table [get]
 func (c *DexController) Table(ctx *gin.Context) {
 	rows, err := c.svc.Table(ctx.Request.Context())
 	if err != nil {
@@ -28,7 +38,19 @@ func (c *DexController) Table(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"list": rows})
 }
 
-// Report POST /dex/report body {"dex":{"<fish_id>":N}} → {"ok":true,"dex":总数}。
+// Report godoc
+//
+//	@Summary		图鉴进度上报（客户端镜像对账）
+//	@Description	body {"dex":{"<fish_id>":N}}；服务端双路合并取 max（非 sum），响应 {"ok":true,"dex":总数}。
+//	@Tags			fishgame-app
+//	@Accept			json
+//	@Produce		json
+//	@Security		X-Session
+//	@Param			body	body		object		true	"点亮镜像"	Example({"dex": {"crucian": 2, "carp": 1}})
+//	@Success		200		{object}	map[string]interface{}
+//	@Failure		400		{object}	map[string]string
+//	@Failure		401		{object}	map[string]string
+//	@Router			/v1/dex/report [post]
 func (c *DexController) Report(ctx *gin.Context) {
 	var body struct {
 		Dex map[string]int `json:"dex"`
