@@ -467,6 +467,91 @@ paths:
       summary: 运营看板聚合（近 7 日）
       tags:
       - fishgame-admin
+  /admin/system/online:
+    get:
+      description: 权限 system:online；本租户未过期管理员会话，统一 pkg/resp 信封。明文 token 不出接口。
+      parameters:
+      - description: 页码，默认 1
+        example: 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 10
+        example: 10
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 在线管理员会话分页
+      tags:
+      - system-admin
+  /admin/system/online/{id}:
+    delete:
+      description: 权限 system:online；按会话行 id 吊销，明文 token 不出接口；禁踢自己。
+      parameters:
+      - description: 会话行 id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 踢下线（按行吊销会话）
+      tags:
+      - system-admin
+  /admin/system/online/impersonate:
+    post:
+      consumes:
+      - application/json
+      description: 权限 system:online；签发会员侧会话（client_id=impersonate-admin），写审计。data={access_token,
+        refresh_token, expires_in}。
+      parameters:
+      - description: 目标会员
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 代登录到会员
+      tags:
+      - system-admin
   /public/fishgame/share/{key}:
     get:
       description: '按 key 直出图片字节（Content-Disposition: inline）；miss 404 {"error":"not_found"}。'

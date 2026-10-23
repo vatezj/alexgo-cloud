@@ -570,6 +570,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/system/online": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 system:online；本租户未过期管理员会话，统一 pkg/resp 信封。明文 token 不出接口。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-admin"
+                ],
+                "summary": "在线管理员会话分页",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "example": 10,
+                        "description": "每页条数，默认 10",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/system/online/impersonate": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 system:online；签发会员侧会话（client_id=impersonate-admin），写审计。data={access_token, refresh_token, expires_in}。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-admin"
+                ],
+                "summary": "代登录到会员",
+                "parameters": [
+                    {
+                        "description": "目标会员",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/system/online/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 system:online；按会话行 id 吊销，明文 token 不出接口；禁踢自己。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-admin"
+                ],
+                "summary": "踢下线（按行吊销会话）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话行 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/public/fishgame/share/{key}": {
             "get": {
                 "description": "按 key 直出图片字节（Content-Disposition: inline）；miss 404 {\"error\":\"not_found\"}。",
@@ -1293,7 +1424,7 @@ const docTemplate = `{
                 }
             }
         }
-    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin", "system-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",
