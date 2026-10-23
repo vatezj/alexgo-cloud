@@ -6,7 +6,7 @@ import "time"
 type Session struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	TenantID  uint64    `gorm:"column:tenant_id" json:"-"` // 租户ID
-	Token     string    `gorm:"column:token" json:"-"`     // 随机 32B base64url（唯一）
+	Token     string    `gorm:"column:token;uniqueIndex:uk_session_token" json:"-"` // 随机 32B base64url（唯一）
 	PlayerID  uint64    `gorm:"column:player_id" json:"player_id"`
 	ExpireAt  time.Time `gorm:"column:expire_at" json:"expire_at"`
 	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`

@@ -6,8 +6,8 @@ import "time"
 type Dex struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	TenantID  uint64    `gorm:"column:tenant_id" json:"-"` // 租户ID
-	PlayerID  uint64    `gorm:"column:player_id" json:"player_id"`
-	FishID    string    `gorm:"column:fish_id" json:"fish_id"` // uk: player+fish
+	PlayerID  uint64    `gorm:"column:player_id;uniqueIndex:uk_dex_player_fish,priority:1" json:"player_id"`
+	FishID    string    `gorm:"column:fish_id;uniqueIndex:uk_dex_player_fish,priority:2" json:"fish_id"` // uk: player+fish
 	Count     int       `gorm:"column:count" json:"count"`     // 钓获次数
 	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at" json:"updated_at"`

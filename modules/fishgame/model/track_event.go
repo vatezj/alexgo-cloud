@@ -10,7 +10,7 @@ type TrackEvent struct {
 	Name      string    `gorm:"column:name" json:"name"` // 事件名（catch/sign_in/...）
 	T         int64     `gorm:"column:t" json:"t"`       // 客户端本地 epoch 秒
 	Props     string    `gorm:"column:props" json:"props"` // JSON 文本（≤4KB 截断）
-	DedupKey  string    `gorm:"column:dedup_key" json:"-"` // sha1(openid|name|t|canonical_json)
+	DedupKey  string    `gorm:"column:dedup_key;uniqueIndex:uk_track_dedup" json:"-"` // sha1(openid|name|t|canonical_json)
 	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at" json:"updated_at"`
 }

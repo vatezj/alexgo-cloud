@@ -5,8 +5,8 @@ import "time"
 // Fish 图鉴条目（spec §5；fish_id 是后端唯一认可标识，取自客户端 fish_db.gd ENTRIES）。
 type Fish struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	TenantID  uint64    `gorm:"column:tenant_id" json:"-"` // 租户ID
-	FishID    string    `gorm:"column:fish_id" json:"fish_id"`
+	TenantID  uint64    `gorm:"column:tenant_id;uniqueIndex:uk_fish_fish_id,priority:1" json:"-"` // 租户ID
+	FishID    string    `gorm:"column:fish_id;uniqueIndex:uk_fish_fish_id,priority:2" json:"fish_id"`
 	Name      string    `gorm:"column:name" json:"name"`
 	Rarity    string    `gorm:"column:rarity" json:"rarity"` // normal|misc|rare|epic
 	Period    string    `gorm:"column:period" json:"period"` // any|day|dusk|night|组合
