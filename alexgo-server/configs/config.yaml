@@ -53,6 +53,9 @@ fishgame:
     secret: ""            # 小游戏 secret
   public_base_url: ""     # 空 = 由请求 Host + https 拼接（share/image 的 url）
 
+scorecard:
+  wxacode_env_version: "trial"  # 小程序码 env_version：trial=体验版（默认）/ release=正式版 / develop=开发版；正式发版改 release
+
 storage:
   root: ./data/uploads        # 盘根，驱动构造时 MkdirAll
   max_size_mb: 10             # 单文件上限

@@ -9,13 +9,24 @@ import (
 	"gorm.io/gorm"
 
 	"alexGo-cloud/modules/system/oauth2/social"
+	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/resp"
 )
 
-// wxacodeEnvVersion 小程序码 env_version：开发期固定体验版 "trial"（page 未正式发布时
-// 也能出码）；正式发版改空串 = 正式版（social 层空值不下发该键，微信默认 release）。
-const wxacodeEnvVersion = "trial"
+// defaultWxacodeEnvVersion 小程序码 env_version 默认值：体验版 "trial"
+// （page 未正式发布时也能出码）。可经 scorecard.wxacode_env_version 配置覆盖
+// （release=正式版 / develop=开发版）；正式发版改配 release。
+const defaultWxacodeEnvVersion = "trial"
+
+// wxEnvVersion 从全局配置解析小程序码 env_version：未配/空串回退默认 trial
+// （与历史硬编码行为一致），否则透传配置值。
+func wxEnvVersion(cfg *config.Config) string {
+	if cfg == nil || cfg.Scorecard.WxacodeEnvVersion == "" {
+		return defaultWxacodeEnvVersion
+	}
+	return cfg.Scorecard.WxacodeEnvVersion
+}
 
 // wxacodePage 小程序码落地页（Task 12 首页消费 scene）。
 const wxacodePage = "pages/index/index"
@@ -72,7 +83,7 @@ func (c *AppController) Wxacode(ctx *gin.Context) {
 		return
 	}
 	// scene 前缀 qr= 由控制器拼（房号取自房行，social 层只透传）。
-	png, err := c.wx.Wxacode(ctx.Request.Context(), app, "qr="+snap.RoomCode, wxacodePage, wxacodeEnvVersion)
+	png, err := c.wx.Wxacode(ctx.Request.Context(), app, "qr="+snap.RoomCode, wxacodePage, c.wxEnvVersion)
 	if err != nil {
 		// 微信侧失败：平台错误（errcode 等）只进日志、不外泄（resp.Fail 对非 BizError
 		// 记 Error 日志 + 回泛化 50000），前端按契约降级房号展示。

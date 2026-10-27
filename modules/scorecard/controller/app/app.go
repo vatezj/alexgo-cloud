@@ -10,6 +10,7 @@ import (
 
 	"alexGo-cloud/modules/scorecard/service"
 	"alexGo-cloud/modules/system/oauth2/social"
+	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/resp"
 	"alexGo-cloud/pkg/tenant"
@@ -28,15 +29,18 @@ type AppController struct {
 	// wxMu/wxCache 小程序码进程内按房号缓存（5min，见 wxacode.go）。
 	wxMu    sync.Mutex
 	wxCache map[string]wxacodeCacheEntry
+	// wxEnvVersion 小程序码 env_version（构造时从全局配置解析，见 wxEnvVersion）。
+	wxEnvVersion string
 }
 
 func NewAppController(rooms service.RoomService, records service.RecordService,
 	friends service.FriendService, validator token.Validator,
-	apps social.AppGetter, wx social.Wxacoder) *AppController {
+	apps social.AppGetter, wx social.Wxacoder, cfg *config.Config) *AppController {
 	return &AppController{
 		rooms: rooms, records: records, friends: friends, validator: validator,
 		apps: apps, wx: wx,
-		wxCache: make(map[string]wxacodeCacheEntry),
+		wxCache:       make(map[string]wxacodeCacheEntry),
+		wxEnvVersion: wxEnvVersion(cfg),
 	}
 }
 

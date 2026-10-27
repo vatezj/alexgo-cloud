@@ -19,6 +19,7 @@ import (
 	"alexGo-cloud/modules/scorecard/repository"
 	"alexGo-cloud/modules/scorecard/service"
 	"alexGo-cloud/modules/system/oauth2/social"
+	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/middleware"
 	"alexGo-cloud/pkg/tenant"
@@ -107,7 +108,7 @@ func newAppRouter(t *testing.T) (*gin.Engine, *gorm.DB, service.RoomService, *Ap
 		"tokC": {UserID: 300, Username: "c", UserType: token.UserTypeMember, TenantID: 1},
 		"tokB": {UserID: 200, Username: "b", UserType: token.UserTypeMember, TenantID: 2},
 	}}, &stubAppGetter{app: &social.SocialApp{AppID: "wx-app", Secret: "wx-secret", Status: 1}},
-		&stubWxacoder{png: []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}})
+		&stubWxacoder{png: []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}}, &config.Config{})
 	r := gin.New()
 	// 真实链路：Tenant 先于 handler（http.go 链序 Recovery → Tenant → … → handler）。
 	r.Use(middleware.NewTenantMiddleware(nil))
@@ -237,6 +238,40 @@ func TestWxacode_OK_PNG(t *testing.T) {
 	}
 	if wx.calls != 1 {
 		t.Fatalf("二次请求应命中缓存: wxacode calls = %d", wx.calls)
+	}
+}
+
+// TestWxacode_EnvVersionConfigurable env_version 走配置（scorecard.wxacode_env_version）：
+// 配 release 则出码入参透传 release；未配/空串回退默认 trial（与历史硬编码行为一致）。
+func TestWxacode_EnvVersionConfigurable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name string
+		env  string
+		want string
+	}{
+		{"配 release 出正式码", "release", "release"},
+		{"配 develop 出开发码", "develop", "develop"},
+		{"空串回退 trial", "", "trial"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, db, _, ctrl := newAppRouter(t)
+			cfg := &config.Config{}
+			cfg.Scorecard.WxacodeEnvVersion = tc.env
+			// 构造函数只消费 cfg，业务依赖沿用 newAppRouter 已装好的桩。
+			ctrl.wxEnvVersion = wxEnvVersion(cfg)
+			row := createRoomAs(t, r, db, "tokA", "ENVC")
+			wx := &stubWxacoder{png: []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}}
+			ctrl.wx = wx
+			w := doReq(r, http.MethodGet, "/api/app/scorecard/rooms/"+itoa(row.ID)+"/wxacode", "tokA", "", "")
+			if w.Code != http.StatusOK {
+				t.Fatalf("取码应 200: http=%d body=%s", w.Code, w.Body.String())
+			}
+			if wx.env != tc.want {
+				t.Fatalf("envVersion = %q, want %q", wx.env, tc.want)
+			}
+		})
 	}
 }
 

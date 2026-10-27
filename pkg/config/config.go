@@ -136,6 +136,14 @@ type Config struct {
 		PublicBaseURL string `mapstructure:"public_base_url"`
 	} `mapstructure:"fishgame"`
 
+	// Scorecard：scorecard《打牌记账》模块配置。
+	Scorecard struct {
+		// WxacodeEnvVersion 房间小程序码 env_version（getwxacodeunlimit 透传）：
+		// trial=体验版（开发期默认，page 未正式发布也能出码）、release=正式版、
+		// develop=开发版；未配/空串回退 trial。正式发版改配 release。
+		WxacodeEnvVersion string `mapstructure:"wxacode_env_version"`
+	} `mapstructure:"scorecard"`
+
 	// Storage：文件存储（pkg/storage 本地盘驱动，子项目 B / P1-1）。
 	// 不做 Enabled 开关：本地盘无外部依赖（与 Redis/MQ 的可选依赖不同），YAGNI。
 	Storage struct {
