@@ -620,6 +620,167 @@ CREATE TABLE IF NOT EXISTS `system_notice_reads` (
 -- ALTER 非幂等——老环境走应用内 migrate（pkg/migrate 按版本记录），勿重复执行。
 ALTER TABLE `system_notices` ADD COLUMN `attachments` varchar(4096) NOT NULL DEFAULT '';
 
+-- >>> [system/migrations] 20261020000001_scorecard_menus.up.sql
+
+-- scorecard 模块菜单种子（脚手架生成后手工收敛：6 页 → 3 页）
+-- 幂等：全部 INSERT 走 NOT EXISTS；tenant_id=0 全局菜单。
+
+-- ① 模块根目录
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, 0, 'dir', 'Scorecard', '/scorecard', '', 'lucide:package', 'scorecard', 80, 1, 0, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/scorecard' AND type='dir' AND deleted=0);
+
+-- ② 房间监管页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Rooms', '/scorecard/rooms', 'views/scorecard/ScorecardRoomsPage', 'lucide:building', 'scorecard:room', 1, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/scorecard' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/scorecard/rooms' AND deleted=0);
+
+-- ③ 战绩监管页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Records', '/scorecard/records', 'views/scorecard/ScorecardRecordsPage', 'lucide:trophy', 'scorecard:record', 2, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/scorecard' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/scorecard/records' AND deleted=0);
+
+-- ④ 好友监管页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Friends', '/scorecard/friends', 'views/scorecard/ScorecardFriendsPage', 'lucide:users', 'scorecard:friend', 3, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/scorecard' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/scorecard/friends' AND deleted=0);
+
+-- >>> [system/migrations] 20261021000001_online_user_menus.up.sql
+
+-- P1-3 在线用户 + 代登录菜单种子（抄 20261011000003 oauth2_client_menu 模式）。
+-- 幂等：全部 NOT EXISTS 守卫，可重复跑。
+-- 权限码 system:online:list / :kick / :impersonate 必须与 permission_routes.go 的
+-- "system:online" 键同源（prefix 前两段 system:online），否则本迁移产出死权限（403）。
+-- 父目录「系统管理」由 StartSeeder 在迁移之后创建（fresh 库），故 parent 用
+-- COALESCE 兜底 0——已有库挂系统管理下，fresh 库落根（seed 尾部 SetRoleMenus 全量绑定）。
+
+-- 1) 页面菜单「在线用户」
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, COALESCE((SELECT p.`id` FROM `menus` p WHERE p.`tenant_id`=0 AND p.`name`='系统管理' AND p.`type`='dir' AND p.`deleted`=0 LIMIT 1), 0),
+       'menu', '在线用户', '/system/online-users', 'views/system/SystemOnlineUsersPage', 'lucide:monitor', 'system:online:list', 95, 1, 0, NOW(), NOW()
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/system/online-users' AND deleted=0);
+
+-- 2) 按钮：踢人 / 代登录
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, m.`id`, 'button', t.`name`, '', '', '', t.`perm`, t.`sort`, 1, 0, NOW(), NOW()
+FROM `menus` m
+JOIN (
+  SELECT '踢人' AS `name`, 'system:online:kick' AS perm, 1 AS `sort`
+  UNION ALL SELECT '代登录', 'system:online:impersonate', 2
+) t
+WHERE m.`tenant_id`=0 AND m.`permission`='system:online:list' AND m.`type`='menu' AND m.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` b WHERE b.`tenant_id`=0 AND b.`permission`=t.`perm` AND b.`deleted`=0);
+
+-- 3) admin 角色挂菜单
+INSERT INTO `role_menus` (`role_id`,`menu_id`,`tenant_id`)
+SELECT r.`id`, m.`id`, 0
+FROM `menus` m
+JOIN `roles` r ON r.`tenant_id`=0 AND r.`code`='admin' AND r.`deleted`=0
+WHERE m.`tenant_id`=0 AND m.`deleted`=0
+  AND (m.`path`='/system/online-users' OR m.`permission` LIKE 'system:online%')
+  AND NOT EXISTS (SELECT 1 FROM `role_menus` rm WHERE rm.`tenant_id`=0 AND rm.`role_id`=r.`id` AND rm.`menu_id`=m.`id`);
+
+-- >>> [system/migrations] 20261021000002_social_app_menu.up.sql
+
+-- 渠道配置菜单 + 按钮（微信第三方登录一期：第三方应用管理入口，挂系统管理下）。
+-- 幂等：全部 NOT EXISTS 守卫（目录按 path+type，页面按 path，按钮按 permission），可重复跑。
+-- 权限码前缀 social:app 必须已在 permission_routes.go 注册（Task 9），
+-- 否则本迁移产生的页面/按钮是死权限（403）。
+-- 表结构对齐 20261009000001（menus：type 'dir'/'menu'/'button'、sort、deleted、tenant_id=0）。
+-- 父目录定位：系统管理 由 StartSeeder 在迁移之后创建（fresh 库），故 parent 用
+-- COALESCE 兜底 0——已有库挂系统管理下，fresh 库落根（seed 尾部 SetRoleMenus 全量绑定，
+-- 403 闭环不依赖嵌套层级）。模式抄 20261011000003 oauth2_client_menu。
+
+-- 1) 目录「渠道配置」（挂在系统管理下；fresh 库父不存在则 parent=0）
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, COALESCE((SELECT p.`id` FROM `menus` p WHERE p.`tenant_id`=0 AND p.`name`='系统管理' AND p.`type`='dir' AND p.`deleted`=0 LIMIT 1), 0),
+       'dir', '渠道配置', '/social', '', 'lucide:link', 'social', 92, 1, 0, NOW(), NOW()
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND `path`='/social' AND `type`='dir' AND `deleted`=0);
+
+-- 2) 页面菜单「渠道配置」（挂在目录下；component 由 access.ts glob 自动解析，零路由改动）
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', '渠道配置', '/social/apps', 'views/system/SocialAppsPage', 'lucide:link', 'social:app', 1, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/social' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND `path`='/social/apps' AND `deleted`=0);
+
+-- 3) 按钮：新建 / 编辑 / 删除（挂在页面菜单下；前端 v-access 逐字匹配这些码）
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, m.`id`, 'button', t.`name`, '', '', '', t.`perm`, t.`sort`, 1, 0, NOW(), NOW()
+FROM `menus` m
+JOIN (
+  SELECT '新建' AS `name`, 'social:app:create' AS perm, 1 AS `sort`
+  UNION ALL SELECT '编辑', 'social:app:update', 2
+  UNION ALL SELECT '删除', 'social:app:delete', 3
+) t
+WHERE m.`tenant_id`=0 AND m.`permission`='social:app' AND m.`type`='menu' AND m.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` b WHERE b.`tenant_id`=0 AND b.`permission`=t.`perm` AND b.`deleted`=0);
+
+-- 4) admin 角色挂菜单（抄 oauth2 ④：JOIN roles 而非标量子查询——
+--    fresh 库尚无 admin 角色时产出 0 行，由 seed 尾部 SetRoleMenus 全量兜底）
+INSERT INTO `role_menus` (`role_id`,`menu_id`,`tenant_id`)
+SELECT r.`id`, m.`id`, 0
+FROM `menus` m
+JOIN `roles` r ON r.`tenant_id`=0 AND r.`code`='admin' AND r.`deleted`=0
+WHERE m.`tenant_id`=0 AND m.`deleted`=0
+  AND (m.`path` IN ('/social','/social/apps') OR m.`permission` LIKE 'social:%')
+  AND NOT EXISTS (SELECT 1 FROM `role_menus` rm WHERE rm.`tenant_id`=0 AND rm.`role_id`=r.`id` AND rm.`menu_id`=m.`id`);
+
+-- >>> [system/migrations] 20261023000001_fishgame_menus.up.sql
+
+-- fishgame 模块菜单种子（Task 10 手工收敛：codegen 2 页 → 5 页，对齐 permissionRoutes）。
+-- 幂等：全部 INSERT 走 NOT EXISTS；tenant_id=0 全局菜单。
+-- admin 角色绑定不在本迁移做：启动 seed（modules/system/service/seed.go）
+-- 每次全量 SetRoleMenus + RebuildPolicies 兜底。
+
+-- ① 模块根目录
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, 0, 'dir', 'Fishgame', '/fishgame', '', 'lucide:package', 'fishgame', 85, 1, 0, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame' AND type='dir' AND deleted=0);
+
+-- ② 图鉴条目页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Fishes', '/fishgame/fishes', 'views/fishgame/FishgameFishesPage', 'lucide:fish', 'fishgame:fish', 1, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/fishgame' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame/fishes' AND deleted=0);
+
+-- ③ 运营配置页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Configs', '/fishgame/configs', 'views/fishgame/FishgameConfigsPage', 'lucide:settings', 'fishgame:config', 2, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/fishgame' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame/configs' AND deleted=0);
+
+-- ④ 埋点事件页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Events', '/fishgame/events', 'views/fishgame/FishgameEventsPage', 'lucide:activity', 'fishgame:event', 3, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/fishgame' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame/events' AND deleted=0);
+
+-- ⑤ 玩家监管页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Players', '/fishgame/players', 'views/fishgame/FishgamePlayersPage', 'lucide:users', 'fishgame:player', 4, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/fishgame' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame/players' AND deleted=0);
+
+-- ⑥ 数据看板页
+INSERT INTO `menus` (`tenant_id`,`parent_id`,`type`,`name`,`path`,`component`,`icon`,`permission`,`sort`,`status`,`deleted`,`created_at`,`updated_at`)
+SELECT 0, d.`id`, 'menu', 'Stats', '/fishgame/stats', 'views/fishgame/FishgameStatsPage', 'lucide:bar-chart-3', 'fishgame:stats', 5, 1, 0, NOW(), NOW()
+FROM `menus` d
+WHERE d.`tenant_id`=0 AND d.`path`='/fishgame' AND d.`type`='dir' AND d.`deleted`=0
+  AND NOT EXISTS (SELECT 1 FROM `menus` WHERE `tenant_id`=0 AND path='/fishgame/stats' AND deleted=0);
+
 -- >>> [infra/migrations] 20261011000001_codegen_config.up.sql
 
 -- codegen 配置表（spec §4）：元数据快照 + 可编辑配置。
@@ -767,6 +928,38 @@ SET `redirect_uris` = CONCAT(`redirect_uris`, '\nhttp://localhost:5666/callback'
 WHERE `client_id` = 'alexgo-admin'
   AND `redirect_uris` NOT LIKE '%http://localhost:5666/callback%';
 
+-- >>> [oauth2/migrations] 20261021000001_social_tables.up.sql
+
+-- 微信第三方登录一期两表：
+-- system_social_app 租户级渠道配置（每租户每平台一份；secret 明文存，admin 响应 json:"-" 不回显）；
+-- system_member_identity 第三方身份绑定行，(tenant,platform,openid) 唯一。
+-- 幂等：CREATE TABLE IF NOT EXISTS，可重复跑。
+CREATE TABLE IF NOT EXISTS `system_social_app` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `platform` VARCHAR(32) NOT NULL DEFAULT '',
+  `appid` VARCHAR(64) NOT NULL DEFAULT '',
+  `secret` VARCHAR(128) NOT NULL DEFAULT '',
+  `status` TINYINT NOT NULL DEFAULT 1,
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_social_app_tenant_platform` (`tenant_id`, `platform`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `system_member_identity` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `member_user_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `platform` VARCHAR(32) NOT NULL DEFAULT '',
+  `openid` VARCHAR(128) NOT NULL DEFAULT '',
+  `unionid` VARCHAR(128) NOT NULL DEFAULT '',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_identity_tenant_platform_openid` (`tenant_id`, `platform`, `openid`),
+  KEY `idx_identity_tenant_unionid` (`tenant_id`, `unionid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- >>> [member/migrations] 20261008000001_init_member.up.sql
 
 CREATE TABLE IF NOT EXISTS `member_user` (
@@ -788,6 +981,15 @@ CREATE TABLE IF NOT EXISTS `member_user` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_mobile_tenant` (`mobile`, `tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员用户表';
+
+-- >>> [member/migrations] 20261027000001_member_drop_mobile_unique.up.sql
+
+-- 去掉 uk_mobile_tenant：手机号可为空。
+-- 微信 MP/Web 登录创建的空壳会员 mobile=''（social/service.go resolveAndIssue），
+-- 空串被唯一键当真实值，同租户第二个空壳必撞 Error 1062（uk_mobile_tenant）。
+-- 注册/BindMobile 的防重走应用层 GetByMobile 查询（member/service、social/service），
+-- 不依赖该唯一键保证正确性。
+ALTER TABLE `member_user` DROP INDEX `uk_mobile_tenant`;
 
 -- >>> [order/migrations] 20261009000001_orders.up.sql
 
