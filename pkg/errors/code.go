@@ -65,6 +65,8 @@ const (
 	CodeScorecardVersionConflict Code = 30112
 	// CodeScorecardTargetNotMember scorecard：目标不是房间成员。
 	CodeScorecardTargetNotMember Code = 30113
+	// CodeScorecardInOtherRoom scorecard：同一时间只能在一个进行中牌局（开房/进房拦截）。
+	CodeScorecardInOtherRoom Code = 30114
 	// CodeImpersonateMemberNotFound online：代登录目标会员不存在/已删除/已停用。
 	CodeImpersonateMemberNotFound Code = 30201
 	// CodeCannotKickSelf online：不能踢出自己的会话。
@@ -139,6 +141,7 @@ var registry = map[Code]string{
 	CodeScorecardNotYourRecord:   "仅能操作本人战绩",
 	CodeScorecardVersionConflict: "操作冲突，请下拉刷新",
 	CodeScorecardTargetNotMember: "目标不是房间成员",
+	CodeScorecardInOtherRoom:     "你还在其他牌局中，请先退出",
 
 	CodeImpersonateMemberNotFound: "目标会员不存在或不可用",
 	CodeCannotKickSelf:            "不能踢出自己的会话",

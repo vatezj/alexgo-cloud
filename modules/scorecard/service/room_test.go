@@ -202,9 +202,9 @@ func TestCreate_CustomCodeFormatValidation(t *testing.T) {
 			t.Fatalf("非法房号 %q 应 10001, got %v", code, err)
 		}
 	}
-	// 合法：4-8 位大写字母/数字。
-	for _, code := range []string{"AB12", "ABCDEF12"} {
-		if _, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: code}); err != nil {
+	// 合法：4-8 位大写字母/数字。一人一局约束下换用户开第二间（100 已持进行中房）。
+	for i, code := range []string{"AB12", "ABCDEF12"} {
+		if _, err := svc.Create(ctx, uint64(100+i), CreateRoomReq{RoomCode: code}); err != nil {
 			t.Fatalf("合法房号 %q 被拒: %v", code, err)
 		}
 	}
@@ -298,17 +298,18 @@ func TestSweepExpired_ClosesAndLogs(t *testing.T) {
 func TestSweepExpired_SkipsActiveAndSettled(t *testing.T) {
 	svc, _ := newRoomServiceForTest(t)
 	ctx := tenant.WithTenantID(context.Background(), 1)
-	// 房 A：进行中且未到期（expire=now+2h）。
-	a, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AAAA"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 房 B：已结算（不逾期也不该被动）。
+	// 房 B：已结算（不逾期也不该被动）。先开 B 再结算——一人一局约束下
+	// 同人不能同时持有两间进行中房，B 结算释放后才开 A。
 	b, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "BBBB"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Settle(ctx, 100, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 房 A：进行中且未到期（expire=now+2h）。
+	a, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AAAA"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	n, err := svc.SweepExpired(ctx)
@@ -323,5 +324,67 @@ func TestSweepExpired_SkipsActiveAndSettled(t *testing.T) {
 	gotB, err := roomSvc.room.GetByID(ctx, b.ID)
 	if err != nil || gotB == nil || gotB.Status != 1 {
 		t.Fatalf("已结算房不应被改状态: %+v err=%v", gotB, err)
+	}
+}
+
+// 票：一人一局——同人同时间只能在一个进行中牌局（status=0）。
+func TestCreate_RejectedWhileInOtherActiveRoom(t *testing.T) {
+	svc, _ := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	if _, err := svc.Create(ctx, 100, CreateRoomReq{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(ctx, 100, CreateRoomReq{}); !errs.Is(err, errs.CodeScorecardInOtherRoom) {
+		t.Fatalf("进行中牌局未结束再开房应 30114, got %v", err)
+	}
+}
+
+// 票：一人一局——Join 新进他房须 30114；本房幂等重进不受影响（room_test
+// TestJoin_IdempotentAndSessionReset 已钉）；原房结算（status=1）后释放可进。
+func TestJoin_RejectedWhileInOtherActiveRoom(t *testing.T) {
+	svc, _ := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	a, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AAAA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.Create(ctx, 200, CreateRoomReq{RoomCode: "BBBB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, 100, b.RoomCode); !errs.Is(err, errs.CodeScorecardInOtherRoom) {
+		t.Fatalf("在 A 局中进 B 局应 30114, got %v", err)
+	}
+	// 结算原房 → 释放 → 可进他房。
+	if err := svc.Settle(ctx, 100, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, 100, b.RoomCode); err != nil {
+		t.Fatalf("原房结算后应可进他房: %v", err)
+	}
+}
+
+// 票：一人一局——原房关闭（status=2，超时/强关/全员退完同款）同样释放。
+func TestJoin_AllowsAfterOtherRoomClosed(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	a, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "AAAA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.Create(ctx, 200, CreateRoomReq{RoomCode: "BBBB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, 100, b.RoomCode); !errs.Is(err, errs.CodeScorecardInOtherRoom) {
+		t.Fatalf("在 A 局中进 B 局应 30114, got %v", err)
+	}
+	// 直接置 status=2（等价超时关/强关，不走 Settle 的 status=1 路径）。
+	if err := db.WithContext(ctx).Model(&model.Room{}).
+		Where("id = ?", a.ID).Update("status", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, 100, b.RoomCode); err != nil {
+		t.Fatalf("原房关闭后应可进他房: %v", err)
 	}
 }
