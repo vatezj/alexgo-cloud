@@ -3,8 +3,9 @@
  * 支出档（设计 04 .lane）：分数档 / 茶饭档共用
  *
  * - lane=score 黄铜顶线（--lane=--brass）；lane=pot 茶池绿顶线（--lane=--jade-hi）
- * - 结构：档名+徽标 | who（支出方头像/茶杯） + ChipButton −/＋ + 井字大数字 | 预设 chips
- * - 值只增减不落下限：减档 clamp ≥ 0；提交门（score>0）由页面把守
+ * - 结构：档名+徽标 | who（支出方头像/茶杯） + ChipButton −/＋ + 井字大数字（可键入） | 预设 chips
+ * - 大数字为 number input：直接键入整数，blur/外部改值时归一；−/＋ 与预设 chips 为快捷方式
+ * - 值只增减不落下限：键入/减档均 clamp ≥ 0；提交门（score>0）由页面把守
  * - 数字 Oswald tabular（全局 .num）；色值零硬编码（--lane 由 lane 档映射主题 token）
  */
 import ChipButton from './ChipButton.vue'
@@ -40,6 +41,28 @@ const emit = defineEmits<{
 
 /** 头像兜底字：昵称首字（空昵称用「支」）。 */
 const initial = computed(() => (props.whoName.slice(0, 1) || '支').toUpperCase())
+
+/** 键入草稿：允许清空重打；与 value 同步由 watch + blur 归一。 */
+const draft = ref(String(props.value))
+
+watch(
+  () => props.value,
+  (v) => {
+    if (Number(draft.value) !== v)
+      draft.value = String(v)
+  },
+)
+
+/** 键入：剥非数字 → floor → emit（空/非法记 0，不落下限）。 */
+function onDraftInput(e: { detail: { value: string } }) {
+  const raw = e.detail.value.replace(/\D/g, '')
+  draft.value = raw
+  emit('update:value', Math.floor(Number(raw) || 0))
+}
+
+function onDraftBlur() {
+  draft.value = String(props.value)
+}
 
 function onMinus(step: number) {
   emit('update:value', Math.max(0, props.value - step))
@@ -108,9 +131,14 @@ function onPreset(p: number) {
       </ChipButton>
 
       <view class="well">
-        <text class="num rv">
-          {{ value }}
-        </text>
+        <input
+          v-model="draft"
+          class="num rv well-in"
+          type="number"
+          :maxlength="6"
+          @input="onDraftInput"
+          @blur="onDraftBlur"
+        >
         <text class="ru">
           分
         </text>
@@ -257,6 +285,22 @@ function onPreset(p: number) {
 .rv {
   color: var(--lane);
   font-size: 38px;
+  line-height: 1;
+}
+
+.well-in {
+  width: auto;
+  min-width: 48px;
+  max-width: 110px;
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: center;
+  // 小程序 input 默认字体/内边距抹平，保持井字大数字观感
+  font-family: 'Oswald', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   line-height: 1;
 }
 

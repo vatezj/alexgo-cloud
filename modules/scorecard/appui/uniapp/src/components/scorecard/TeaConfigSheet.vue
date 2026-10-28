@@ -3,7 +3,8 @@
  * 茶饭设置底部弹层（设计 09：茶饭设置 · 底部弹层）
  *
  * - 字段：开关（tea_auto_enabled）+ 目标（tea_target_amount）+ 抽取百分比（tea_percent，
- *   预设 5/10/15/20 + ±1 微调，钳 0–100）+ 单人累计上限（max_lose_score）
+ *   预设 5/10/15/20 + 直接键入 + ±1 微调，钳 0–100）+ 单人累计上限（max_lose_score）
+ * - 数值（目标/百分比/上限）均可 number input 直接键入；预设与 ± 为快捷方式，blur 归一
  * - 只读门：snapshot.creator_id !== myUserId（非房主）或 status !== 0（已结算/已关闭）
  *   → 全字段 disabled、不渲染保存按钮
  * - 保存：以打开时刻的 snapshot 为基线 diff 出 ConfigReq（指针语义：只传改动项；
@@ -70,7 +71,42 @@ function clampPercent(n: number): number {
   return Math.min(100, Math.max(0, Math.round(n)))
 }
 
-/** 打开时回填表单 + 记录基线。 */
+/** 非负整数解析（键入剥非数字；空/非法 → 0，不落下限）。 */
+function parseNonNegInt(raw: string): number {
+  return Math.floor(Number(raw.replace(/\D/g, '')) || 0)
+}
+
+/* ── 键入草稿（与 ref 双向：typing 写 draft+ref，blur/±/预设 由 watch 回写 draft） ── */
+
+const targetDraft = ref('0')
+const percentDraft = ref('0')
+const maxLoseDraft = ref('0')
+
+watch([teaTarget, teaPercent, maxLose], ([t, p, m]) => {
+  if (Number(targetDraft.value) !== t)
+    targetDraft.value = String(t)
+  if (Number(percentDraft.value) !== p)
+    percentDraft.value = String(p)
+  if (Number(maxLoseDraft.value) !== m)
+    maxLoseDraft.value = String(m)
+})
+
+function onTargetInput(e: { detail: { value: string } }) {
+  targetDraft.value = e.detail.value.replace(/\D/g, '')
+  teaTarget.value = parseNonNegInt(targetDraft.value)
+}
+
+function onPercentInput(e: { detail: { value: string } }) {
+  percentDraft.value = e.detail.value.replace(/\D/g, '')
+  teaPercent.value = clampPercent(parseNonNegInt(percentDraft.value))
+}
+
+function onMaxLoseInput(e: { detail: { value: string } }) {
+  maxLoseDraft.value = e.detail.value.replace(/\D/g, '')
+  maxLose.value = parseNonNegInt(maxLoseDraft.value)
+}
+
+/** 打开时回填表单 + 记录基线（草稿由 watch 随 ref 同步）。 */
 function resetFromSnapshot() {
   const snap = props.snapshot
   teaAuto.value = snap?.tea_auto_enabled ?? false
@@ -231,9 +267,13 @@ async function onSave() {
           >
             −
           </ChipButton>
-          <text class="sv num">
-            {{ teaTarget }}
-          </text>
+          <input
+            v-model="targetDraft"
+            class="sv sv-in num"
+            type="number"
+            :maxlength="6"
+            @input="onTargetInput"
+          >
           <ChipButton
             size="sm"
             tone="brass"
@@ -275,9 +315,18 @@ async function onSave() {
             >
               −
             </ChipButton>
-            <text class="sv num">
-              {{ teaPercent }}%
-            </text>
+            <view class="sv-wrap">
+              <input
+                v-model="percentDraft"
+                class="sv sv-in num"
+                type="number"
+                :maxlength="3"
+                @input="onPercentInput"
+              >
+              <text class="sv-unit">
+                %
+              </text>
+            </view>
             <ChipButton
               size="sm"
               tone="brass"
@@ -318,9 +367,13 @@ async function onSave() {
           >
             −
           </ChipButton>
-          <text class="sv num">
-            {{ maxLose }}
-          </text>
+          <input
+            v-model="maxLoseDraft"
+            class="sv sv-in num"
+            type="number"
+            :maxlength="6"
+            @input="onMaxLoseInput"
+          >
           <ChipButton
             size="sm"
             tone="brass"
@@ -450,6 +503,29 @@ async function onSave() {
   font-size: 18px;
   text-align: center;
   color: var(--on-ink);
+}
+
+/* 键入 input：抹平小程序默认内边距/字体，观感同 .sv 文本 */
+.sv-in {
+  min-width: 44px;
+  max-width: 72px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: 'Oswald', sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.sv-wrap {
+  display: flex;
+  align-items: baseline;
+}
+
+.sv-unit {
+  font-size: 14px;
+  color: var(--on-ink);
+  opacity: 0.85;
 }
 
 /* ── 百分比预设（设计 09 .presets） ── */
