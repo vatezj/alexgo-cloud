@@ -2,7 +2,8 @@
 /**
  * 首页 · 扇面牌桌（视觉源：desgin/preview/miniapp-breakout.html 01 首屏）
  *
- * - 身份牌：authStore.user（昵称/头像/注册天数）+ stat 总分/胜率 + listFriends 好友数
+ * - 身份牌：authStore.user（昵称/头像/注册天数）+ stat 总分/胜率 + listFriends 好友数；
+ *   点头像 → 已登录开 ProfileGate edit（修改资料），未登录去登录
  * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
  * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次（先 bindInviterSilently
  *   静默绑好友，有 roomCode 再 joinRoom 进房；纯 inv 无房号停首页）；未登录 → 留存 scene 去登录（登录后 afterLogin 消费）
@@ -327,6 +328,24 @@ function goLogin() {
   router.push({ path: '/pages/login/index' })
 }
 
+/* ── 身份牌点头像改资料（ProfileGate edit；与房间页 AvatarPopup「修改资料」同一弹框） ── */
+
+const showProfileEdit = ref(false)
+
+/** 点头像：已登录开编辑弹框；未登录去登录（登录后可再点）。 */
+function onAvatarClick() {
+  if (!isLoggedIn.value) {
+    goLogin()
+    return
+  }
+  showProfileEdit.value = true
+}
+
+/** 资料保存成功（authStore.user 已由 ProfileGate 回写，身份牌 computed 即刷新）。 */
+function onProfileSaved() {
+  toast.success('资料已更新')
+}
+
 /** 我要开房：先过资料门（gate 模式硬门，保存后续走）→ 默认配置全 0 进房。 */
 async function onCreateRoom() {
   if (creating.value || joining.value)
@@ -502,7 +521,11 @@ function goManual() {
 --suit: var(--vermillion);"
     >
       <view class="id-inner">
-        <view class="pav">
+        <view
+          class="pav"
+          :class="{ tappable: isLoggedIn }"
+          @click="onAvatarClick"
+        >
           <image
             v-if="avatarUrl"
             class="pav-img"
@@ -722,6 +745,13 @@ function goManual() {
       @skipped="gate.proceed"
       @cancelled="gate.cancel"
     />
+
+    <!-- 头像点开改资料（edit 模式；与房间页 AvatarPopup 同一弹框） -->
+    <ProfileGate
+      v-model:show="showProfileEdit"
+      mode="edit"
+      @saved="onProfileSaved"
+    />
   </view>
 </template>
 
@@ -851,6 +881,10 @@ function goManual() {
   background: var(--ink-700);
   border: 3px solid var(--brass);
   border-radius: 50%;
+}
+
+.pav.tappable {
+  cursor: pointer;
 }
 
 .pav-img {

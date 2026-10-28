@@ -5,7 +5,7 @@
  * - 分数档：ExpenseLane（±步进 10 + 预设 10/50/100/200）；score>0 须选记分对象
  * - 只记茶（手动茶档）：score=0 且 tea>0 可提交——不选分数、不选记分对象，
  *   付茶人扣 T 入池（room-ledger-scroll-tea-only）；自动抽茶模式仍须分数
- * - 记分对象：query toUserId 预选（须为房内非自己成员），否则成员横选（排除自己）
+ * - 记分对象：进页即列出房内成员横选（排除自己）；query toUserId 预选，score>0 须选、只记茶不强制
  * - 茶饭档：tea_auto_enabled=true → 「按 X% 自动抽取」说明；false → 手动 tea 档 +
  *   扣茶来源横选（tea_from_user_id，默认支出方=我；0 由后端缺省=支出方）
  * - 幂等提交：reqId 页面进入生成一次存 ref，失败 toast 后重试复用同键
@@ -277,11 +277,8 @@ onShow(() => {
       :who-name="myNickname"
     />
 
-    <!-- 记分对象横选（query 预选后仍可改；只记茶无分数转移时不展示） -->
-    <view
-      v-if="score > 0"
-      class="payees"
-    >
+    <!-- 记分对象横选：进页即列出（预选后仍可改）；score>0 时必选，只记茶不强制选人 -->
+    <view class="payees">
       <text class="sec-label">
         记给谁
       </text>
