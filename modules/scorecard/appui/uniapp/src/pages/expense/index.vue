@@ -128,18 +128,21 @@ function goBack() {
     router.replaceAll({ path: '/pages/room/index', query: { roomId: String(roomId.value) } })
 }
 
-/** query 预选：成员加载后校验「在房且非自己」才生效（过期/非法 query 静默忽略）。 */
-watch(
-  [payees, myUserId],
-  () => {
-    if (toUserId.value)
-      return
-    const t = routeToUserId.value
-    if (t && payees.value.some(m => m.user_id === t))
-      toUserId.value = t
-  },
-  { immediate: true },
-)
+/**
+ * query 预选：校验「在房且非自己」才生效（过期/非法 query 静默忽略）。
+ * watch 与 onShow 双入口：setup-immediate watch 在全局 mixin 同步 currentRoute 之前触发，
+ * 读到的是上一路由 stale query；房间页点进（快照已在 store）时仅此一火 → 预选永不生效。
+ * onShow 时 currentRoute 已同步，补一枪；watch 保留兜底（H5 直达快照晚到的第二次触发）。
+ */
+function tryApplyRoutePreselect() {
+  if (toUserId.value)
+    return
+  const t = routeToUserId.value
+  if (t && payees.value.some(m => m.user_id === t))
+    toUserId.value = t
+}
+
+watch([payees, myUserId], tryApplyRoutePreselect, { immediate: true })
 
 /** 预选复检：auth 未就绪（myUserId=0）时 query 可能预选到自己，me 就绪后清零重选。 */
 watch(myUserId, (id) => {
@@ -208,6 +211,8 @@ onShow(() => {
     router.replaceAll({ path: '/pages/index/index' })
     return
   }
+  // 预选补枪：onShow 时 currentRoute 已同步本页 query（见 tryApplyRoutePreselect 注释）
+  tryApplyRoutePreselect()
   if (!authStore.user)
     void authStore.fetchMe().catch(() => {})
   // 快照兜底（H5 直达/刷新时 store 可能无本房快照）；applySnapshot 走 version 单调门
