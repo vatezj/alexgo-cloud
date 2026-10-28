@@ -13,8 +13,9 @@ import (
 	errs "alexGo-cloud/pkg/errors"
 )
 
-// ExpenseReq 记分支出请求。Score 输家分 S（>0）；Tea 仅手动 DIY 模式（未开自动百分比）生效，
-// 单笔 ≤ maxTeaPerExpense；ClientRequestID 房间内幂等键（重放返回上次结果，不重复记账）。
+// ExpenseReq 记分支出请求。Score 输家分 S（≥0；0 = 只记茶不记分，此时 ToUserID 允许 0）；
+// Tea 仅手动 DIY 模式（未开自动百分比）生效，单笔 ≤ maxTeaPerExpense；
+// ClientRequestID 房间内幂等键（重放返回上次结果，不重复记账）。
 type ExpenseReq struct {
 	Score           int    `json:"score"`
 	Tea             int    `json:"tea"`
@@ -54,8 +55,11 @@ const maxTeaPerExpense = 1_000_000
 // 事务内、行锁之后执行——锁定读先读到最新已提交行，其后的普通 SELECT 视图才不会
 // 漏掉并发已提交的同键流水（锁前查重在 MySQL RR 下可双记）。
 func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req ExpenseReq) (*ExpenseResult, error) {
-	if req.Score <= 0 || req.ToUserID == 0 || req.ToUserID == userID || req.ClientRequestID == "" ||
-		req.Tea > maxTeaPerExpense {
+	// 只记茶（score=0）：tea>0 且手动模式放行（to_user_id 允许 0，无分数转移对象）；
+	// score>0 仍须 to_user_id ∈ 房内且非本人。负数一律拒。
+	if (req.Score <= 0 && req.Tea <= 0) || req.Score < 0 || req.Tea < 0 ||
+		(req.Score > 0 && (req.ToUserID == 0 || req.ToUserID == userID)) ||
+		req.ClientRequestID == "" || req.Tea > maxTeaPerExpense {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
 	var out *ExpenseResult
@@ -83,10 +87,13 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 		} else if u == nil {
 			return errs.New(errs.CodeScorecardNotMember, nil)
 		}
-		if to, err := userRepo.Get(ctx, roomID, req.ToUserID); err != nil {
-			return err
-		} else if to == nil {
-			return errs.New(errs.CodeScorecardTargetNotMember, nil)
+		// 只记茶（score=0）允许 to_user_id=0（无分数转移对象），跳过在房校验。
+		if req.ToUserID != 0 {
+			if to, err := userRepo.Get(ctx, roomID, req.ToUserID); err != nil {
+				return err
+			} else if to == nil {
+				return errs.New(errs.CodeScorecardTargetNotMember, nil)
+			}
 		}
 		// ② 幂等：命中即回放。查重必须在行锁之后：锁定读先读到最新已提交行，其后的
 		// 普通 SELECT 才建立在能看到并发已提交流水的视图；放锁前（MySQL RR）快照
@@ -131,12 +138,20 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 				srcUserID = req.TeaFromUserID
 			}
 		}
-		// ⑤ 记账（表达式列更新，事务内；输家 -S、cum_lose+=S）。
-		if err := userRepo.AddScore(ctx, tx, roomID, userID, -req.Score); err != nil {
-			return err
+		// 只记茶校验收口：auto 模式 tea=round(S×percent)，S=0 时恒 0（req.Tea 不生效）——
+		// 若放行会写出 score=0/tea=0 空流水，此处拒（回滚，含 round_no+1）。
+		if req.Score == 0 && tea == 0 {
+			return errs.New(errs.CodeParamInvalid, nil)
 		}
-		if err := userRepo.AddCumLose(ctx, tx, roomID, userID, req.Score); err != nil {
-			return err
+		// ⑤ 记账（表达式列更新，事务内；输家 -S、cum_lose+=S）。
+		// 只记茶（score=0）：无分数转移、不计 cum_lose，仅执行下方茶水分支。
+		if req.Score > 0 {
+			if err := userRepo.AddScore(ctx, tx, roomID, userID, -req.Score); err != nil {
+				return err
+			}
+			if err := userRepo.AddCumLose(ctx, tx, roomID, userID, req.Score); err != nil {
+				return err
+			}
 		}
 		if tea > 0 && auto {
 			// 自动：赢家净得 S-T（spec §3.1.5「赢家 cur_score+=S-T」单语句），茶饭入池。
@@ -144,12 +159,14 @@ func (s *roomService) Expense(ctx context.Context, userID, roomID uint64, req Ex
 				return err
 			}
 			room.TeaPoolTotal += tea
-		} else if tea > 0 { // DIY：赢家全额，来源扣 T
+		} else if tea > 0 { // DIY：赢家全额（只记茶时无赢家转移），来源扣 T
 			if err := userRepo.AddScore(ctx, tx, roomID, srcUserID, -tea); err != nil {
 				return err
 			}
-			if err := userRepo.AddScore(ctx, tx, roomID, req.ToUserID, req.Score); err != nil {
-				return err
+			if req.Score > 0 {
+				if err := userRepo.AddScore(ctx, tx, roomID, req.ToUserID, req.Score); err != nil {
+					return err
+				}
 			}
 			room.TeaPoolTotal += tea
 		} else {

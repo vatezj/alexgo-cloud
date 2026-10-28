@@ -300,3 +300,112 @@ func TestExpense_TeaOverLimitRejected(t *testing.T) {
 		t.Fatalf("上限值应放行: %v", err)
 	}
 }
+
+// TestExpense_TeaOnly 只记茶（score=0）：来源扣 T 入池、无分数转移、to_user_id=0 放行。
+func TestExpense_TeaOnly(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 0, false, 0, 0) // 手动模式
+	res, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 0, Tea: 20, TeaFromUserID: 0, ToUserID: 0, ClientRequestID: "t1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TeaCharged != 20 || res.Snapshot.TeaPoolTotal != 20 {
+		t.Fatalf("只记茶口径错: %+v", res)
+	}
+	m := memberScoreMap(t, svc, ctx, roomID)
+	// 来源缺省=支出方（loser）：仅 loser -20，无赢家转移
+	if m[loser] != -20 || m[winner] != 0 {
+		t.Fatalf("只记茶分数转移错: %v", m)
+	}
+	// 流水 type=1、score=0、to=0、tea=20
+	logs, _, err := svc.Logs(ctx, loser, roomID, 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range logs {
+		if l.Type == 1 {
+			found = true
+			if l.Score != 0 || l.ToUserID != 0 || l.Tea != 20 || l.FromUserID != loser {
+				t.Fatalf("只记茶流水字段错: %+v", l)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("只记茶未落 type=1 流水")
+	}
+}
+
+// TestExpense_TeaOnlyRejectsEmpty score=0 且 tea=0 → 10001，不动任何账目。
+func TestExpense_TeaOnlyRejectsEmpty(t *testing.T) {
+	svc, ctx, roomID, loser, _ := setupRoom(t, 0, false, 0, 0)
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 0, Tea: 0, ClientRequestID: "e1",
+	})
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("空请求应 10001, got %v", err)
+	}
+	if m := memberScoreMap(t, svc, ctx, roomID); m[loser] != 0 {
+		t.Fatalf("拒绝后分数被动过: %v", m)
+	}
+}
+
+// TestExpense_TeaOnlyAutoModeRejected 自动抽茶模式 score=0：tea=round(0)=0 →
+// 事务内拒（req.Tea 在 auto 分支不生效），不落空流水、不推进账目。
+func TestExpense_TeaOnlyAutoModeRejected(t *testing.T) {
+	svc, ctx, roomID, loser, winner := setupRoom(t, 10, true, 0, 0) // 自动模式
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 0, Tea: 5, ToUserID: winner, ClientRequestID: "a0",
+	})
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("自动模式只记茶应 10001, got %v", err)
+	}
+	if m := memberScoreMap(t, svc, ctx, roomID); m[loser] != 0 || m[winner] != 0 {
+		t.Fatalf("拒绝后分数被动过: %v", m)
+	}
+	logs, _, err := svc.Logs(ctx, loser, roomID, 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range logs {
+		if l.Type == 1 {
+			t.Fatalf("拒绝后仍落了记分流水: %+v", l)
+		}
+	}
+}
+
+// TestExpense_TeaOnlyFromNonMemberRejected 只记茶来源非房内成员 → 30113，全量回滚。
+func TestExpense_TeaOnlyFromNonMemberRejected(t *testing.T) {
+	svc, ctx, roomID, loser, _ := setupRoom(t, 0, false, 0, 0)
+	if _, err := svc.Create(ctx, 300, CreateRoomReq{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 0, Tea: 20, TeaFromUserID: 300, ClientRequestID: "t2",
+	})
+	if !errs.Is(err, errs.CodeScorecardTargetNotMember) {
+		t.Fatalf("非成员来源应 30113, got %v", err)
+	}
+	if m := memberScoreMap(t, svc, ctx, roomID); m[loser] != 0 {
+		t.Fatalf("拒绝后分数被动过: %v", m)
+	}
+	snap, err := svc.Snapshot(ctx, loser, roomID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.TeaPoolTotal != 0 {
+		t.Fatalf("拒绝后池被动过: %d", snap.TeaPoolTotal)
+	}
+}
+
+// TestExpense_ScorePositiveStillRequiresToUserID score>0 回归：to=0 仍拒（只记茶放行不松动记分约束）。
+func TestExpense_ScorePositiveStillRequiresToUserID(t *testing.T) {
+	svc, ctx, roomID, loser, _ := setupRoom(t, 0, false, 0, 0)
+	_, err := svc.Expense(ctx, loser, roomID, ExpenseReq{
+		Score: 10, Tea: 0, ClientRequestID: "s0",
+	})
+	if !errs.Is(err, errs.CodeParamInvalid) {
+		t.Fatalf("score>0 且 to=0 应 10001, got %v", err)
+	}
+}
