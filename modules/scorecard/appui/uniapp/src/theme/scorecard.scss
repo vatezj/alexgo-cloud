@@ -409,6 +409,7 @@ page {
 /* 合规横幅（锁定红） */
 .comply {
   position: relative;
+  flex: none;
   display: flex;
   gap: 9px;
   align-items: center;

@@ -89,8 +89,11 @@ const nicknameMap = computed<Record<number, string>>(() => {
   return map
 })
 
-/** 最近一手：recent_logs（created_at 倒序）里最新一条记分流水。 */
-const lastHand = computed(() => recentLogs.value.find(item => item.type === 1) ?? null)
+/**
+ * 最近一手：recent_logs（created_at 倒序）里最新一条**有分数转移**的流水。
+ * 只记茶（score=0）不是「一手」，跳过，避免中央展示成 A −0 → B +0。
+ */
+const lastHand = computed(() => recentLogs.value.find(item => item.type === 1 && item.score > 0) ?? null)
 
 const lastHandTimeText = computed(() => {
   if (!lastHand.value)
@@ -407,14 +410,21 @@ onPullDownRefresh(() => {
       </view>
     </view>
 
-    <!-- 本局流水账板 -->
-    <RoomLedger
-      :logs="recentLogs"
-      :nickname-map="nicknameMap"
-      @more="openLedgerPopup"
-    />
-
-    <view class="grow" />
+    <!-- 本局流水账板：flex 链 room-page(100vh) → zone → 组件 host(.ledger-host) →
+         .ledger.fill → scroll-view，逐层 flex:1 + min-height:0 压出定高，内部滚动。
+         注意：MP 自定义组件会渲染真实 host 节点（未开 virtualHost），它是 zone 的
+         flex 子元素——不给 host 定 flex 规则的话，flex:1 只作用在组件内部根节点上，
+         host 按内容自然高度把账板顶进筹码轨且 scroll-view 无法滚动（H5 无 host 节点，
+         class 直接合并到组件根，同一条规则两边都成立） -->
+    <view class="ledger-zone">
+      <RoomLedger
+        class="ledger-host"
+        :logs="recentLogs"
+        :nickname-map="nicknameMap"
+        scrollable
+        @more="openLedgerPopup"
+      />
+    </view>
 
     <!-- 筹码轨 -->
     <view class="rail">
@@ -528,6 +538,8 @@ onPullDownRefresh(() => {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  /* 定高：H5 页面根内容驱动高度时 flex 兜底失效（MP 页面容器自带定高，H5 必须显式给） */
+  height: 100vh;
   min-height: 100vh;
   padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
   color: var(--on-ink);
@@ -636,6 +648,7 @@ onPullDownRefresh(() => {
 /* ── 牌桌 ── */
 .table {
   position: relative;
+  flex: none;
   height: 252px;
   padding: 14px 0 0;
   margin: 12px 14px 0;
@@ -643,6 +656,23 @@ onPullDownRefresh(() => {
   border: 1px solid var(--brass-a50);
   border-radius: 44px;
   box-shadow: var(--shadow-tile), inset 0 0 0 2px var(--brass-a50);
+}
+
+/* 账板占位区：吃满牌桌与筹码轨之间剩余空间（flex 链 min-height:0 保证可压缩） */
+.ledger-zone {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 组件 host 节点（<RoomLedger class="ledger-host"> 的 class 落在 MP host 上）：
+   必须自身成为 flex 列容器并可收缩，内部 .ledger.fill / scroll-view 才拿得到定高 */
+.ledger-host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .table .mark {
