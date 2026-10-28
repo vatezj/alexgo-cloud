@@ -51,3 +51,12 @@ export function settle(roomId: number): Promise<void> {
 export function leave(roomId: number): Promise<void> {
   return scoreSend<void>('POST', `${BASE}/rooms/${roomId}/leave`)
 }
+
+/**
+ * 转让房主（仅房主、status=0）。POST /rooms/:id/transfer-owner → void。
+ * 错误：30105 非房主 / 30104 已结算 / 30103 已关闭 / 30107 同人 / 30108 拉黑 / 30113 目标不在房。
+ * 成功后调用方需重拉快照（响应无 data）。
+ */
+export function transferOwner(roomId: number, targetUserId: number): Promise<void> {
+  return scoreSend<void>('POST', `${BASE}/rooms/${roomId}/transfer-owner`, { target_user_id: targetUserId })
+}

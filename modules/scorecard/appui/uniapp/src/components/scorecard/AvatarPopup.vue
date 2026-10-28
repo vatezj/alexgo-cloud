@@ -5,6 +5,8 @@
  * - 主弹窗（居中）：头像 + 昵称 +「✎ 修改资料」「查看资料」；VoiceToggle（5 档循环）；
  *   主题入口（4 色卡横排 → useScorecardTheme().setTheme——spec §3.9.3 裁定）；
  *   「退出房间」leave 二次确认 → 回首页 +「退出登录」清 authStore → login +「完成」关闭
+ * - 转让房主（transfer-owner）：仅房主 status===0 展示；选人 chips → 二次确认 →
+ *   transferOwner → 重拉快照（接口无 data，失败靠轮询补齐）
  * - 修改资料：ProfileGate（edit 模式，root-portal 叠层）——头像+昵称与开房/进局同一弹框；
  *   保存成功回写 authStore.user，本层 computed 即刷新（房间页快照由轮询 BriefProvider 补齐）
  * - 查看资料：只读弹窗（昵称 / ID / 注册时间）
@@ -14,7 +16,7 @@
  */
 import type { ScorecardThemeId } from '@/store/scorecard/theme'
 import { ApiError } from '@/api/core/handlers'
-import { leave } from '@/api/scorecard/room'
+import { snapshot as fetchSnapshot, leave, transferOwner } from '@/api/scorecard/room'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
 import VoiceToggle from '@/components/scorecard/VoiceToggle.vue'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
@@ -143,6 +145,64 @@ async function onLogout() {
     acting.value = false
   }
 }
+
+/* ── 转让房主（transfer-owner） ── */
+
+/** 房主且进行中才展示入口（后端另有 30105/30104/30103 门禁）。 */
+const isOwner = computed(() => {
+  const snap = roomStore.snapshot
+  return !!snap && snap.status === 0 && !!me.value && snap.creator_id === me.value.user_id
+})
+
+/** 可转让候选：房内其他成员（排除自己，同人后端 30107）。 */
+const transferCandidates = computed(() =>
+  (roomStore.snapshot?.members ?? []).filter(m => m.user_id !== me.value?.user_id),
+)
+
+const showTransferPicker = ref(false)
+
+function openTransferPicker() {
+  if (acting.value || !isOwner.value)
+    return
+  showTransferPicker.value = true
+}
+
+/** 选中成员 → 二次确认 → 转让 → 重拉快照（接口无 data）→ 关两层。 */
+async function onPickTransferTarget(targetUserId: number, targetNickname: string) {
+  if (acting.value)
+    return
+  try {
+    await dialog.confirm({
+      title: '转让房主',
+      msg: `确认把房主转让给「${targetNickname || '牌友'}」？转让后你将不再是房主。`,
+      confirmButtonText: '确认转让',
+      cancelButtonText: '再想想',
+    })
+  }
+  catch {
+    return
+  }
+  acting.value = true
+  try {
+    await transferOwner(props.roomId, targetUserId)
+    showTransferPicker.value = false
+    close()
+    toast.success(`已转让给「${targetNickname || '牌友'}」`)
+    try {
+      const snap = await fetchSnapshot(props.roomId)
+      roomStore.applySnapshot(snap)
+    }
+    catch {
+      // 快照拉取失败不阻塞：房间轮询下一轮补齐（version 门保证不覆盖）
+    }
+  }
+  catch (err) {
+    toastApiError(err)
+  }
+  finally {
+    acting.value = false
+  }
+}
 </script>
 
 <template>
@@ -215,8 +275,16 @@ async function onLogout() {
         </view>
       </view>
 
-      <!-- 操作：退出房间 / 完成 + 退出登录 -->
+      <!-- 操作：转让房主（仅房主进行中）/ 退出房间 / 完成 -->
       <view class="ap-btns">
+        <button
+          v-if="isOwner"
+          class="btn ghost transfer-btn"
+          :disabled="acting"
+          @click="openTransferPicker"
+        >
+          转让房主
+        </button>
         <button
           class="btn ghost leave-btn"
           :disabled="acting"
@@ -291,6 +359,65 @@ async function onLogout() {
         @click="showProfile = false"
       >
         完成
+      </button>
+    </view>
+  </wd-popup>
+
+  <!-- 转让房主：选成员（房内其他成员横排 chips，点选进二次确认） -->
+  <wd-popup
+    v-model="showTransferPicker"
+    position="center"
+    root-portal
+    custom-style="width: 320px; border-radius: 22px; background: var(--ink-700); border: 1.5px solid var(--brass-a50);"
+  >
+    <view class="mini-popup">
+      <text class="mp-title">
+        转让房主
+      </text>
+      <text class="mp-sub">
+        选择新房主（转让后你将不再是房主）
+      </text>
+      <text
+        v-if="!transferCandidates.length"
+        class="mp-empty"
+      >
+        暂无其他牌友可转让
+      </text>
+      <view
+        v-else
+        class="tf-chips"
+      >
+        <view
+          v-for="m in transferCandidates"
+          :key="m.user_id"
+          class="tf-chip"
+          @click="onPickTransferTarget(m.user_id, m.nickname)"
+        >
+          <view class="tf-av">
+            <image
+              v-if="m.avatar"
+              class="tf-img"
+              :src="m.avatar"
+              mode="aspectFill"
+            />
+            <text
+              v-else
+              class="tf-init"
+            >
+              {{ (m.nickname.slice(0, 1) || '牌').toUpperCase() }}
+            </text>
+          </view>
+          <text class="tf-nm">
+            {{ m.nickname || '牌友' }}
+          </text>
+        </view>
+      </view>
+      <button
+        class="btn brass"
+        :disabled="acting"
+        @click="showTransferPicker = false"
+      >
+        取消
       </button>
     </view>
   </wd-popup>
@@ -454,6 +581,10 @@ async function onLogout() {
   border-color: var(--comply-border);
 }
 
+.transfer-btn {
+  color: var(--brass);
+}
+
 .ap-logout {
   display: block;
   margin-top: 10px;
@@ -487,6 +618,77 @@ async function onLogout() {
   color: var(--on-ink);
   text-align: center;
   letter-spacing: 0.05em;
+}
+
+.mp-sub {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--dim);
+  text-align: center;
+}
+
+.mp-empty {
+  display: block;
+  padding: 10px 2px 6px;
+  font-size: 12.5px;
+  color: var(--dim);
+  text-align: center;
+}
+
+/* ── 转让选人 chips ── */
+.tf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 5px;
+  border: 1.5px solid var(--on-ink-a28);
+  border-radius: 999px;
+  background: var(--ink-600);
+  cursor: pointer;
+}
+
+.tf-chip:active {
+  border-color: var(--brass);
+}
+
+.tf-av {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--ink-700);
+  border-radius: 50%;
+  color: var(--brass);
+  font-size: 12px;
+}
+
+.tf-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.tf-init {
+  font-size: 11.5px;
+}
+
+.tf-nm {
+  max-width: 84px;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--on-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── 资料行 ── */
