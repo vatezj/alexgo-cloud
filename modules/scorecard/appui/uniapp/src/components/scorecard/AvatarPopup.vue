@@ -2,11 +2,11 @@
 /**
  * 头像弹窗（设计 10 · 昵称 / 语音 5 档 / 主题入口 / 退出房间）
  *
- * - 主弹窗（居中）：头像 + 昵称 +「✎ 修改昵称」「查看资料」；VoiceToggle（5 档循环）；
+ * - 主弹窗（居中）：头像 + 昵称 +「✎ 修改资料」「查看资料」；VoiceToggle（5 档循环）；
  *   主题入口（4 色卡横排 → useScorecardTheme().setTheme——spec §3.9.3 裁定）；
  *   「退出房间」leave 二次确认 → 回首页 +「退出登录」清 authStore → login +「完成」关闭
- * - 修改昵称：内层输入弹窗 → updateMe({nickname}) → 用响应 MeResult 回写 authStore.user
- *   （房间页快照昵称由轮询 BriefProvider 补齐，刷新即见）
+ * - 修改资料：ProfileGate（edit 模式，root-portal 叠层）——头像+昵称与开房/进局同一弹框；
+ *   保存成功回写 authStore.user，本层 computed 即刷新（房间页快照由轮询 BriefProvider 补齐）
  * - 查看资料：只读弹窗（昵称 / ID / 注册时间）
  * - 在房判定：本弹窗仅从房间页打开（房间上下文即在房），故同时给「退出房间」与「退出登录」
  * - 业务错误本地 toastApiError（ApiError 非 401/403）；色值零硬编码（主题 token +
@@ -14,8 +14,8 @@
  */
 import type { ScorecardThemeId } from '@/store/scorecard/theme'
 import { ApiError } from '@/api/core/handlers'
-import { updateMe } from '@/api/scorecard/auth'
 import { leave } from '@/api/scorecard/room'
+import ProfileGate from '@/components/scorecard/ProfileGate.vue'
 import VoiceToggle from '@/components/scorecard/VoiceToggle.vue'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 import { useScorecardRoomStore } from '@/store/scorecard/room'
@@ -70,39 +70,13 @@ function close() {
   emit('update:show', false)
 }
 
-/* ── 修改昵称 ── */
+/* ── 修改资料（ProfileGate edit 模式，保存链路在组件内） ── */
 
-const showNicknameEdit = ref(false)
-const nicknameDraft = ref('')
-const savingNickname = ref(false)
+const showProfileEdit = ref(false)
 
-const canSaveNickname = computed(() =>
-  !!nicknameDraft.value.trim() && nicknameDraft.value.trim() !== nickname.value && !savingNickname.value,
-)
-
-function openNicknameEdit() {
-  nicknameDraft.value = nickname.value
-  showNicknameEdit.value = true
-}
-
-/** updateMe({nickname}) → 用响应回写 authStore.user（房间页昵称由轮询刷新）。 */
-async function onSaveNickname() {
-  if (savingNickname.value || !canSaveNickname.value)
-    return
-  savingNickname.value = true
-  try {
-    const next = nicknameDraft.value.trim()
-    const res = await updateMe({ nickname: next })
-    authStore.user = res
-    showNicknameEdit.value = false
-    toast.success('昵称已更新')
-  }
-  catch (err) {
-    toastApiError(err)
-  }
-  finally {
-    savingNickname.value = false
-  }
+/** 保存成功（authStore.user 已由 ProfileGate 回写）：toast 反馈，本层昵称/头像 computed 即刷新。 */
+function onProfileSaved() {
+  toast.success('资料已更新')
 }
 
 /* ── 查看资料（只读） ── */
@@ -202,9 +176,9 @@ async function onLogout() {
         <view class="ap-links">
           <text
             class="ap-link"
-            @click="openNicknameEdit"
+            @click="showProfileEdit = true"
           >
-            ✎ 修改昵称
+            ✎ 修改资料
           </text>
           <text
             class="ap-link on"
@@ -269,41 +243,13 @@ async function onLogout() {
     </view>
   </wd-popup>
 
-  <!-- 修改昵称弹窗 -->
-  <wd-popup
-    v-model="showNicknameEdit"
-    position="center"
-    root-portal
-    custom-style="width: 300px; border-radius: 18px; background: var(--ink-700); border: 1.5px solid var(--brass-a50);"
-  >
-    <view class="mini-popup">
-      <text class="mp-title">
-        修改昵称
-      </text>
-      <wd-input
-        v-model="nicknameDraft"
-        class="mp-field"
-        :maxlength="24"
-        clearable
-        placeholder="昵称"
-      />
-      <view class="mp-btns">
-        <button
-          class="btn ghost"
-          @click="showNicknameEdit = false"
-        >
-          取消
-        </button>
-        <button
-          class="btn brass"
-          :disabled="!canSaveNickname"
-          @click="onSaveNickname"
-        >
-          {{ savingNickname ? '保存中…' : '保存' }}
-        </button>
-      </view>
-    </view>
-  </wd-popup>
+  <!-- 修改资料弹窗（ProfileGate edit：与开房/进局同一弹框，root-portal 脱离主弹层层级） -->
+  <ProfileGate
+    v-model:show="showProfileEdit"
+    mode="edit"
+    :root-portal="true"
+    @saved="onProfileSaved"
+  />
 
   <!-- 查看资料弹窗（只读） -->
   <wd-popup
@@ -352,9 +298,9 @@ async function onLogout() {
 
 <style lang="scss" scoped>
 .avatar-popup {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   padding: 20px 20px 18px;
 }
 
@@ -362,20 +308,20 @@ async function onLogout() {
 .ap-head {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 6px;
+  align-items: center;
 }
 
 .ap-av {
   display: flex;
-  width: 64px;
-  height: 64px;
   align-items: center;
   justify-content: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  background: var(--ink-600);
   border: 3px solid var(--brass);
   border-radius: 50%;
-  background: var(--ink-600);
-  overflow: hidden;
 }
 
 .ap-img {
@@ -385,16 +331,16 @@ async function onLogout() {
 }
 
 .ap-init {
-  color: var(--brass);
   font-family: 'Noto Serif SC', serif;
   font-size: 22px;
+  color: var(--brass);
 }
 
 .ap-name {
-  color: var(--on-ink);
   font-family: 'Noto Serif SC', serif;
   font-size: 17px;
   font-weight: 700;
+  color: var(--on-ink);
   letter-spacing: 0.05em;
 }
 
@@ -416,16 +362,16 @@ async function onLogout() {
 
 /* ── 分节 ── */
 .ap-sec {
-  margin-top: 16px;
   padding-top: 12px;
+  margin-top: 16px;
   border-top: 1px solid var(--on-ink-a25);
 }
 
 .ap-sec-label {
   display: block;
   margin-bottom: 8px;
-  color: var(--on-ink);
   font-size: 14px;
+  color: var(--on-ink);
 }
 
 /* ── 主题 4 色卡横排 ── */
@@ -440,9 +386,9 @@ async function onLogout() {
   flex-direction: column;
   gap: 5px;
   padding: 6px;
+  cursor: pointer;
   border: 1.5px solid var(--on-ink-a28);
   border-radius: 10px;
-  cursor: pointer;
 }
 
 .th-card.on {
@@ -452,9 +398,9 @@ async function onLogout() {
 .th-swatch {
   position: relative;
   height: 30px;
+  background: var(--felt);
   border: 1px solid var(--brass-a50);
   border-radius: 7px;
-  background: var(--felt);
 }
 
 /* 黄铜条 + 赢色点：用该主题自身 token 画预览（零硬编码色） */
@@ -464,9 +410,9 @@ async function onLogout() {
   right: 6px;
   left: 6px;
   height: 7px;
-  border-radius: 4px;
-  background: var(--brass);
   content: '';
+  background: var(--brass);
+  border-radius: 4px;
 }
 
 .th-swatch::after {
@@ -475,14 +421,14 @@ async function onLogout() {
   bottom: 5px;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--win-dark);
   content: '';
+  background: var(--win-dark);
+  border-radius: 50%;
 }
 
 .th-name {
-  color: var(--dim);
   font-size: 10.5px;
+  color: var(--dim);
   text-align: center;
 }
 
@@ -504,99 +450,74 @@ async function onLogout() {
 }
 
 .leave-btn {
-  border-color: var(--comply-border);
   color: var(--vermillion-hi);
+  border-color: var(--comply-border);
 }
 
 .ap-logout {
   display: block;
   margin-top: 10px;
-  color: var(--dim);
-  cursor: pointer;
   font-size: 12.5px;
+  color: var(--dim);
   text-align: center;
+  cursor: pointer;
 }
 
 .ap-cap {
   display: block;
   margin-top: 9px;
-  color: var(--dim);
   font-size: 11px;
+  color: var(--dim);
   text-align: center;
 }
 
-/* ── 内层小弹窗（修改昵称 / 查看资料） ── */
+/* ── 内层小弹窗（查看资料） ── */
 .mini-popup {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   padding: 20px 18px 18px;
 }
 
 .mp-title {
   margin-bottom: 12px;
-  color: var(--on-ink);
   font-family: 'Noto Serif SC', serif;
   font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  color: var(--on-ink);
   text-align: center;
-}
-
-.mp-field {
-  margin-bottom: 14px;
-  border-radius: 10px;
-  background: var(--on-ink-a04);
-}
-
-.mp-btns {
-  display: flex;
-  gap: 10px;
-}
-
-.mp-btns .btn {
-  flex: 1;
-  height: 44px;
-  font-size: 14px;
-}
-
-.mp-btns .btn.brass[disabled] {
-  background: var(--on-ink-a04);
-  border: 1px solid var(--on-ink-a28);
-  box-shadow: none;
-  color: var(--dim);
-  opacity: 1;
+  letter-spacing: 0.05em;
 }
 
 /* ── 资料行 ── */
 .pf-row {
   display: flex;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
   padding: 9px 2px;
   border-bottom: 1px solid var(--on-ink-a04);
 }
 
 .pf-k {
   flex: none;
-  color: var(--dim);
   font-size: 12.5px;
+  color: var(--dim);
 }
 
 .pf-v {
   min-width: 0;
   overflow: hidden;
-  color: var(--on-ink);
-  font-size: 13.5px;
-  text-align: right;
   text-overflow: ellipsis;
+  font-size: 13.5px;
+  color: var(--on-ink);
+  text-align: right;
   white-space: nowrap;
 }
 
 .mini-popup .btn.brass {
-  margin-top: 14px;
   height: 44px;
+  margin-top: 14px;
   font-size: 14px;
 }
 </style>

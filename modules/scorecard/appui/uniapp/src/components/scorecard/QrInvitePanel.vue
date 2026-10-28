@@ -45,14 +45,6 @@ function toastApiError(err: unknown) {
     toast.error({ msg: err.message || '请求失败' })
 }
 
-/** PNG 魔数校验：空/过短/非 PNG 字节按失败降级（不缓存，下次打开可重试）。 */
-function isPng(buf: ArrayBuffer): boolean {
-  if (!buf || buf.byteLength < 8)
-    return false
-  const b = new Uint8Array(buf)
-  return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47
-}
-
 /** base64 字母表：btoa 是浏览器 Window API，MP-WEIXIN 逻辑层没有，跨端须手写编码。 */
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 

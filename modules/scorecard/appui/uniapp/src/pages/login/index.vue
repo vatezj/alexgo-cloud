@@ -4,12 +4,15 @@
  *
  * - 业务信封错误（含 5xxxx）不全局 toast：catch ApiError 后本页 useToast 提示 err.msg
  * - 401/403（handlers 清态跳登录）与网络/超时错误已由 handlers 全局提示，本页不重复 toast
- * - 登录成功统一走 afterLogin：setLogin → fetchMe → pendingScene 有房号则 joinRoom 进房，否则回首页
+ * - 登录成功统一走 afterLogin：setLogin → fetchMe → pendingScene 有房号则过资料软提醒（ProfileGate reminder，
+ *   保存/跳过后只进一次房）joinRoom 进房，否则回首页
  */
 import type { LoginResult } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
 import { loginByMobile, wxLogin } from '@/api/scorecard/auth'
 import { joinRoom } from '@/api/scorecard/room'
+import ProfileGate from '@/components/scorecard/ProfileGate.vue'
+import { useProfileGate } from '@/composables/scorecard/useProfileGate'
 import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
@@ -25,6 +28,7 @@ const router = useRouter()
 const toast = useToast()
 const { consumeScene } = useSceneRoom()
 const { pageStyle } = useSystemBar()
+const gate = useProfileGate()
 
 const logging = ref(false)
 const mobile = ref('')
@@ -52,15 +56,20 @@ async function afterLogin(res: LoginResult) {
   }
   const roomCode = consumeScene()
   if (roomCode) {
-    try {
-      const snapshot = await joinRoom({ room_code: roomCode })
-      authStore.lastRoomId = snapshot.id
-      router.push({ path: '/pages/room/index', query: { roomId: String(snapshot.id) } })
-      return
-    }
-    catch (err) {
-      toastApiError(err)
-    }
+    // 资料软提醒（2.4）：fetchMe 已完成，完整立即进局；不完整弹 reminder，保存/跳过后只进一次房。
+    // 挂起期间留在本页（不 replaceAll），动作失败仍回首页（不回环消费 scene）
+    gate.ensureProfileThen(async () => {
+      try {
+        const snapshot = await joinRoom({ room_code: roomCode })
+        authStore.lastRoomId = snapshot.id
+        router.push({ path: '/pages/room/index', query: { roomId: String(snapshot.id) } })
+      }
+      catch (err) {
+        toastApiError(err)
+        router.replaceAll({ path: '/pages/index/index' })
+      }
+    })
+    return
   }
   router.replaceAll({ path: '/pages/index/index' })
 }
@@ -193,6 +202,15 @@ async function onPasswordLogin() {
         </button>
       </view>
     </view>
+
+    <!-- 登录后 scene 进房的资料软提醒（仅小「跳过」可关，保存/跳过后续走进局） -->
+    <ProfileGate
+      v-model:show="gate.show"
+      :mode="gate.mode"
+      @saved="gate.proceed"
+      @skipped="gate.proceed"
+      @cancelled="gate.cancel"
+    />
   </view>
 </template>
 

@@ -2,14 +2,16 @@
 /**
  * 支出页 · 筹码加减档（设计 04；Task 8 自占位页整体重写）
  *
- * - 分数档：ExpenseLane（±步进 10 + 预设 10/50/100/200）；score>0 才可提交
+ * - 分数档：ExpenseLane（±步进 10 + 预设 10/50/100/200）；score>0 须选记分对象
+ * - 只记茶（手动茶档）：score=0 且 tea>0 可提交——不选分数、不选记分对象，
+ *   付茶人扣 T 入池（room-ledger-scroll-tea-only）；自动抽茶模式仍须分数
  * - 记分对象：query toUserId 预选（须为房内非自己成员），否则成员横选（排除自己）
  * - 茶饭档：tea_auto_enabled=true → 「按 X% 自动抽取」说明；false → 手动 tea 档 +
  *   扣茶来源横选（tea_from_user_id，默认支出方=我；0 由后端缺省=支出方）
  * - 幂等提交：reqId 页面进入生成一次存 ref，失败 toast 后重试复用同键
  *   （Review Focus #1：断网重按不双记，后端同 client_request_id 回放同 log_id）
  * - 成功：applySnapshot（响应内嵌快照，version 单调门）+ polling.refresh() 重置 +
- *   toast「已记分」+ 语音播报（speak ledger 类，永不 throw）+ navigateBack
+ *   toast + 语音播报（speak ledger 类，永不 throw）+ navigateBack
  * - 业务错误本页 toast（ApiError 非 401/403）；401 由 handlers 全局清态跳登录
  * - 色值零硬编码：全走主题 token 与全局工具类（.comply/.num/.btn.brass）
  */
@@ -101,7 +103,16 @@ const roomCodeText = computed(() => {
   return code ? `${code.toUpperCase()} 房间` : '房间'
 })
 
-const canSubmit = computed(() => score.value > 0 && toUserId.value > 0 && !submitting.value)
+/** 只记茶：分数为 0、手动茶档（非自动抽取）且茶水 >0（不选分数/记分对象）。 */
+const teaOnly = computed(() => score.value <= 0 && !teaAuto.value && tea.value > 0)
+
+const canSubmit = computed(() => {
+  if (submitting.value)
+    return false
+  if (score.value > 0)
+    return toUserId.value > 0
+  return teaOnly.value
+})
 
 /** 业务信封错误本页提示；401/403（handlers 已清态全局提示）不重复 toast。 */
 function toastApiError(err: unknown) {
@@ -149,11 +160,11 @@ watch(
 async function onSubmit() {
   if (submitting.value)
     return
-  if (score.value <= 0) {
+  if (score.value <= 0 && !teaOnly.value) {
     toast.warning('请先选择支出分数')
     return
   }
-  if (!toUserId.value) {
+  if (score.value > 0 && !toUserId.value) {
     toast.warning('请先选择记分对象')
     return
   }
@@ -162,16 +173,22 @@ async function onSubmit() {
     const res = await expense(roomId.value, {
       score: score.value,
       tea: teaAuto.value ? 0 : tea.value,
-      to_user_id: toUserId.value,
+      // 只记茶无分数转移对象：to_user_id 传 0（后端 score=0 放行）
+      to_user_id: score.value > 0 ? toUserId.value : 0,
       tea_from_user_id: teaAuto.value ? 0 : teaFromUserId.value,
       client_request_id: reqId.value,
     })
     // 响应内嵌最新快照：version 单调门写回（防旧覆盖新）
     roomStore.applySnapshot(res.snapshot)
     void polling.refresh().catch(() => {})
-    toast.success('已记分')
-    // 语音播报（ledger 类）：纯记分词汇拼接；speak 永不 throw，失败不影响回房
-    speak(`${myNickname.value}支出${score.value}分`, 'ledger')
+    toast.success(teaOnly.value ? '已记茶水' : '已记分')
+    // 语音播报（ledger 类）：纯记分/茶水词汇拼接；speak 永不 throw，失败不影响回房
+    speak(
+      teaOnly.value
+        ? `${myNickname.value}茶水${tea.value}分`
+        : `${myNickname.value}支出${score.value}分`,
+      'ledger',
+    )
     goBack()
   }
   catch (err) {
@@ -253,8 +270,11 @@ onShow(() => {
       :who-name="myNickname"
     />
 
-    <!-- 记分对象横选（query 预选后仍可改） -->
-    <view class="payees">
+    <!-- 记分对象横选（query 预选后仍可改；只记茶无分数转移时不展示） -->
+    <view
+      v-if="score > 0"
+      class="payees"
+    >
       <text class="sec-label">
         记给谁
       </text>
@@ -353,7 +373,7 @@ onShow(() => {
         :disabled="!canSubmit"
         @click="onSubmit"
       >
-        支出 {{ score || 0 }} 分
+        {{ score > 0 ? `支出 ${score} 分` : `记茶水 ${tea || 0} 分` }}
       </button>
       <text class="cap">
         只记分数，不涉及金钱
