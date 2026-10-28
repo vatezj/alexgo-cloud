@@ -113,6 +113,7 @@ func newAppRouter(t *testing.T) (*gin.Engine, *gorm.DB, service.RoomService, *Ap
 	// 真实链路：Tenant 先于 handler（http.go 链序 Recovery → Tenant → … → handler）。
 	r.Use(middleware.NewTenantMiddleware(nil))
 	r.POST("/api/app/scorecard/rooms", ctrl.CreateRoom)
+	r.POST("/api/app/scorecard/rooms/join", ctrl.JoinRoom)
 	r.GET("/api/app/scorecard/rooms/:id/snapshot", ctrl.Snapshot)
 	r.GET("/api/app/scorecard/rooms/:id/wxacode", ctrl.Wxacode)
 	return r, db, rooms, ctrl
@@ -227,8 +228,8 @@ func TestWxacode_OK_PNG(t *testing.T) {
 	if !bytes.Equal(w.Body.Bytes(), wx.png) {
 		t.Fatalf("PNG 字节应原样直出: %v", w.Body.Bytes())
 	}
-	// scene 前缀 qr= 由控制器拼（房号来自房行）；page/envVersion 按常量契约。
-	if wx.scene != "qr=WXYZ" || wx.page != "pages/index/index" || wx.env != "trial" {
+	// scene = qr+房号&inv+请求者UserID（tokA → user100）；page/envVersion 按常量契约。
+	if wx.scene != "qr=WXYZ&inv=100" || wx.page != "pages/index/index" || wx.env != "trial" {
 		t.Fatalf("取码入参: scene=%q page=%q env=%q", wx.scene, wx.page, wx.env)
 	}
 	// 进程内按房号缓存 5min：二次请求命中缓存，不再打微信取码。
@@ -238,6 +239,38 @@ func TestWxacode_OK_PNG(t *testing.T) {
 	}
 	if wx.calls != 1 {
 		t.Fatalf("二次请求应命中缓存: wxacode calls = %d", wx.calls)
+	}
+}
+
+// TestWxacode_CacheScopedByUser 缓存键含 inv：同房两人取码各自打微信，不互串缓存。
+func TestWxacode_CacheScopedByUser(t *testing.T) {
+	r, db, _, ctrl := newAppRouter(t)
+	row := createRoomAs(t, r, db, "tokA", "CACH")
+	if w := doReq(r, http.MethodPost, "/api/app/scorecard/rooms/join", "tokC", "",
+		`{"room_code":"CACH"}`); w.Code != http.StatusOK || codeOf(t, w) != 0 {
+		t.Fatalf("tokC 加入应成功: %d %s", w.Code, w.Body.String())
+	}
+	wx := &stubWxacoder{png: []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}}
+	ctrl.wx = wx
+	pngPath := "/api/app/scorecard/rooms/" + itoa(row.ID) + "/wxacode"
+	if w := doReq(r, http.MethodGet, pngPath, "tokA", "", ""); w.Code != http.StatusOK {
+		t.Fatalf("tokA 取码应 200: %d", w.Code)
+	}
+	if w := doReq(r, http.MethodGet, pngPath, "tokC", "", ""); w.Code != http.StatusOK {
+		t.Fatalf("tokC 取码应 200: %d", w.Code)
+	}
+	if wx.calls != 2 {
+		t.Fatalf("不同用户取码不得命中同一缓存: calls = %d", wx.calls)
+	}
+	if wx.scene != "qr=CACH&inv=300" {
+		t.Fatalf("末次 scene = %q, want qr=CACH&inv=300", wx.scene)
+	}
+	// 同一用户二次取码仍命中缓存（calls 不再增长）。
+	if w := doReq(r, http.MethodGet, pngPath, "tokC", "", ""); w.Code != http.StatusOK {
+		t.Fatalf("tokC 二次取码应 200: %d", w.Code)
+	}
+	if wx.calls != 2 {
+		t.Fatalf("同用户二次应命中缓存: calls = %d", wx.calls)
 	}
 }
 
