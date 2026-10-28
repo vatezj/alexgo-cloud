@@ -78,6 +78,8 @@ const members = computed(() => snapshot.value?.members ?? [])
 const payees = computed(() => members.value.filter(m => m.user_id !== myUserId.value))
 const teaAuto = computed(() => snapshot.value?.tea_auto_enabled ?? false)
 const teaPercentText = computed(() => `${snapshot.value?.tea_percent ?? 0}%`)
+/** 茶饭是否配置：tea_percent>0 才算房主设置过；未配置整段隐藏（含手动茶档+扣茶来源）。 */
+const teaConfigured = computed(() => (snapshot.value?.tea_percent ?? 0) > 0)
 
 const score = ref(0)
 const tea = ref(0)
@@ -324,9 +326,9 @@ onShow(() => {
       </scroll-view>
     </view>
 
-    <!-- 茶饭档：自动抽取说明 / 手动加减档 -->
+    <!-- 茶饭档：自动抽取说明 / 手动加减档（房主未配置 tea_percent≤0 整段隐藏） -->
     <view
-      v-if="teaAuto"
+      v-if="teaConfigured && teaAuto"
       class="auto-note"
     >
       <text class="an-t">
@@ -336,7 +338,7 @@ onShow(() => {
         记分时自动抽茶入池，无需手动
       </text>
     </view>
-    <template v-else>
+    <template v-else-if="teaConfigured">
       <ExpenseLane
         v-model:value="tea"
         lane="pot"
