@@ -4,8 +4,8 @@
  *
  * - 业务信封错误（含 5xxxx）不全局 toast：catch ApiError 后本页 useToast 提示 err.msg
  * - 401/403（handlers 清态跳登录）与网络/超时错误已由 handlers 全局提示，本页不重复 toast
- * - 登录成功统一走 afterLogin：setLogin → fetchMe → pendingScene 有房号则过资料软提醒（ProfileGate reminder，
- *   保存/跳过后只进一次房）joinRoom 进房，否则回首页
+ * - 登录成功统一走 afterLogin：setLogin → fetchMe → 先 bindInviterSilently 静默绑好友（scene 带 inv 时），
+ *   有房号则过资料软提醒（ProfileGate reminder，保存/跳过后只进一次房）joinRoom 进房，否则回首页
  */
 import type { LoginResult } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
@@ -13,7 +13,7 @@ import { loginByMobile, wxLogin } from '@/api/scorecard/auth'
 import { joinRoom } from '@/api/scorecard/room'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
 import { useProfileGate } from '@/composables/scorecard/useProfileGate'
-import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { bindInviterSilently, useSceneRoom } from '@/composables/scorecard/useSceneRoom'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
@@ -45,7 +45,7 @@ function toastApiError(err: unknown) {
     toast.error({ msg: err.message || '登录失败' })
 }
 
-/** 登录成功统一收口：存 token（persist 落盘）→ 拉资料 → scene 房号只消费一次（有则进房，否则回首页）。 */
+/** 登录成功统一收口：存 token（persist 落盘）→ 拉资料 → 先静默绑好友，有房号再进房，否则回首页。 */
 async function afterLogin(res: LoginResult) {
   authStore.setLogin(res)
   try {
@@ -54,7 +54,10 @@ async function afterLogin(res: LoginResult) {
   catch {
     // 资料缓存失败不阻断登录（token 已落 store 并持久化）
   }
-  const roomCode = consumeScene()
+  const scene = consumeScene()
+  // 静默绑好友（scene 带 inv 时；已好友/拉黑/自加/网络错误全吞，不阻塞登录收口）
+  void bindInviterSilently(scene?.inviterId ?? null, authStore.user?.user_id ?? null)
+  const roomCode = scene?.roomCode ?? null
   if (roomCode) {
     // 资料软提醒（2.4）：fetchMe 已完成，完整立即进局；不完整弹 reminder，保存/跳过后只进一次房。
     // 挂起期间留在本页（不 replaceAll），动作失败仍回首页（不回环消费 scene）

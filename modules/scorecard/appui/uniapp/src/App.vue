@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { parseScene, restorePendingScene, setPendingScene } from '@/composables/scorecard/useSceneRoom'
 
 onLaunch(() => {
   // 启动恢复主题：读 persist 的 themeStore，重放根节点互斥 class
   // H5 挂 documentElement；小程序端根视图 class 由 App.ku.vue 按 store 响应式绑定
   const { themeId, setTheme } = useScorecardTheme()
   setTheme(themeId.value)
+  // 恢复上次未消费的 scene 暂存（storage → 内存；进程被杀冷启可续）
+  restorePendingScene()
 })
 
-// 小程序码 scene 进房：decodeURIComponent 后形如 qr=7AVW → 提取房号暂存
-// （登录后 afterLogin consumeScene 消费一次；已登录路径 Task 6 接，闭环验收 Task 12）
-const { pendingScene } = useSceneRoom()
+// scene 进房/绑好友：decode 后形如 qr=7AVW / qr=7AVW&inv=100 / inv=100
+// → parseScene 提取房号+邀请人 → setPendingScene 写内存+storage（消费方 consumeScene 只读一次）
 onShow((options) => {
   // 微信 App 级 options.scene 是数字场景值，自定义码值落 query.scene（部分端在 options.scene 直给字符串，兜底兼容）
   const queryScene = options?.query?.scene
-  const raw = typeof queryScene === 'string' ? queryScene : typeof options?.scene === 'string' ? options.scene : ''
+  let raw = typeof queryScene === 'string' ? queryScene : typeof options?.scene === 'string' ? options.scene : ''
+  // 朋友圈 onShareTimeline 的 query 直给 page query（inv=<uid>），不经 scene 键——兜底提取
+  if (!raw && typeof options?.query?.inv === 'string')
+    raw = options.query.inv
   if (!raw)
     return
   let decoded = raw
@@ -24,11 +28,9 @@ onShow((options) => {
   catch {
     // 非法百分号编码：按明文继续尝试解析
   }
-  if (!decoded.startsWith('qr='))
-    return
-  const roomCode = decoded.slice(3).trim()
-  if (roomCode)
-    pendingScene.value = roomCode
+  const p = parseScene(decoded)
+  if (p)
+    setPendingScene(p)
 })
 </script>
 

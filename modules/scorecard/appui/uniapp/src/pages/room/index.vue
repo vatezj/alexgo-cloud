@@ -164,14 +164,18 @@ function onInviteClick() {
   showQrInvite.value = true
 }
 
-/** 转发卡片：邀请弹层 open-type="share" 与右上角胶囊菜单共用；scene 协议进房（幂等 join）。 */
+/** 转发卡片：邀请弹层 open-type="share" 与右上角胶囊菜单共用；scene 协议进房（幂等 join）+ inv 绑好友。 */
 onShareAppMessage(() => {
   const code = snapshot.value?.room_code
+  const inv = myUserId.value
+  // 收敛到 scene 协议：index onShow consumePendingScene → joinRoom 幂等（已在房返回现状）；inv 静默绑好友
+  const scene = code
+    ? (inv ? `qr=${code}&inv=${inv}` : `qr=${code}`)
+    : null
   return {
     title: `${roomCodeText.value} · 邀你打牌记账`,
-    // 收敛到 scene 协议：index onShow consumePendingScene → joinRoom 幂等（已在房返回现状）
-    path: code
-      ? `/pages/index/index?scene=${encodeURIComponent(`qr=${code}`)}`
+    path: scene
+      ? `/pages/index/index?scene=${encodeURIComponent(scene)}`
       : '/pages/index/index',
   }
 })

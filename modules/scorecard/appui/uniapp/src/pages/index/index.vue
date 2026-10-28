@@ -4,8 +4,9 @@
  *
  * - 身份牌：authStore.user（昵称/头像/注册天数）+ stat 总分/胜率 + listFriends 好友数
  * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
- * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次 → joinRoom 进房；
- *   未登录 → 留存 scene 去登录（登录后 afterLogin 消费进房，只进一次）
+ * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次（先 bindInviterSilently
+ *   静默绑好友，有 roomCode 再 joinRoom 进房；纯 inv 无房号停首页）；未登录 → 留存 scene 去登录（登录后 afterLogin 消费）
+ * - 转发：onShareAppMessage / onShareTimeline 带 inv=<我的 user_id>（未登录不带）；好友打开即静默绑定
  * - 冷启动回房：本启程首次以登录态显示首页时，若 lastRoomId 的房间仍进行中 → 直达房间页（不等 scene，
  *   scene 优先级更高——scene 进房后 resume 不再触发）；房已结束/不存在/非成员 → 清 lastRoomId 停首页
  * - 开房资料门：createRoom 前经 useProfileGate.requireProfileForAction 校验资料完整（ProfileGate gate 模式硬门，
@@ -22,7 +23,7 @@ import { createRoom, joinRoom, snapshot } from '@/api/scorecard/room'
 import PlayCard from '@/components/scorecard/PlayCard.vue'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
 import { useProfileGate } from '@/composables/scorecard/useProfileGate'
-import { useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { bindInviterSilently, useSceneRoom } from '@/composables/scorecard/useSceneRoom'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
@@ -35,7 +36,7 @@ definePage({
 const authStore = useScorecardAuthStore()
 const router = useRouter()
 const toast = useToast()
-const { pendingScene, consumeScene } = useSceneRoom()
+const { pendingScene, consumeScene, setPendingScene } = useSceneRoom()
 const { pageStyle } = useSystemBar()
 const gate = useProfileGate()
 
@@ -204,6 +205,7 @@ async function loadHomeData() {
 
 /**
  * scene 进房闭环：pendingScene 有值才处理——已登录消费进房（只消费一次）；未登录留存去登录（afterLogin 消费）。
+ * 已登录路径：先静默绑好友（inviterId），再按 roomCode 走资料门 + join；纯 inv 无房号 → 绑完停首页。
  * @returns true = scene 已消费（进房成功或失败都算，本启程不再回房）；false = 无 scene / 未登录未消费
  */
 async function consumePendingScene(): Promise<boolean> {
@@ -214,9 +216,14 @@ async function consumePendingScene(): Promise<boolean> {
     return false
   }
   // 先消费后请求（读后即清）：onShow 连续触发/请求在途时不会重复进房
-  const code = consumeScene()
-  if (!code)
+  const scene = consumeScene()
+  if (!scene)
     return false
+  // 静默绑好友（不阻塞进房；已好友/拉黑/自加/网络错误全吞）
+  void bindInviterSilently(scene.inviterId, authStore.user?.user_id ?? null)
+  const code = scene.roomCode
+  if (!code)
+    return true // 纯 inv 首页转发：绑定即占用本启程意图，停首页
   // 资料软提醒（2.2）：完整立即进局；不完整弹 reminder，保存/跳过后续走（失败已消费停首页 toast）
   gate.ensureProfileThen(async () => {
     try {
@@ -284,6 +291,30 @@ onShow(() => {
   void loadHomeData()
 })
 
+/* ── 转发：胶囊菜单 / 转发卡片 / 朋友圈——带 inv=<我的 user_id>，好友打开即静默绑好友 ── */
+
+const SHARE_TITLE = '登录后开房记账 · 好友互通'
+
+/** 已登录才有 inv（authStore.user.user_id）；未登录只带首页 path 不绑。 */
+onShareAppMessage(() => {
+  const uid = authStore.user?.user_id
+  return {
+    title: SHARE_TITLE,
+    path: uid
+      ? `/pages/index/index?scene=${encodeURIComponent(`inv=${uid}`)}`
+      : '/pages/index/index',
+  }
+})
+
+/** 朋友圈：query 直给 page query（App onShow 兜底解析 query.inv）。 */
+onShareTimeline(() => {
+  const uid = authStore.user?.user_id
+  return {
+    title: SHARE_TITLE,
+    query: uid ? `inv=${uid}` : '',
+  }
+})
+
 /** 未登录统一去登录（已知简化：登录后回首页，不做原动作回跳）。 */
 function ensureLogin(): boolean {
   if (isLoggedIn.value)
@@ -342,7 +373,7 @@ async function doCreateRoom() {
 /** 按房号进房：已登录过资料软提醒后 joinRoom；未登录暂存 scene 去登录（afterLogin 消费进房）。 */
 async function enterRoomByCode(code: string) {
   if (!isLoggedIn.value) {
-    pendingScene.value = code
+    setPendingScene({ roomCode: code, inviterId: null })
     showJoinPopup.value = false
     router.push({ path: '/pages/login/index' })
     return
