@@ -523,7 +523,7 @@ onUnload(() => {
                 {{ m.nickname || '牌友' }}
                 <text
                   v-if="m.user_id === myUserId"
-                  class="me"
+                  class="is-me"
                 >
                   我
                 </text>
@@ -1082,7 +1082,8 @@ onUnload(() => {
   white-space: nowrap;
 }
 
-.rnm .me {
+/* 「我」标：类名用 is-me 避开全局 UnoCSS 工具类 .me（margin-inline-end:32rpx 会把房主标推开 16px） */
+.rnm .is-me {
   margin-left: 6px;
   color: var(--brass);
   font-size: 11px;

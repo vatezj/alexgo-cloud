@@ -30,17 +30,7 @@ const emit = defineEmits<{
   (e: 'invite'): void
 }>()
 
-/** TODO(mock)：布局调试用假人，验证横滚后整段删除。 */
-const MOCK_MEMBERS: RoomMember[] = Array.from({ length: 9 }, (_, i) => ({
-  user_id: 90001 + i,
-  nickname: `牌友${i + 1}`,
-  avatar: '',
-  cur_score: (i % 3 === 0 ? -1 : 1) * (i + 1) * 10,
-  cum_lose_score: 0,
-  is_creator: false,
-}))
-
-/** TODO(mock)：真实成员后追加假人撑宽 roster；删 mock 时改回 props.members。 */
+/** 真实成员列表（mock 假人已删，布局调试结束）。 */
 const displayMembers = computed(() => [...props.members])
 
 /** 座位描边色循环（设计 --seatc：indigo / jade / brass 轮换）。 */
@@ -73,7 +63,7 @@ function initial(name: string): string {
         >
           <view
             class="av"
-            :class="{ me: m.user_id === myUserId }"
+            :class="{ 'is-me': m.user_id === myUserId }"
             :style="{ '--seatc': seatColor(i) }"
           >
             <image
@@ -144,6 +134,7 @@ function initial(name: string): string {
   /* flex-basis:0 + min-width:0 双保险，scroll-view 必须可收缩才滚动而不是溢出 */
   flex: 1 1 0;
   min-width: 0;
+  margin-left: 20rpx; /* 让第一个座位贴近左边界，视觉上与邀请座位对齐 */
   overflow: hidden;
   white-space: nowrap;
 }
@@ -153,7 +144,6 @@ function initial(name: string): string {
   gap: 6px;
   max-width: 500rpx;
   padding: 0 2px;
-  padding-left: 10px;
 }
 
 .seat {
@@ -181,8 +171,10 @@ function initial(name: string): string {
   box-shadow: var(--shadow-chip), inset 0 -4px 0 var(--chip-dark-a);
 }
 
-/* me 描红：锁定红（四主题同值） */
-.av.me {
+/* me 描红：锁定红（四主题同值）。
+   类名用 is-me 而非 me——全局 UnoCSS 工具类有 .me{margin-inline-end:32rpx}，
+   撞名会让头像多出 16px 单侧 margin、居中时左移 8px 脱轴 */
+.av.is-me {
   color: var(--vermillion);
   border-color: var(--vermillion);
 }

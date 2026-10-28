@@ -42,15 +42,15 @@ const avatarText = computed(() => (props.item.nickname || '友').slice(0, 1))
 /** 胜率百分：win_rate 为 0~1 浮点（分母 0 后端给 0，同战绩页）。 */
 const winRateText = computed(() => `${Math.round(props.item.win_rate * 100)}%`)
 
-/** 奖牌样式：前三特殊色，其余 mn。 */
+/** 奖牌样式：前三特殊色 rk1/rk2/rk3，其余 rkn（避开全局 UnoCSS 工具类 .m1/.m2/.m3 的 margin）。 */
 const medalClass = computed(() => {
   if (props.rank === 1)
-    return 'm1'
+    return 'rk1'
   if (props.rank === 2)
-    return 'm2'
+    return 'rk2'
   if (props.rank === 3)
-    return 'm3'
-  return 'mn'
+    return 'rk3'
+  return 'rkn'
 })
 </script>
 
@@ -58,7 +58,7 @@ const medalClass = computed(() => {
   <wd-swipe-action>
     <view
       class="rrow"
-      :class="{ me: self }"
+      :class="{ 'is-me': self }"
     >
       <text
         class="medal num"
@@ -150,8 +150,8 @@ const medalClass = computed(() => {
   color: var(--on-ink);
 }
 
-/* 自己行：黄铜描边 + 淡黄铜底（设计 .rrow.me） */
-.rrow.me {
+/* 自己行：黄铜描边 + 淡黄铜底（设计 .rrow.me；类名用 is-me 避开全局 UnoCSS 工具类 .me） */
+.rrow.is-me {
   border-color: var(--brass-a50);
   background: color-mix(in srgb, var(--brass) 7%, transparent);
 }
@@ -169,22 +169,22 @@ const medalClass = computed(() => {
   font-weight: 700;
 }
 
-.medal.m1 {
+.medal.rk1 {
   background: linear-gradient(180deg, var(--brass-hi), var(--brass));
   color: var(--ink-900);
 }
 
-.medal.m2 {
+.medal.rk2 {
   background: var(--tile-shade);
   color: var(--jet);
 }
 
-.medal.m3 {
+.medal.rk3 {
   background: var(--dim);
   color: var(--ink-900);
 }
 
-.medal.mn {
+.medal.rkn {
   background: var(--ink-600);
   color: var(--dim);
 }
