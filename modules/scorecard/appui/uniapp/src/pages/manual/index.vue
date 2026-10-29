@@ -53,9 +53,11 @@ function goBack() {
         class="side"
         @click="goBack"
       >
-        <text class="navicon">
-          ‹
-        </text>
+        <wd-icon
+          css-icon
+          class="navicon"
+          name="i-carbon-chevron-left"
+        />
       </view>
       <view class="ntitle">
         使用手册

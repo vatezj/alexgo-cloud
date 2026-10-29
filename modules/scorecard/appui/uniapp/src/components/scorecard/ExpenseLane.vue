@@ -109,12 +109,12 @@ function onPreset(p: number) {
           >
             {{ initial }}
           </text>
-          <text
+          <wd-icon
             v-else
+            css-icon
             class="w-cup"
-          >
-            ☕
-          </text>
+            name="i-carbon-cafe"
+          />
         </view>
         <text class="w-n">
           {{ lane === 'pot' ? '茶/饭' : (whoName || '我') }}

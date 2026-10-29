@@ -168,9 +168,10 @@ function onInviteClick() {
 onShareAppMessage(() => {
   const code = snapshot.value?.room_code
   const inv = myUserId.value
-  // 收敛到 scene 协议：index onShow consumePendingScene → joinRoom 幂等（已在房返回现状）；inv 静默绑好友
+  // 收敛到 scene 协议：index onShow consumePendingScene → joinRoom 幂等（已在房返回现状）；inv 静默绑好友。
+  // 分隔符逗号与小程序码一致（parseScene 兼容历史 & 卡片）
   const scene = code
-    ? (inv ? `qr=${code}&inv=${inv}` : `qr=${code}`)
+    ? (inv ? `qr=${code},inv=${inv}` : `qr=${code}`)
     : null
   return {
     title: `${roomCodeText.value} · 邀你打牌记账`,
@@ -189,10 +190,6 @@ function onTeaPoolClick() {
   if (!snapshot.value)
     return
   showTeaConfig.value = true
-}
-
-function onServiceClick() {
-  toast.info({ msg: '客服入口 · 敬请期待' })
 }
 
 /** 我的 → 头像弹窗（设计 10：昵称 / 语音 5 档 / 主题入口 / 退出房间）。 */
@@ -394,9 +391,14 @@ onPullDownRefresh(() => {
           class="base-pot"
           @click="onTeaPoolClick"
         >
-          <text class="bp">
-            ☕ 茶饭
-          </text>
+          <view class="bp">
+            <wd-icon
+              css-icon
+              class="bp-icon"
+              name="i-carbon-cafe"
+            />
+            茶饭
+          </view>
           <ScoreText
             class="pv j"
             :value="teaPoolTotal"
@@ -432,15 +434,20 @@ onPullDownRefresh(() => {
 
     <!-- 筹码轨 -->
     <view class="rail">
-      <view
-        class="side"
-        @click="onServiceClick"
+      <wd-button
+        variant="text"
+        open-type="contact"
+        custom-style="display: block; padding: 0; height: auto; line-height: 1; background: transparent;"
       >
-        <text class="ico">
-          🎧
-        </text>
-        <text>客服</text>
-      </view>
+        <view class="side">
+          <wd-icon
+            css-icon
+            class="ico"
+            name="i-carbon-headset"
+          />
+          <text>客服</text>
+        </view>
+      </wd-button>
       <view
         class="main"
         @click="goExpense()"
@@ -457,18 +464,22 @@ onPullDownRefresh(() => {
         class="side"
         @click="goSettle"
       >
-        <text class="ico">
-          ⚑
-        </text>
+        <wd-icon
+          css-icon
+          class="ico"
+          name="i-carbon-flag"
+        />
         <text>结束牌局</text>
       </view>
       <view
         class="side"
         @click="onMineClick"
       >
-        <text class="ico">
-          🀄
-        </text>
+        <wd-icon
+          css-icon
+          class="ico"
+          name="i-carbon-user"
+        />
         <text>我的</text>
       </view>
     </view>
@@ -542,6 +553,7 @@ onPullDownRefresh(() => {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+
   /* 定高：H5 页面根内容驱动高度时 flex 兜底失效（MP 页面容器自带定高，H5 必须显式给） */
   height: 100vh;
   min-height: 100vh;
@@ -768,9 +780,17 @@ onPullDownRefresh(() => {
 }
 
 .base-pot .bp {
+  display: flex;
+  gap: 3px;
+  align-items: center;
   font-size: 11px;
   color: var(--dim);
   letter-spacing: 0.1em;
+}
+
+.base-pot .bp-icon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .base-pot .pv {

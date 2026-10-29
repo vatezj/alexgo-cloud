@@ -34,9 +34,11 @@ function goManual() {
     v-if="!dismissed"
     class="comply"
   >
-    <text class="spk">
-      🔊
-    </text>
+    <wd-icon
+      css-icon
+      class="spk"
+      name="i-carbon-volume-up"
+    />
     <text class="txt">
       “打牌记账”<b>不涉及金钱，禁止用于违法行为</b>
     </text>
@@ -46,12 +48,12 @@ function goManual() {
     >
       了解详情
     </text>
-    <text
+    <wd-icon
+      css-icon
       class="x"
+      name="i-carbon-close"
       @click="dismiss"
-    >
-      ×
-    </text>
+    />
   </view>
 </template>
 

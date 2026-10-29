@@ -39,13 +39,13 @@ export const VOICE_MODE_LABELS: Record<VoiceMode, string> = {
   'ops-only': '操作播放',
 }
 
-/** 5 档图标（设计 10 vopt 逐字）。 */
+/** 5 档图标（UnoCSS carbon 图标类名，wd-icon css-icon 直用；语义对齐设计 10 vopt）。 */
 export const VOICE_MODE_ICONS: Record<VoiceMode, string> = {
-  'all-off': '🔇',
-  'all-on': '🔊',
-  'entertain-off': '🎭',
-  'ledger-off': '💰',
-  'ops-only': '✅',
+  'all-off': 'i-carbon-volume-mute',
+  'all-on': 'i-carbon-volume-up',
+  'entertain-off': 'i-carbon-theater',
+  'ledger-off': 'i-carbon-money',
+  'ops-only': 'i-carbon-checkmark',
 }
 
 /** 5 档副文案（设计 10 vdesc；无副文案的档给空串）。 */

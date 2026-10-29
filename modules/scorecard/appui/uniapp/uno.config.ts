@@ -18,6 +18,15 @@ import {
 } from 'unocss'
 
 export default defineConfig({
+  // 语音 5 档图标存于 store 常量（动态 :name 绑定），模板扫描不到——safelist 兜底
+  // 与 VOICE_MODE_ICONS（src/store/scorecard/voice.ts）保持一致
+  safelist: [
+    'i-carbon-volume-mute',
+    'i-carbon-volume-up',
+    'i-carbon-theater',
+    'i-carbon-money',
+    'i-carbon-checkmark',
+  ],
   presets: [
     presetUni({
       attributify: false,

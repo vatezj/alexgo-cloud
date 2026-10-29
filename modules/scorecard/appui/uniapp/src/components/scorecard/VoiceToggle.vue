@@ -34,14 +34,21 @@ function onTap() {
     class="voice-toggle"
     @click="onTap"
   >
-    <text class="vt-label">
-      🔈 语音播放
-    </text>
+    <view class="vt-label">
+      <wd-icon
+        css-icon
+        class="vt-label-icon"
+        name="i-carbon-volume-down"
+      />
+      语音播放
+    </view>
     <view class="vt-right">
       <view class="vt-chip">
-        <text class="vt-icon">
-          {{ icon }}
-        </text>
+        <wd-icon
+          css-icon
+          class="vt-icon"
+          :name="icon"
+        />
         <text class="vt-text">
           {{ label }}
         </text>
@@ -67,9 +74,17 @@ function onTap() {
 }
 
 .vt-label {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 4px;
   color: var(--on-ink);
   font-size: 14px;
+}
+
+.vt-label-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .vt-right {

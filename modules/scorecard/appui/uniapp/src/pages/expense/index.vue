@@ -237,9 +237,11 @@ onShow(() => {
         class="side"
         @click="goBack"
       >
-        <text class="navicon">
-          ‹
-        </text>
+        <wd-icon
+          css-icon
+          class="navicon"
+          name="i-carbon-chevron-left"
+        />
       </view>
       <view class="ntitle">
         支出
@@ -328,9 +330,14 @@ onShow(() => {
       v-if="teaConfigured && teaAuto"
       class="auto-note"
     >
-      <text class="an-t">
-        ☕ 按 {{ teaPercentText }} 自动抽取
-      </text>
+      <view class="an-t">
+        <wd-icon
+          css-icon
+          class="an-t-icon"
+          name="i-carbon-cafe"
+        />
+        按 {{ teaPercentText }} 自动抽取
+      </view>
       <text class="an-s">
         记分时自动抽茶入池，无需手动
       </text>
@@ -606,9 +613,17 @@ onShow(() => {
 }
 
 .an-t {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--jade-hi);
   font-size: 15px;
   font-weight: 500;
+}
+
+.an-t-icon {
+  font-size: 15px;
+  line-height: 1;
 }
 
 .an-s {

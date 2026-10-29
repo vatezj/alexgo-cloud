@@ -167,7 +167,14 @@ function hhmm(iso: string): string {
           class="lrow more"
           @click="emit('more')"
         >
-          <text>查看更多 ›</text>
+          <view class="more-text">
+            查看更多
+            <wd-icon
+              css-icon
+              class="more-icon"
+              name="i-carbon-chevron-right"
+            />
+          </view>
         </view>
       </view>
     </scroll-view>
@@ -178,7 +185,14 @@ function hhmm(iso: string): string {
       class="lrow more as-footer"
       @click="emit('more')"
     >
-      <text>查看更多 ›</text>
+      <view class="more-text">
+        查看更多
+        <wd-icon
+          css-icon
+          class="more-icon"
+          name="i-carbon-chevron-right"
+        />
+      </view>
     </view>
   </view>
 </template>
@@ -326,5 +340,16 @@ function hhmm(iso: string): string {
 /* as-footer：不可用 fixed——UnoCSS 会把 class 里的 "fixed" 当成 position:fixed 工具类 */
 .lrow.more.as-footer {
   margin-top: 6px;
+}
+
+.lrow.more .more-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lrow.more .more-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 </style>

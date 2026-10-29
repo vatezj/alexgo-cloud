@@ -330,6 +330,7 @@ function onPopupUpdate(value: boolean) {
   overflow: hidden;
   line-height: 1;
   background: transparent;
+  background-color: #CCC;
   border: 2px dashed var(--on-ink-a28);
   border-radius: 50%;
 }
@@ -358,6 +359,7 @@ function onPopupUpdate(value: boolean) {
   font-size: 14px;
   color: var(--on-ink);
   background: var(--on-ink-a04);
+  border-bottom: 1px solid var(--on-ink-a28);
   border-radius: 10px;
 }
 
