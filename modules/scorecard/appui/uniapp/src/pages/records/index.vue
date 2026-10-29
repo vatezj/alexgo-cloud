@@ -28,7 +28,9 @@ definePage({
 
 const router = useRouter()
 const toast = useToast()
-const dialog = useDialog()
+// 必须带 'globalDialog' selector，共享 ref 由 App.ku.vue（global-ku-root）provide：
+// 裸 useDialog() inject 不到该 key 会自建孤儿 ref，confirm 永不弹且 promise 挂起。
+const dialog = useDialog('globalDialog')
 const { closeOutside } = useQueue()
 const { pageStyle } = useSystemBar()
 
@@ -191,9 +193,11 @@ onShow(() => {
         class="side"
         @click="goBack"
       >
-        <text class="navicon">
-          ‹
-        </text>
+        <wd-icon
+          css-icon
+          class="navicon"
+          name="i-carbon-chevron-left"
+        />
       </view>
       <view class="ntitle">
         战绩
