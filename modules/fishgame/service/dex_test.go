@@ -69,3 +69,35 @@ func TestDexService_Table_StatusFilter(t *testing.T) {
 		}
 	}
 }
+
+// Table 应原样下发 icon（JSON 串）；未配 icon 的条目该字段为空（客户端回退默认图标）。
+func TestDexService_Table_Icon(t *testing.T) {
+	_, dex, db := newTrackService(t)
+	const iconJSON = `{"shape":"fish_long","color":"#9AA7AD","accent":"#6E767C"}`
+	if err := db.Create(&model.Fish{
+		TenantID: 0, FishID: "iconfish_x", Name: "Ink", Rarity: "normal",
+		Status: 1, Sort: 1, Icon: iconJSON,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Fish{
+		TenantID: 0, FishID: "noicon_x", Name: "NoIcon", Rarity: "misc",
+		Status: 1, Sort: 2,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	rows, err := dex.Table(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, r := range rows {
+		byID[r.ID] = r.Icon
+	}
+	if byID["iconfish_x"] != iconJSON {
+		t.Fatalf("icon 应原样下发, got %q", byID["iconfish_x"])
+	}
+	if byID["noicon_x"] != "" {
+		t.Fatalf("未配 icon 应空串, got %q", byID["noicon_x"])
+	}
+}

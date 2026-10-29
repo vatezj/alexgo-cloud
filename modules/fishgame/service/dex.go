@@ -15,6 +15,7 @@ type FishRow struct {
 	Period string `json:"period"`
 	Depth  string `json:"depth"`
 	Flavor string `json:"flavor"`
+	Icon   string `json:"icon,omitempty"` // JSON {"shape","color","accent"}；缺省客户端回退默认图标
 }
 
 // DexService 图鉴双路：Table 全量启用条目；Report max 合并（spec §4.3）。
@@ -37,7 +38,7 @@ func (s *DexService) Table(ctx context.Context) ([]FishRow, error) {
 	for _, f := range all {
 		out = append(out, FishRow{
 			ID: f.FishID, Name: f.Name, Rarity: f.Rarity,
-			Period: f.Period, Depth: f.Depth, Flavor: f.Flavor,
+			Period: f.Period, Depth: f.Depth, Flavor: f.Flavor, Icon: f.Icon,
 		})
 	}
 	return out, nil

@@ -103,7 +103,7 @@ func TestRegisterRoutes_LoginReachableWithoutSession(t *testing.T) {
 func TestRegisterRoutes_NoSession401BareJSON(t *testing.T) {
 	r, _ := newModuleTestRouter(t)
 	for _, path := range []string{
-		"/api/v1/config/daily", "/api/v1/basket", "/api/v1/dex/table", "/api/v1/friends/rank",
+		"/api/v1/config/daily", "/api/v1/basket", "/api/v1/dex/table", "/api/v1/dex", "/api/v1/friends/rank",
 	} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
@@ -120,6 +120,53 @@ func TestRegisterRoutes_NoSession401BareJSON(t *testing.T) {
 		if m["error"] != "unauthorized" {
 			t.Fatalf("%s 应 {\"error\":\"unauthorized\"}: %s", path, w.Body.String())
 		}
+	}
+}
+
+// TestRegisterRoutes_DexPull GET /api/v1/dex 拉进度（换设备恢复的下行侧）：
+// 带 session → 200 {"dex":{fish_id:n}}，形状与 dex/report 请求体对称；新玩家 {}。
+func TestRegisterRoutes_DexPull(t *testing.T) {
+	r, db := newModuleTestRouter(t)
+	if err := db.Create(&model.Fish{
+		TenantID: 0, FishID: "carp_pull", Name: "鲤", Rarity: "normal", Status: 1, Sort: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	p, err := repository.NewPlayerRepository(db).UpsertByOpenID(t.Context(), "pull-o", "拉取", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.NewDexService(
+		repository.NewFishRepository(db), repository.NewDexRepository(db),
+	).Report(t.Context(), p.ID, map[string]int{"carp_pull": 4}); err != nil {
+		t.Fatal(err)
+	}
+	token, err := service.NewSessionService(repository.NewSessionRepository(db),
+		repository.NewPlayerRepository(db)).Issue(t.Context(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dex", nil)
+	req.Header.Set("X-Session", token)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/dex 应 200, got %d %s", w.Code, w.Body.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
+		t.Fatalf("应是 JSON: %v", err)
+	}
+	if _, has := m["code"]; has {
+		t.Fatalf("成功响应不应有 code 键: %s", w.Body.String())
+	}
+	dex, ok := m["dex"].(map[string]any)
+	if !ok {
+		t.Fatalf(`响应应 {"dex":{...}}, got %s`, w.Body.String())
+	}
+	if dex["carp_pull"] != float64(4) {
+		t.Fatalf("carp_pull 应 4, got %v", dex["carp_pull"])
 	}
 }
 

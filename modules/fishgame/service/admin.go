@@ -47,6 +47,7 @@ type FishInput struct {
 	Period string `json:"period"`
 	Depth  string `json:"depth"`
 	Flavor string `json:"flavor"`
+	Icon   string `json:"icon"` // JSON {"shape","color","accent"}，透传不校验（客户端归一兜底）
 	Sort   int    `json:"sort"`
 	Status int    `json:"status"`
 }
@@ -156,7 +157,7 @@ func (s *AdminService) CreateFish(ctx context.Context, in FishInput) (*model.Fis
 	}
 	f := &model.Fish{
 		TenantID: 0, FishID: in.FishID, Name: in.Name, Rarity: in.Rarity,
-		Period: in.Period, Depth: in.Depth, Flavor: in.Flavor,
+		Period: in.Period, Depth: in.Depth, Flavor: in.Flavor, Icon: in.Icon,
 		Sort: in.Sort, Status: in.Status,
 	}
 	if err := s.fishes.Create(ctx, f); err != nil {
@@ -179,7 +180,7 @@ func (s *AdminService) UpdateFish(ctx context.Context, id uint64, in FishInput) 
 	}
 	f.FishID, f.Name, f.Rarity = in.FishID, in.Name, in.Rarity
 	f.Period, f.Depth, f.Flavor = in.Period, in.Depth, in.Flavor
-	f.Sort, f.Status = in.Sort, in.Status
+	f.Icon, f.Sort, f.Status = in.Icon, in.Sort, in.Status
 	if err := s.fishes.Update(ctx, f); err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ type Fish struct {
 	Period    string    `gorm:"column:period" json:"period"` // any|day|dusk|night|组合
 	Depth     string    `gorm:"column:depth" json:"depth"`   // any|shallow|mid|deep
 	Flavor    string    `gorm:"column:flavor" json:"flavor"`
+	Icon      string    `gorm:"column:icon;type:text" json:"icon"` // JSON {"shape","color","accent"}，空=客户端回退默认图标
 	Sort      int       `gorm:"column:sort" json:"sort"`     // 插入序 1-48
 	Status    int       `gorm:"column:status" json:"status"` // 1=启用 0=停用
 	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`

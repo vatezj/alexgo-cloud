@@ -96,6 +96,21 @@ func TestAdminService_CreateFish_OK(t *testing.T) {
 	}
 }
 
+func TestAdminService_CreateFish_IconRoundtrip(t *testing.T) {
+	svc, _ := newAdminService(t)
+	const iconJSON = `{"shape":"fish_round","color":"#C2A878","accent":"#9A8557"}`
+	f, err := svc.CreateFish(t.Context(), FishInput{
+		FishID: "newfish_x", Name: "新鱼", Rarity: "rare",
+		Period: "any", Depth: "deep", Icon: iconJSON, Sort: 50, Status: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Icon != iconJSON {
+		t.Fatalf("建鱼应透传 icon, got %q", f.Icon)
+	}
+}
+
 func TestAdminService_CreateFish_DuplicateFishID(t *testing.T) {
 	svc, db := newAdminService(t)
 	seedFish(t, db, "inkfish", "normal", 1)

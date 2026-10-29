@@ -148,6 +148,7 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	v1Auth.GET("/basket", m.dailyCtrl.Basket)
 	v1Auth.POST("/track", m.trackCtrl.Track)
 	v1Auth.GET("/dex/table", m.dexCtrl.Table)
+	v1Auth.GET("/dex", m.dexCtrl.Pull)
 	v1Auth.POST("/dex/report", m.dexCtrl.Report)
 	v1Auth.POST("/friends", m.friendCtrl.Add)
 	v1Auth.GET("/friends/rank", m.friendCtrl.Rank)

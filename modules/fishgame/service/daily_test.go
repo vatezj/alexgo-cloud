@@ -196,8 +196,10 @@ func TestDailyService_Basket(t *testing.T) {
 // 否则运营设「本周鱼王」会永久粘住直到手工删除。
 func TestDailyService_DailyConfig_FishKingWeekMismatch_Fallback(t *testing.T) {
 	svc, db := newDailyService(t)
+	// 覆盖目标取自算池外的 id：若 week 过滤失效，结果只会是 stale_king（自算池只有
+	// rare_a/epic_b）——与「本周自算恰好选中 epic_b」可区分，不随当前周漂移。
 	if err := db.Create(&model.Config{
-		TenantID: 0, Type: "fish_king", FishID: "epic_b", Week: "2000-W01", Status: 1,
+		TenantID: 0, Type: "fish_king", FishID: "stale_king", Week: "2000-W01", Status: 1,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +207,7 @@ func TestDailyService_DailyConfig_FishKingWeekMismatch_Fallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.FishKing.FishID == "epic_b" {
+	if cfg.FishKing.FishID == "stale_king" {
 		t.Fatal("week 不匹配的覆盖不应下发")
 	}
 	if cfg.FishKing.FishID != "rare_a" && cfg.FishKing.FishID != "epic_b" {

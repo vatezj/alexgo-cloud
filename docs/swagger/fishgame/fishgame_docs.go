@@ -817,6 +817,41 @@ const docTemplatefishgame = `{
                 }
             }
         },
+        "/v1/dex": {
+            "get": {
+                "security": [
+                    {
+                        "X-Session": []
+                    }
+                ],
+                "description": "响应 {\"dex\":{\"\u003cfish_id\u003e\":N}}，与 dex/report 请求体对称；新玩家 {}。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "图鉴进度拉取（换设备恢复）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/dex/report": {
             "post": {
                 "security": [
@@ -882,7 +917,7 @@ const docTemplatefishgame = `{
                         "X-Session": []
                     }
                 ],
-                "description": "响应 {\"list\":[{id,name,rarity,period,depth,flavor}]}，仅 status=1。",
+                "description": "响应 {\"list\":[{id,name,rarity,period,depth,flavor,icon}]}，仅 status=1；icon 为 JSON 串 {\"shape\",\"color\",\"accent\"}，缺省=客户端默认图标。客户端登录链第一步拉取，合并进本地 FishDB（离线保底：内置表始终可用）。",
                 "produces": [
                     "application/json"
                 ],
@@ -1225,6 +1260,10 @@ const docTemplatefishgame = `{
                 "flavor": {
                     "type": "string"
                 },
+                "icon": {
+                    "description": "JSON {\"shape\",\"color\",\"accent\"}，透传不校验（客户端归一兜底）",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -1293,7 +1332,7 @@ const docTemplatefishgame = `{
                 }
             }
         }
-    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}],"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",

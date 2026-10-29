@@ -21,7 +21,7 @@ func NewDexController(svc *service.DexService) *DexController {
 // Table godoc
 //
 //	@Summary		图鉴表（只发启用条目）
-//	@Description	响应 {"list":[{id,name,rarity,period,depth,flavor}]}，仅 status=1。
+//	@Description	响应 {"list":[{id,name,rarity,period,depth,flavor,icon}]}，仅 status=1；icon 为 JSON 串 {"shape","color","accent"}，缺省=客户端默认图标。客户端登录链第一步拉取，合并进本地 FishDB（离线保底：内置表始终可用）。
 //	@Tags			fishgame-app
 //	@Produce		json
 //	@Security		X-Session
@@ -36,6 +36,35 @@ func (c *DexController) Table(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{"list": rows})
+}
+
+// Pull godoc
+//
+//	@Summary		图鉴进度拉取（换设备恢复）
+//	@Description	响应 {"dex":{"<fish_id>":N}}，与 dex/report 请求体对称；新玩家 {}。
+//	@Tags			fishgame-app
+//	@Produce		json
+//	@Security		X-Session
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		401	{object}	map[string]string
+//	@Router			/v1/dex [get]
+func (c *DexController) Pull(ctx *gin.Context) {
+	p, ok := middleware.PlayerFrom(ctx)
+	if !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	rows, err := c.svc.ListPlayer(ctx.Request.Context(), p.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+		return
+	}
+	// 无进度也回 {"dex":{}}（make 保非 nil，JSON 渲染 {} 而非 null）
+	out := make(map[string]int, len(rows))
+	for _, d := range rows {
+		out[d.FishID] = d.Count
+	}
+	ctx.JSON(http.StatusOK, gin.H{"dex": out})
 }
 
 // Report godoc
