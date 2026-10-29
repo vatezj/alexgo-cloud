@@ -15,13 +15,16 @@ export const useScorecardAuthStore = defineStore('scorecard-auth', {
     refreshToken: '',
     user: null as MeResult | null,
     lastRoomId: 0,
+    /** 主动退出标记（persist）：为 true 时静默登录不自动登回；手动登录成功清除。 */
+    explicitLogout: false,
   }),
 
   actions: {
-    /** 登录/刷新成功后写入令牌三元组（expires_in 前端不消费，仅持久化 token 对）。 */
+    /** 登录/刷新成功后写入令牌三元组（expires_in 前端不消费，仅持久化 token 对）；清除主动退出标记。 */
     setLogin(res: LoginResult) {
       this.token = res.token
       this.refreshToken = res.refresh_token
+      this.explicitLogout = false
     },
 
     /** 拉取当前会员资料写入 user（401 由 handlers 清态跳登录）。 */
@@ -30,11 +33,17 @@ export const useScorecardAuthStore = defineStore('scorecard-auth', {
       this.user = await getMe()
     },
 
-    /** 本地清态（主动退出 / 401 失效共用）；lastRoomId 保留便于回访。 */
-    logout() {
+    /**
+     * 本地清态；lastRoomId 保留便于回访。
+     * - 主动退出（AvatarPopup）传 { explicit: true }：置持久化标记，静默登录不再自动登回
+     * - 401 失效（handlers）不传参：非显式，登录页自动恢复正是要走的路径
+     */
+    logout(opts?: { explicit?: boolean }) {
       this.token = ''
       this.refreshToken = ''
       this.user = null
+      if (opts?.explicit)
+        this.explicitLogout = true
     },
   },
 })

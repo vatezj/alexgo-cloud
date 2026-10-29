@@ -9,11 +9,12 @@
  */
 import type { LoginResult } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
-import { loginByMobile, wxLogin } from '@/api/scorecard/auth'
+import { loginByMobile } from '@/api/scorecard/auth'
 import { joinRoom } from '@/api/scorecard/room'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
 import { useProfileGate } from '@/composables/scorecard/useProfileGate'
 import { bindInviterSilently, useSceneRoom } from '@/composables/scorecard/useSceneRoom'
+import { silentWxLogin } from '@/composables/scorecard/useSilentLogin'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
 
@@ -77,39 +78,55 @@ async function afterLogin(res: LoginResult) {
   router.replaceAll({ path: '/pages/index/index' })
 }
 
-/** mp：微信一键登录。uni.login 失败本地提示可重试；接口错误走 toastApiError。 */
+/** mp：微信一键登录。走 silentWxLogin（与自动触发共用 in-flight 去重，不双发）；接口错误走 toastApiError。 */
 async function onWxLogin() {
   if (logging.value)
     return
   logging.value = true
   try {
     // #ifdef MP-WEIXIN
-    let code = ''
-    try {
-      const loginRes = await uni.login()
-      code = loginRes.code || ''
-    }
-    catch {
-      toast.error('微信登录失败，请重试')
-      return
-    }
-    if (!code) {
-      toast.error('微信登录失败，请重试')
-      return
-    }
-    await afterLogin(await wxLogin(code))
+    await afterLogin(await silentWxLogin())
     // #endif
     // #ifndef MP-WEIXIN
     toast.error('请在微信小程序中使用微信登录')
     // #endif
   }
   catch (err) {
-    toastApiError(err)
+    // silentWxLogin 非业务错误（uni.login 失败 / 空 code）本地提示可重试；接口错误走 toastApiError
+    if (err instanceof ApiError)
+      toastApiError(err)
+    else
+      toast.error('微信登录失败，请重试')
   }
   finally {
     logging.value = false
   }
 }
+
+/**
+ * onShow：已有 token 即离开（不停留）；无 token 且 mp 时自动触发微信登录（免点击），
+ * 成功走 afterLogin 同一手动收口；失败展示手动按钮（不自动重试，failed 已由 silentWxLogin 封顶）。
+ */
+onShow(async () => {
+  if (authStore.token) {
+    router.replaceAll({ path: '/pages/index/index' })
+    return
+  }
+  // #ifdef MP-WEIXIN
+  if (logging.value)
+    return
+  logging.value = true
+  try {
+    await afterLogin(await silentWxLogin())
+  }
+  catch {
+    // 自动触发失败：停留本页展示手动按钮（微信一键登录 / 手机号登录），不自动循环
+  }
+  finally {
+    logging.value = false
+  }
+  // #endif
+})
 
 async function onPasswordLogin() {
   if (logging.value)

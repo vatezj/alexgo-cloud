@@ -2,7 +2,7 @@
 /**
  * 头像弹窗（设计 10 · 昵称 / 语音 5 档 / 主题入口 / 退出房间）
  *
- * - 主弹窗（居中）：头像 + 昵称 +「✎ 修改资料」「查看资料」；VoiceToggle（5 档循环）；
+ * - 主弹窗（居中）：头像 + 昵称 +「修改资料」（carbon edit 图标）「查看资料」；VoiceToggle（5 档循环）；
  *   主题入口（4 色卡横排 → useScorecardTheme().setTheme——spec §3.9.3 裁定）；
  *   「退出房间」leave 二次确认 → 回首页 +「退出登录」清 authStore → login +「完成」关闭
  * - 转让房主（transfer-owner）：仅房主 status===0 展示；选人 chips → 二次确认 →
@@ -36,7 +36,11 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const toast = useToast()
-const dialog = useDialog()
+// 必须带 'globalDialog' selector，且共享 ref 由 App.ku.vue（global-ku-root 包裹层）provide：
+// GlobalDialog 与页面内容是兄弟，它自身 provide 到不了本组件——inject 不到就自建孤儿 ref，
+// confirm 永不弹且 promise 挂起（取消分支不执行）。App.ku setup 里调 useDialog('globalDialog')
+// 在共同祖先 provide 一次，本组件 inject 到共享 ref 驱动根上 <wd-dialog selector="globalDialog"/>。
+const dialog = useDialog('globalDialog')
 const authStore = useScorecardAuthStore()
 const roomStore = useScorecardRoomStore()
 const { themeId, setTheme } = useScorecardTheme()
@@ -137,7 +141,8 @@ async function onLogout() {
     catch {
       return
     }
-    authStore.logout()
+    // explicit：主动退出置持久化标记，静默登录不再自动登回（401 清态走无参 logout，不打标记）
+    authStore.logout({ explicit: true })
     close()
     router.replaceAll({ path: '/pages/login/index' })
   }
@@ -234,12 +239,17 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
           {{ nickname }}
         </text>
         <view class="ap-links">
-          <text
+          <view
             class="ap-link"
             @click="showProfileEdit = true"
           >
-            ✎ 修改资料
-          </text>
+            <wd-icon
+              css-icon
+              class="ap-link-icon"
+              name="i-carbon-edit"
+            />
+            修改资料
+          </view>
           <text
             class="ap-link on"
             @click="showProfile = true"
@@ -324,7 +334,7 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
     v-model="showProfile"
     position="center"
     root-portal
-    custom-style="width: 300px; border-radius: 18px; background: var(--ink-700); border: 1.5px solid var(--brass-a50);"
+    custom-style="width: 300px; border-radius: 18px; background: #fff; border: 1.5px solid var(--brass-a50);"
   >
     <view class="mini-popup">
       <text class="mp-title">
@@ -368,7 +378,7 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
     v-model="showTransferPicker"
     position="center"
     root-portal
-    custom-style="width: 320px; border-radius: 22px; background: var(--ink-700); border: 1.5px solid var(--brass-a50);"
+    custom-style="width: 320px; border-radius: 22px; background: #fff; border: 1.5px solid var(--brass-a50);"
   >
     <view class="mini-popup">
       <text class="mp-title">
@@ -479,8 +489,16 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
 }
 
 .ap-link {
+  display: flex;
+  gap: 4px;
+  align-items: center;
   color: var(--dim);
   cursor: pointer;
+}
+
+.ap-link .ap-link-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .ap-link.on {
@@ -573,7 +591,7 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
 .ap-btns .btn {
   flex: 1;
   height: 48px;
-  font-size: 15px;
+  font-size: 20rpx;
 }
 
 .leave-btn {
@@ -646,13 +664,13 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
 
 .tf-chip {
   display: inline-flex;
-  align-items: center;
   gap: 6px;
+  align-items: center;
   padding: 5px 12px 5px 5px;
+  cursor: pointer;
+  background: var(--ink-600);
   border: 1.5px solid var(--on-ink-a28);
   border-radius: 999px;
-  background: var(--ink-600);
-  cursor: pointer;
 }
 
 .tf-chip:active {
@@ -661,15 +679,15 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
 
 .tf-av {
   display: flex;
-  width: 28px;
-  height: 28px;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
   overflow: hidden;
+  font-size: 12px;
+  color: var(--brass);
   background: var(--ink-700);
   border-radius: 50%;
-  color: var(--brass);
-  font-size: 12px;
 }
 
 .tf-img {
@@ -685,9 +703,9 @@ async function onPickTransferTarget(targetUserId: number, targetNickname: string
 .tf-nm {
   max-width: 84px;
   overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12.5px;
   color: var(--on-ink);
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

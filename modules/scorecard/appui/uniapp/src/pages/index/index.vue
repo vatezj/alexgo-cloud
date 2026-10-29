@@ -4,12 +4,15 @@
  *
  * - 身份牌：authStore.user（昵称/头像/注册天数）+ stat 总分/胜率 + listFriends 好友数；
  *   点头像 → 已登录开 ProfileGate edit（修改资料），未登录去登录
- * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
+ * - 扇形 CTA：我要开房 createRoom（默认配置全 0）→ 进房间页（已有进行中牌局时接口直接返回该局快照，
+ *   复用进入——lastRoomId+push 路径不变，不再 toast「你还在其他牌局中」）；扫码进房 mp=uni.scanCode 解析 qr= 房号 / H5=wd-popup 输房号
  * - scene 进房闭环：onShow 时 pendingScene 有值——已登录 → consumeScene 只消费一次（先 bindInviterSilently
  *   静默绑好友，有 roomCode 再 joinRoom 进房；纯 inv 无房号停首页）；未登录 → 留存 scene 去登录（登录后 afterLogin 消费）
  * - 转发：onShareAppMessage / onShareTimeline 带 inv=<我的 user_id>（未登录不带）；好友打开即静默绑定
  * - 冷启动回房：本启程首次以登录态显示首页时，若 lastRoomId 的房间仍进行中 → 直达房间页（不等 scene，
  *   scene 优先级更高——scene 进房后 resume 不再触发）；房已结束/不存在/非成员 → 清 lastRoomId 停首页
+ * - 回到牌局（手动回房）：lastRoomId>0 时首页展示入口条（fan-cta 上方）——⌂ 同会话回首页 / 冷启动
+ *   静默失败后均可点击；snapshot 校验 status===0 进房，已结束清 id + toast，网络错误保留 id 可重试
  * - 开房资料门：createRoom 前经 useProfileGate.requireProfileForAction 校验资料完整（ProfileGate gate 模式硬门，
  *   保存成功续走开房、可取消留首页）；进局四路径经 ensureProfileThen 挂 reminder 软提醒（仅小「跳过」可关）
  * - 未登录持有 scene：先去登录（scene 暂存保留，登录后 afterLogin 消费进房）；未登录点开房 → 跳登录（已知简化：登录后回首页，不回跳原动作）
@@ -152,8 +155,8 @@ function errText(err: unknown): string {
 
 /**
  * 从扫码结果提取 qr= 房号：
- * 小程序码 path 形如 `pages/index/index?scene=qr%3D7AVW`（scene 前缀 qr= 由后端拼），
- * 部分端直接给 scene 字段/原文。识别不出返回 null。
+ * 小程序码 path 形如 `pages/index/index?scene=qr%3D7AVW`（scene 前缀 qr= 由后端拼；
+ * 双段时 `,inv=<uid>` 分隔——微信拒 scene 含 &，40129），部分端直接给 scene 字段/原文。识别不出返回 null。
  */
 function pickQrFrom(input?: string): string | null {
   if (!input)
@@ -168,7 +171,7 @@ function pickQrFrom(input?: string): string | null {
   const idx = s.indexOf('qr=')
   if (idx === -1)
     return null
-  const code = s.slice(idx + 3).split(/[&#/?\s]/)[0]?.trim() ?? ''
+  const code = s.slice(idx + 3).split(/[&,#/?\s]/)[0]?.trim() ?? ''
   return code || null
 }
 
@@ -244,6 +247,7 @@ async function consumePendingScene(): Promise<boolean> {
  * 冷启动回房：本启程首次以登录态显示首页时，若 lastRoomId 的房间仍进行中 → 直达房间页。
  * - once 语义（模块级 flag）：每次启程只尝试一次；房间页 ⌂ 回首页不再被拽回，也避免回房循环
  * - 不 toast：回访失败属安静路径（房没了就清 id 留首页），不打扰用户
+ * - once/静默失败后的滞留由「回到牌局」手动入口兜底（onResumeRoom），本函数语义不变
  */
 let resumeTried = false
 
@@ -287,7 +291,53 @@ async function enterFromHome() {
   await resumeLastRoom()
 }
 
-onShow(() => {
+/* ── 回到牌局（手动回房入口）：⌂ 同会话回首页 / 冷启动静默失败的兜底 ── */
+
+const resuming = ref(false)
+
+/**
+ * 手动回房：与自动回房（resumeLastRoom 静默）不同——有点击反馈。
+ * - status===0 进房；已结束/关闭清 id + toast「牌局已结束」
+ * - 30101 房不存在/30102 非成员：清陈旧 id + toast；网络错误：保留 id 可重试
+ * - 资料软提醒与开房/进局四路径一致（ensureProfileThen reminder）
+ */
+async function onResumeRoom() {
+  const rid = authStore.lastRoomId
+  if (resuming.value || !rid || !isLoggedIn.value)
+    return
+  gate.ensureProfileThen(async () => {
+    resuming.value = true
+    try {
+      const snap = await snapshot(rid)
+      if (snap.status === 0) {
+        resumeTried = true // 防回跳首页残留自动回房重入
+        router.push({ path: '/pages/room/index', query: { roomId: String(rid) } })
+      }
+      else {
+        authStore.lastRoomId = 0
+        toast.error('牌局已结束')
+      }
+    }
+    catch (err) {
+      if (err instanceof ApiError && (err.code === 30101 || err.code === 30102)) {
+        authStore.lastRoomId = 0
+        toast.error(err.message || '牌局已结束')
+      }
+      else {
+        // 网络类错误：保留 id，入口条仍在，可再点重试
+        toastApiError(err)
+      }
+    }
+    finally {
+      resuming.value = false
+    }
+  })
+}
+
+onShow(async () => {
+  // 静默登录等待/兜底发起（H5 为 no-op）：先拿到登录态再判 scene/回房/拉数据，
+  // 冷启动竞态消解——onLaunch 已 fire-and-forget 发起，这里 await 同一在途 promise
+  await ensureSilentLogin()
   void enterFromHome()
   void loadHomeData()
 })
@@ -368,7 +418,7 @@ async function onCreateRoom() {
   await doCreateRoom()
 }
 
-/** 真正开房：默认配置全 0（brief 逐字）→ 进房间页。 */
+/** 真正开房：默认配置全 0（brief 逐字）→ 进房间页。已有进行中局时后端复用返回该局快照，同路径直接进入。 */
 async function doCreateRoom() {
   creating.value = true
   try {
@@ -567,13 +617,18 @@ function goManual() {
               </text>
             </view>
           </view>
-          <text
+          <view
             v-else
             class="login-guide"
             @click="goLogin"
           >
-            登录后同步战绩与好友 ›
-          </text>
+            登录后同步战绩与好友
+            <wd-icon
+              css-icon
+              class="chevron"
+              name="i-carbon-chevron-right"
+            />
+          </view>
         </view>
       </view>
     </PlayCard>
@@ -595,12 +650,42 @@ function goManual() {
         </text>
       </text>
       <text>/</text>
-      <text
+      <view
         class="go"
         @click="goRecords"
       >
-        战绩 ›
+        战绩
+        <wd-icon
+          css-icon
+          class="chevron"
+          name="i-carbon-chevron-right"
+        />
+      </view>
+    </view>
+
+    <!-- 回到牌局：有进行中房间（lastRoomId>0）时展示，点击校验房况后进房 -->
+    <view
+      v-if="isLoggedIn && authStore.lastRoomId > 0"
+      class="resume-bar"
+      :class="{ busy: resuming }"
+      @click="onResumeRoom"
+    >
+      <text class="rb-icon">
+        ♠
       </text>
+      <view class="rb-main">
+        <text class="rb-t">
+          回到牌局
+        </text>
+        <text class="rb-s">
+          {{ resuming ? '正在进入…' : '回到上一局 · 校验后进入' }}
+        </text>
+      </view>
+      <wd-icon
+        css-icon
+        class="rb-chev"
+        name="i-carbon-chevron-right"
+      />
     </view>
 
     <!-- 扇形 CTA -->
@@ -947,11 +1032,18 @@ function goManual() {
 }
 
 .login-guide {
-  display: block;
+  display: flex;
+  align-items: center;
   margin-top: 12px;
   font-size: 13px;
   font-weight: 500;
   color: var(--vermillion-600);
+}
+
+.login-guide .chevron,
+.stripline .go .chevron {
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* ── stripline ── */
@@ -968,6 +1060,71 @@ function goManual() {
 .stripline .go {
   font-weight: 500;
   color: var(--brass);
+}
+
+/* ── 回到牌局入口条 ── */
+.resume-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  background: var(--ink-700);
+  border: 1.5px solid var(--brass-a50);
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.resume-bar.busy {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.rb-icon {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--vermillion);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--ink-600);
+  border: 1.5px solid var(--brass-a50);
+  border-radius: 50%;
+}
+
+.rb-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rb-t {
+  color: var(--brass);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.rb-s {
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-chev {
+  flex: none;
+  color: var(--brass);
+  font-size: 18px;
+  line-height: 1;
 }
 
 /* ── 扇形 CTA ── */
