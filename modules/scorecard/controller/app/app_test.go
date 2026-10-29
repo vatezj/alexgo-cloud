@@ -228,8 +228,9 @@ func TestWxacode_OK_PNG(t *testing.T) {
 	if !bytes.Equal(w.Body.Bytes(), wx.png) {
 		t.Fatalf("PNG 字节应原样直出: %v", w.Body.Bytes())
 	}
-	// scene = qr+房号&inv+请求者UserID（tokA → user100）；page/envVersion 按常量契约。
-	if wx.scene != "qr=WXYZ&inv=100" || wx.page != "pages/index/index" || wx.env != "trial" {
+	// scene = qr+房号,inv+请求者UserID（tokA → user100）；逗号分隔——微信拒 scene 含 &（40129）。
+	// page/envVersion 按常量契约。
+	if wx.scene != "qr=WXYZ,inv=100" || wx.page != "pages/index/index" || wx.env != "trial" {
 		t.Fatalf("取码入参: scene=%q page=%q env=%q", wx.scene, wx.page, wx.env)
 	}
 	// 进程内按房号缓存 5min：二次请求命中缓存，不再打微信取码。
@@ -262,8 +263,8 @@ func TestWxacode_CacheScopedByUser(t *testing.T) {
 	if wx.calls != 2 {
 		t.Fatalf("不同用户取码不得命中同一缓存: calls = %d", wx.calls)
 	}
-	if wx.scene != "qr=CACH&inv=300" {
-		t.Fatalf("末次 scene = %q, want qr=CACH&inv=300", wx.scene)
+	if wx.scene != "qr=CACH,inv=300" {
+		t.Fatalf("末次 scene = %q, want qr=CACH,inv=300", wx.scene)
 	}
 	// 同一用户二次取码仍命中缓存（calls 不再增长）。
 	if w := doReq(r, http.MethodGet, pngPath, "tokC", "", ""); w.Code != http.StatusOK {

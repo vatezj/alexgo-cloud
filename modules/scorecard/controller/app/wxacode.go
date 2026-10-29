@@ -45,7 +45,7 @@ type wxacodeCacheEntry struct {
 // Wxacode godoc
 //
 //	@Summary		房间小程序码
-//	@Description	200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号&inv+请求者UserID，进程内按 scene 缓存 5min（防跨用户串码）。
+//	@Description	200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号,inv+请求者UserID（逗号分隔，微信拒 & 场景值），进程内按 scene 缓存 5min（防跨用户串码）。
 //	@Tags			scorecard-app
 //	@Produce		png
 //	@Security		Bearer
@@ -70,9 +70,10 @@ func (c *AppController) Wxacode(ctx *gin.Context) {
 		resp.Fail(ctx, err)
 		return
 	}
-	// scene = qr+房号&inv+请求者UserID（前端按 qr= 前缀解析进房 + inv 静默绑好友；
+	// scene = qr+房号,inv+请求者UserID（前端按 qr= 前缀解析进房 + inv 静默绑好友；
+	// 分隔符必须逗号——微信 getwxacodeunlimit 拒含 & 的 scene（errcode=40129 invalid scene）；
 	// 缓存键含 inv，同房两人取码不互串）。
-	scene := fmt.Sprintf("qr=%s&inv=%d", snap.RoomCode, cl.UserID)
+	scene := fmt.Sprintf("qr=%s,inv=%d", snap.RoomCode, cl.UserID)
 	if png, ok := c.cachedWxacode(scene); ok {
 		ctx.Data(http.StatusOK, "image/png", png)
 		return

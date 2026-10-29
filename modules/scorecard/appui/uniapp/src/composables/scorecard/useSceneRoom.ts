@@ -1,11 +1,12 @@
 /**
  * 扫码/转发 scene 暂存（模块级单例）+ 静默绑好友
  *
- * - App onShow 解析 scene（decodeURIComponent 后形如 `qr=7AVW` / `qr=7AVW&inv=100` / `inv=100`）
+ * - App onShow 解析 scene（decodeURIComponent 后形如 `qr=7AVW` / `qr=7AVW,inv=100` / `inv=100`；
+ *   历史分享卡片可能是 `&` 分隔，解析双兼容）
  *   → parseScene 提取房号+邀请人 → setPendingScene 写内存 + storage（进程被杀冷启可续）
  * - 消费方（首页 consumePendingScene / 登录 afterLogin）调 consumeScene 只消费一次（读后即清）
  * - 有房号 join 进房；inviterId 经 bindInviterSilently 静默 addFriend（错误全吞不阻塞）
- * - 旧协议 `qr=<房号>`（无 inv）与纯 `inv=<uid>`（首页转发只绑好友）均兼容
+ * - 旧协议 `qr=<房号>`（无 inv）、纯 `inv=<uid>`（首页转发只绑好友）、历史 `&` 分隔场景均兼容
  */
 import type { Ref } from 'vue'
 import { ref } from 'vue'
@@ -24,13 +25,14 @@ const STORAGE_KEY = 'scorecard:pendingScene'
 const pendingScene: Ref<PendingScene | null> = ref(null)
 
 /**
- * 纯函数：按 `&` 分段解析 scene 字符串。
- * 兼容协议：`qr=<房号>` / `qr=<房号>&inv=<uid>` / `inv=<uid>`；inv 非正整数置 null；两段皆空返回 null。
+ * 纯函数：按 `,` 或 `&` 分段解析 scene 字符串。
+ * 兼容协议：`qr=<房号>` / `qr=<房号>,inv=<uid>` / `inv=<uid>`；inv 非正整数置 null；两段皆空返回 null。
+ * 小程序码 scene 由后端拼（微信拒含 `&` 的 scene，40129，故码一律 `,` 分隔）；历史分享卡片仍是 `&`，双兼容。
  */
 export function parseScene(raw: string): PendingScene | null {
   let roomCode: string | null = null
   let inviterId: number | null = null
-  for (const part of raw.split('&')) {
+  for (const part of raw.split(/[&,]/)) {
     const eq = part.indexOf('=')
     if (eq <= 0)
       continue
