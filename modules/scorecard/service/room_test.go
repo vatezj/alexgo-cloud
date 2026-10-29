@@ -328,14 +328,59 @@ func TestSweepExpired_SkipsActiveAndSettled(t *testing.T) {
 }
 
 // 票：一人一局——同人同时间只能在一个进行中牌局（status=0）。
-func TestCreate_RejectedWhileInOtherActiveRoom(t *testing.T) {
-	svc, _ := newRoomServiceForTest(t)
+// 复用语义：已有进行中局再开房 → 返回该局快照（200 同构信封，前端零改动进入），不新建房、不再报 30114。
+func TestCreate_ReusedWhileInOtherActiveRoom(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
 	ctx := tenant.WithTenantID(context.Background(), 1)
-	if _, err := svc.Create(ctx, 100, CreateRoomReq{}); err != nil {
+	first, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Create(ctx, 100, CreateRoomReq{}); !errs.Is(err, errs.CodeScorecardInOtherRoom) {
-		t.Fatalf("进行中牌局未结束再开房应 30114, got %v", err)
+	got, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
+		t.Fatalf("已有进行中局再开房应返回该局快照, got err=%v", err)
+	}
+	if got.ID != first.ID || got.RoomCode != first.RoomCode {
+		t.Fatalf("应返回既有局: first=%d/%s got=%d/%s", first.ID, first.RoomCode, got.ID, got.RoomCode)
+	}
+	var n int64
+	if err := db.Model(&model.Room{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("复用分支不得新建房: rooms=%d, want 1", n)
+	}
+}
+
+// 票：一人一局复用排序——同人多间进行中局（历史脏数据，如远程旧后端建的房）
+// 时，Create 复用应返回**最新**一间（用户刚开的局），而非最早一间。
+// 第二间经直插构造，绕过 Create 的一人一局拦截（模拟旧后端留下的脏数据）。
+func TestCreate_ReusedPrefersLatestActiveRoom(t *testing.T) {
+	svc, db := newRoomServiceForTest(t)
+	ctx := tenant.WithTenantID(context.Background(), 1)
+	old, err := svc.Create(ctx, 100, CreateRoomReq{RoomCode: "OLD1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 直插更晚的进行中局 + 同人成员行（等价旧后端绕过拦截建的房）。
+	latest := &model.Room{
+		RoomCode: "NEW2", CreatorID: 100, Status: 0,
+		ExpireTime: time.Now().Add(roomTTL), Version: 1,
+	}
+	if err := db.WithContext(ctx).Create(latest).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithContext(ctx).Create(&model.RoomUser{
+		RoomID: latest.ID, UserID: 100, IsCreator: 1, SessionNo: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Create(ctx, 100, CreateRoomReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != latest.ID || got.RoomCode != "NEW2" {
+		t.Fatalf("多活跃局应复用最新: latest=%d/NEW2 got=%d/%s (old=%d)", latest.ID, got.ID, got.RoomCode, old.ID)
 	}
 }
 

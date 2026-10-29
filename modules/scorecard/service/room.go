@@ -40,7 +40,7 @@ const recentLogLimit = 20
 // Task 9-13 在同一实现上追加记录查询等。
 type RoomService interface {
 	// Create 开房：房号可空（服务端生成 4 位），冲突重试耗尽 → 30106；
-	// 一人一局——已在进行中牌局 → 30114。
+	// 一人一局——本人已在进行中牌局 → 不报错，直接返回该局快照（复用，前端零改动进入）。
 	Create(ctx context.Context, userID uint64, req CreateRoomReq) (*RoomSnapshot, error)
 	// Join 进房：幂等（已在房返回现状），拉黑双向拦截 30108，重进清零为新会话；
 	// 一人一局——新进他房且本人已在进行中牌局 → 30114（同房重进不受限）。
@@ -115,12 +115,13 @@ func (s *roomService) Create(ctx context.Context, userID uint64, req CreateRoomR
 	if req.RoomCode != "" && !roomCodeCustomRe.MatchString(req.RoomCode) {
 		return nil, errs.New(errs.CodeParamInvalid, nil)
 	}
-	// 一人一局：本人已有进行中牌局 → 30114（先查后插；并发双开的窗口极小，
-	// 前端亦拦，接受 best-effort 而非跨请求锁）。
+	// 一人一局：本人已有进行中牌局 → 复用——直接返回该局快照（200 与新建同构，
+	// 前端 doCreateRoom 成功即进房，零改动回到原局；入参配置/自定义房号在此分支忽略）。
+	// 先查后插：并发双开窗口极小，接受 best-effort 而非跨请求锁。30114 仅 Join 保留。
 	if activeRoomID, err := s.member.GetActiveRoomID(ctx, userID); err != nil {
 		return nil, err
 	} else if activeRoomID != 0 {
-		return nil, errs.New(errs.CodeScorecardInOtherRoom, nil)
+		return s.buildSnapshot(ctx, s.db, activeRoomID, userID, false)
 	}
 	custom := req.RoomCode != ""
 	attempts := roomCodeMaxAttempts

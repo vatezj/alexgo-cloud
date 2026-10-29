@@ -471,7 +471,7 @@ paths:
       consumes:
       - application/json
       description: 创建入参见 service.CreateRoomReq；统一 pkg/resp 信封。room_code 可空=服务端生成，指定被占
-        30106；data 为最新房间快照。
+        30106；data 为最新房间快照。请求者已有进行中牌局时不新建、不报错，直接返回该局快照（复用进入，入参忽略）。
       parameters:
       - description: 建房参数
         in: body
@@ -774,7 +774,8 @@ paths:
   /app/scorecard/rooms/{id}/wxacode:
     get:
       description: 200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102
-        非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号，进程内按房号缓存 5min。
+        非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号,inv+请求者UserID（逗号分隔，微信拒 & 场景值），进程内按
+        scene 缓存 5min（防跨用户串码）。
       parameters:
       - description: 房间 ID
         example: 1

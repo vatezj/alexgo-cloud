@@ -65,7 +65,8 @@ const (
 	CodeScorecardVersionConflict Code = 30112
 	// CodeScorecardTargetNotMember scorecard：目标不是房间成员。
 	CodeScorecardTargetNotMember Code = 30113
-	// CodeScorecardInOtherRoom scorecard：同一时间只能在一个进行中牌局（开房/进房拦截）。
+	// CodeScorecardInOtherRoom scorecard：同一时间只能在一个进行中牌局（仅进房 Join 拦截；
+	// 开房 Create 对已有局复用返回该局快照，不再触发本码）。
 	CodeScorecardInOtherRoom Code = 30114
 	// CodeImpersonateMemberNotFound online：代登录目标会员不存在/已删除/已停用。
 	CodeImpersonateMemberNotFound Code = 30201

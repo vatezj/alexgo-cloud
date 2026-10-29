@@ -68,14 +68,15 @@ func (r *roomUserRepo) CountByRoom(ctx context.Context, roomID uint64) (int64, e
 
 // GetActiveRoomID 该用户是否在进行中牌局（一人一局）。主表 room_user 走插件租户过滤，
 // status 过滤走子查询（JOIN 会让插件注入的无前缀 tenant_id 变成两表歧义列）；成员行与
-// 房行同租户打戳，交集即本租户的进行中房。同人多行（历史脏数据）取最早一行。
+// 房行同租户打戳，交集即本租户的进行中房。同人多行（历史脏数据，如旧后端建的房）
+// 取最新一行——复用语义下用户期望回到刚开/最近在玩的局，而非最早的残留局。
 func (r *roomUserRepo) GetActiveRoomID(ctx context.Context, userID uint64) (uint64, error) {
 	var roomID uint64
 	err := r.db.WithContext(ctx).Model(&model.RoomUser{}).
 		Select("room_id").
 		Where("user_id = ?", userID).
 		Where("room_id IN (SELECT id FROM scorecard_room WHERE status = 0)").
-		Order("id asc").Limit(1).
+		Order("id desc").Limit(1).
 		Scan(&roomID).Error
 	return roomID, err
 }

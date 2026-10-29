@@ -79,7 +79,7 @@ func pathID(ctx *gin.Context, name string) (uint64, bool) {
 // CreateRoom godoc
 //
 //	@Summary		创建房间
-//	@Description	创建入参见 service.CreateRoomReq；统一 pkg/resp 信封。room_code 可空=服务端生成，指定被占 30106；data 为最新房间快照。
+//	@Description	创建入参见 service.CreateRoomReq；统一 pkg/resp 信封。room_code 可空=服务端生成，指定被占 30106；data 为最新房间快照。请求者已有进行中牌局时不新建、不报错，直接返回该局快照（复用进入，入参忽略）。
 //	@Tags			scorecard-app
 //	@Accept			json
 //	@Produce		json
