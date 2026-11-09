@@ -36,6 +36,8 @@ type DictRepository interface {
 
 type ConfigRepository interface {
 	List(ctx context.Context, tenantID uint64) ([]*model.SystemConfig, error)
+	// GetByKey 按 (tenant_id, key) 精确取一行；不存在返回 (nil, nil)（同 noticeRepo.FindByID 语义）。
+	GetByKey(ctx context.Context, tenantID uint64, key string) (*model.SystemConfig, error)
 	Create(ctx context.Context, c *model.SystemConfig) error
 	Update(ctx context.Context, c *model.SystemConfig) error
 	Delete(ctx context.Context, tenantID uint64, id uint64) error
@@ -128,6 +130,19 @@ func (r *configRepo) List(ctx context.Context, tenantID uint64) ([]*model.System
 	var list []*model.SystemConfig
 	err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Order("id desc").Find(&list).Error
 	return list, err
+}
+func (r *configRepo) GetByKey(ctx context.Context, tenantID uint64, key string) (*model.SystemConfig, error) {
+	var c model.SystemConfig
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND `key` = ?", tenantID, key).
+		First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 func (r *configRepo) Create(ctx context.Context, c *model.SystemConfig) error {
 	return r.db.WithContext(ctx).Create(c).Error

@@ -37,6 +37,9 @@ type DictService interface {
 
 type ConfigService interface {
 	List(ctx context.Context) ([]*model.SystemConfig, error)
+	// GetByKey 按 key 取当前租户配置（ctx 租户）；不存在返回 (nil, nil)。
+	// 公开端点无 claims——调用方需自行把 ctx 钉到目标租户（如 WithTenantID(ctx, 0)）。
+	GetByKey(ctx context.Context, key string) (*model.SystemConfig, error)
 	Create(ctx context.Context, c *model.SystemConfig) (*model.SystemConfig, error)
 	Update(ctx context.Context, c *model.SystemConfig) error
 	Delete(ctx context.Context, id uint64) error
@@ -187,6 +190,9 @@ func (s *dictService) DeleteData(ctx context.Context, id uint64) error {
 
 func (s *configService) List(ctx context.Context) ([]*model.SystemConfig, error) {
 	return s.repo.List(ctx, tenant.TenantIDFromContext(ctx))
+}
+func (s *configService) GetByKey(ctx context.Context, key string) (*model.SystemConfig, error) {
+	return s.repo.GetByKey(ctx, tenant.TenantIDFromContext(ctx), key)
 }
 func (s *configService) Create(ctx context.Context, c *model.SystemConfig) (*model.SystemConfig, error) {
 	tid := tenant.TenantIDFromContext(ctx)

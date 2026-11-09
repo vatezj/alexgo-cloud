@@ -53,6 +53,10 @@ var FxModule = fx.Module("scorecard",
 		// Task 12 合一版 app 控制器（Bearer 自鉴权）。token.Validator 的接口映射归
 		// 入口（alexgo-server/cmd/main.go ifaceOptions），模块内不重复 Provide。
 		app.NewAppController,
+		// 分享卡配置：读 system.ConfigService（后台系统参数页编辑）+ 启动补建缺省行；
+		// 公开控制器 /public/scorecard/share-config 免鉴权消费（冷启动转发无 claims）。
+		service.NewShareConfigService,
+		app.NewPublicController,
 		// Task 2 小程序码（social 窄接口注入）：取配置 AppGetter 由 oauth2 模块图内
 		// 的 social.SocialRepository 映射（GetApp 同签名）；Wxacoder 用 NewWechatMP
 		// 新建客户端实例——与登录适配器注册表内实例各自持有 token 缓存
@@ -107,29 +111,46 @@ var FxModule = fx.Module("scorecard",
 			},
 		})
 	}),
+	// 分享卡参数补建（system_configs scorecard.share.*）：幂等只补缺、不覆盖管理员改过的值；
+	// 异步跑（同 system seeder 模式），失败只告警不阻断启动——公开端点自带内置默认兜底。
+	fx.Invoke(func(lc fx.Lifecycle, shareCfg *service.ShareConfigService) {
+		lc.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				go func() {
+					if err := shareCfg.Seed(context.Background()); err != nil && logger.Log != nil {
+						logger.Log.Warn("scorecard share config seed failed", zap.Error(err))
+					}
+				}()
+				return nil
+			},
+		})
+	}),
 )
 
 // ModuleParams 聚合依赖（fx.In）。
 type ModuleParams struct {
 	fx.In
 
-	Cfg       *config.Config
-	AppCtrl   *app.AppController
-	AdminCtrl *admin.AdminController
+	Cfg        *config.Config
+	AppCtrl    *app.AppController
+	AdminCtrl  *admin.AdminController
+	PublicCtrl *app.PublicController
 }
 
 type scorecardModule struct {
-	cfg       *config.Config
-	appCtrl   *app.AppController
-	adminCtrl *admin.AdminController
+	cfg        *config.Config
+	appCtrl    *app.AppController
+	adminCtrl  *admin.AdminController
+	publicCtrl *app.PublicController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
 	return &scorecardModule{
-		cfg:       p.Cfg,
-		appCtrl:   p.AppCtrl,
-		adminCtrl: p.AdminCtrl,
+		cfg:        p.Cfg,
+		appCtrl:    p.AppCtrl,
+		adminCtrl:  p.AdminCtrl,
+		publicCtrl: p.PublicCtrl,
 	}
 }
 
@@ -140,6 +161,12 @@ func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 		if on, ok := m.cfg.Modules["scorecard"]; ok && !on {
 			return
 		}
+	}
+
+	// 公开读（免鉴权）：入参是 /api group → 完整路径 /api/public/scorecard/share-config。
+	// 分享卡配置可能在登录前消费，不挂 Bearer（同 fishgame /public 先例）。
+	if m.publicCtrl != nil {
+		r.GET("/public/scorecard/share-config", m.publicCtrl.ShareConfig)
 	}
 
 	admin := r.Group("/admin/scorecard")
