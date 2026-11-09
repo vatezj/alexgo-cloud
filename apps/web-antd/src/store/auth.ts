@@ -58,7 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
         password: params.password,
-        redirect_uri: `${window.location.origin}/callback`,
+        redirect_uri: `${window.location.origin}${import.meta.env.BASE_URL}callback`,
         response_type: 'code',
         state,
         username: params.username,

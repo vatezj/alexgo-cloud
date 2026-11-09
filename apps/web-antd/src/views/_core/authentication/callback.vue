@@ -63,7 +63,7 @@ onMounted(async () => {
       code,
       client_id: 'alexgo-admin',
       code_verifier: session.verifier,
-      redirect_uri: `${window.location.origin}/callback`,
+      redirect_uri: `${window.location.origin}${import.meta.env.BASE_URL}callback`,
     });
     accessStore.setAccessToken(token.access_token);
     sessionStorage.removeItem(OAUTH_SESSION_KEY);
