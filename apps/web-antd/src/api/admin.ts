@@ -273,6 +273,11 @@ export function createConfig(payload: {
   return requestClient.post<SystemConfig>('/admin/system/configs', payload);
 }
 
+/** 更新系统参数（后端 PUT 无 :id 路径参数，目标 ID 在 body 内）。 */
+export function updateConfig(payload: SystemConfig): Promise<void> {
+  return requestClient.put<void>('/admin/system/configs', payload);
+}
+
 export function deleteConfig(id: number): Promise<void> {
   return requestClient.delete(`/admin/system/configs/${id}`);
 }
