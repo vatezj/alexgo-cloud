@@ -19,17 +19,19 @@
  * - 业务错误 catch → 本页 toast（ApiError 非 401/403）；数据拉取失败降级空态，不阻塞渲染
  * - 色值零硬编码：全走主题 token 与全局工具类（.pcard/.btn.brass/.num/.win-n/.lose-n）
  */
-import type { RecordItem, StatResult } from '@/api/scorecard/types'
+import type { StatResult } from '@/api/scorecard/types'
 import { ApiError } from '@/api/core/handlers'
 import { listFriends } from '@/api/scorecard/friend'
-import { myRecords, stat } from '@/api/scorecard/record'
+import { stat } from '@/api/scorecard/record'
 import { createRoom, joinRoom, snapshot } from '@/api/scorecard/room'
 import PlayCard from '@/components/scorecard/PlayCard.vue'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
+import { useFunCompassConfig } from '@/composables/funCompass/useFunCompassConfig'
 import { useProfileGate } from '@/composables/scorecard/useProfileGate'
 import { bindInviterSilently, useSceneRoom } from '@/composables/scorecard/useSceneRoom'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
+import { useScorecardShareConfigStore } from '@/store/scorecard/shareConfig'
 
 definePage({
   style: {
@@ -38,16 +40,17 @@ definePage({
 })
 
 const authStore = useScorecardAuthStore()
+const shareCfgStore = useScorecardShareConfigStore()
 const router = useRouter()
 const toast = useToast()
 const { pendingScene, consumeScene, setPendingScene } = useSceneRoom()
 const { pageStyle } = useSystemBar()
 const gate = useProfileGate()
+/** 趣味方位开关（与【我的】折叠组同源；false 时首页入口卡一并隐藏）。 */
+const { enabled: funEnabled } = useFunCompassConfig()
 
 const statData = ref<StatResult | null>(null)
 const friendCount = ref(0)
-const recentRecords = ref<RecordItem[]>([])
-const loadingData = ref(false)
 const creating = ref(false)
 const joining = ref(false)
 const showJoinPopup = ref(false)
@@ -99,34 +102,6 @@ const totalScoreText = computed(() =>
 const winCountText = computed(() => (statData.value ? `${statData.value.win}次` : '—'))
 const loseCountText = computed(() => (statData.value ? `${statData.value.lose}次` : '—'))
 
-const emptyRecordsText = computed(() => {
-  if (loadingData.value)
-    return '加载中…'
-  if (!isLoggedIn.value)
-    return '登录后查看最近战绩'
-  return '暂无战绩 · 开一桌试试'
-})
-
-/** 结算类型映射文案（RecordItem.settle_type 契约：1 正常 2 房主退房自动结算 3 退房 4 零数据空战绩） */
-const SETTLE_TEXT: Record<number, string> = {
-  1: '正常结算',
-  2: '房主退房自动结算',
-  3: '退房',
-  4: '零数据空战绩',
-}
-
-function settleText(type: number): string {
-  return SETTLE_TEXT[type] ?? '结算'
-}
-
-/** RFC3339 → M月D日（本地时区） */
-function recordDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime()))
-    return ''
-  return `${d.getMonth() + 1}月${d.getDate()}日`
-}
-
 /** 分数差文案：正 +N；负用减号 U+2212 对齐源稿 */
 function formatDelta(score: number): string {
   if (score > 0)
@@ -175,36 +150,30 @@ function pickQrFrom(input?: string): string | null {
   return code || null
 }
 
-/** 首页数据：stat（总分/胜率/胜负次数）+ listFriends（好友数）+ myRecords（最近战绩）。失败降级空态。 */
+/** 首页数据：stat（总分/胜率/胜负次数）+ listFriends（好友数）。失败降级空态。 */
 async function loadHomeData() {
   if (!isLoggedIn.value) {
     statData.value = null
     friendCount.value = 0
-    recentRecords.value = []
     return
   }
-  loadingData.value = true
   try {
     await authStore.fetchMe()
   }
   catch {
     // 资料刷新失败不阻断（persist 缓存兜底；401 由 handlers 清态跳登录）
   }
-  const [s, f, r] = await Promise.allSettled([
+  const [s, f] = await Promise.allSettled([
     stat(),
     listFriends(),
-    myRecords({ page: 1, size: 5 }),
   ])
   if (s.status === 'fulfilled')
     statData.value = s.value
   if (f.status === 'fulfilled')
     friendCount.value = f.value.length
-  if (r.status === 'fulfilled')
-    recentRecords.value = r.value.list
-  const failed = [s, f, r].find(item => item.status === 'rejected')
+  const failed = [s, f].find(item => item.status === 'rejected')
   if (failed && failed.status === 'rejected')
     toastApiError(failed.reason)
-  loadingData.value = false
 }
 
 /**
@@ -340,17 +309,21 @@ onShow(async () => {
   await ensureSilentLogin()
   void enterFromHome()
   void loadHomeData()
+  // 分享卡配置后台刷新（不 await：转发钩子同步读缓存，openspec share-card-config）
+  void shareCfgStore.ensureFresh()
 })
 
-/* ── 转发：胶囊菜单 / 转发卡片 / 朋友圈——带 inv=<我的 user_id>，好友打开即静默绑好友 ── */
-
-const SHARE_TITLE = '登录后开房记账 · 好友互通'
+/* ── 转发：胶囊菜单 / 转发卡片 / 朋友圈——带 inv=<我的 user_id>，好友打开即静默绑好友 ──
+   title/imageUrl 读后台配置（store 三级回退：内存→storage→内置默认，openspec share-card-config）。 */
 
 /** 已登录才有 inv（authStore.user.user_id）；未登录只带首页 path 不绑。 */
 onShareAppMessage(() => {
   const uid = authStore.user?.user_id
+  const card = shareCfgStore.get('index')
   return {
-    title: SHARE_TITLE,
+    title: card.title,
+    // 空串不传：微信回退当前页截图（spec imageUrl 空值降级）
+    ...(card.imageUrl ? { imageUrl: card.imageUrl } : {}),
     path: uid
       ? `/pages/index/index?scene=${encodeURIComponent(`inv=${uid}`)}`
       : '/pages/index/index',
@@ -361,7 +334,7 @@ onShareAppMessage(() => {
 onShareTimeline(() => {
   const uid = authStore.user?.user_id
   return {
-    title: SHARE_TITLE,
+    title: shareCfgStore.get('index').title,
     query: uid ? `inv=${uid}` : '',
   }
 })
@@ -529,6 +502,21 @@ function goRecords() {
 function goManual() {
   router.push({ path: '/pages/manual/index' })
 }
+
+/** 身份牌右上「我的」→【我的】页（趣味方位模块等折叠工具入口；点头像改资料的既有交互不动）。 */
+function goMine() {
+  router.push({ path: '/pages/mine/index' })
+}
+
+/** 趣味方位突出入口（fun-compass 修订轮 C2）→ 模块首页；受 fun_compass_enable 门控。 */
+function goFunCompass() {
+  router.push({ path: '/pages/fun/compass/index' })
+}
+
+/** 工资到账计算器直达入口（fun-salary-home-entry）→ 分包页；同开关门控。 */
+function goSalary() {
+  router.push({ path: '/pages/fun/salary/index' })
+}
 </script>
 
 <template>
@@ -630,6 +618,16 @@ function goManual() {
             />
           </view>
         </view>
+
+        <!-- 「我的」入口小钮（fun-compass 变更：模块入口在【我的】折叠组，此处只是页级入口） -->
+        <view
+          class="mine-pill"
+          @click.stop="goMine"
+        >
+          <text class="mine-pill-t">
+            ⚙ 我的
+          </text>
+        </view>
       </view>
     </PlayCard>
 
@@ -706,6 +704,60 @@ function goManual() {
       </button>
     </view>
 
+    <!-- 趣味方位突出入口（fun-compass C2：一键达模块；fun_compass_enable 门控） -->
+    <view
+      v-if="funEnabled"
+      class="funentry"
+      @click="goFunCompass"
+    >
+      <view class="funentry-ico">
+        <wd-icon
+          css-icon
+          class="funentry-ico-i"
+          name="i-carbon-compass"
+        />
+      </view>
+      <view class="funentry-main">
+        <text class="funentry-t">
+          趣味方位 · 罗盘选座
+        </text>
+        <text class="funentry-s">
+          生辰 · 罗盘 · 选座小彩蛋
+        </text>
+      </view>
+      <wd-icon
+        css-icon
+        class="funentry-c"
+        name="i-carbon-chevron-right"
+      />
+    </view>
+
+    <!-- 工资到账计算器直达入口（fun-salary-home-entry；与趣味方位同款同开关） -->
+    <view
+      v-if="funEnabled"
+      class="funentry"
+      @click="goSalary"
+    >
+      <view class="funentry-ico">
+        <text class="funentry-y">
+          ¥
+        </text>
+      </view>
+      <view class="funentry-main">
+        <text class="funentry-t">
+          工资到账计算器
+        </text>
+        <text class="funentry-s">
+          算日薪 · 每秒入账
+        </text>
+      </view>
+      <wd-icon
+        css-icon
+        class="funentry-c"
+        name="i-carbon-chevron-right"
+      />
+    </view>
+
     <!-- 快捷 pill -->
     <view class="fan-quick">
       <text
@@ -728,40 +780,7 @@ function goManual() {
       </text>
     </view>
 
-    <!-- 最近战绩 -->
-    <view class="section records">
-      <text class="h2">
-        最近战绩
-      </text>
-      <view class="flows">
-        <view
-          v-for="r in recentRecords"
-          :key="r.id"
-          class="flow"
-        >
-          <text class="who">
-            {{ recordDate(r.created_at) }} · {{ settleText(r.settle_type) }}
-          </text>
-          <text
-            class="num amt"
-            :class="r.score >= 0 ? 'win-n' : 'lose-n'"
-          >
-            {{ formatDelta(r.score) }}
-          </text>
-        </view>
-        <view
-          v-if="!recentRecords.length"
-          class="flow empty"
-        >
-          <text class="cap">
-            {{ emptyRecordsText }}
-          </text>
-        </view>
-      </view>
-      <!-- <text class="cap rec-cap">
-        左滑房间记录可看流水 / 排行 / 删除
-      </text> -->
-    </view>
+    <!-- 预留广告位（2026-11-06 移除最近战绩，此区域未来放广告） -->
 
     <!-- 广告位虚线占位 -->
     <!-- <view class="adslot">
@@ -949,10 +968,30 @@ function goManual() {
 }
 
 .id-inner {
+  position: relative;
   display: flex;
   gap: 16px;
   align-items: center;
   padding: 26px 22px 20px 44px;
+}
+
+/* 「我的」入口小钮（牌右上角，黄铜描边胶囊，不抢头像/统计焦点） */
+.mine-pill {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+}
+
+.mine-pill-t {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--brass);
+  letter-spacing: 0.02em;
 }
 
 .pav {
@@ -1065,32 +1104,32 @@ function goManual() {
 /* ── 回到牌局入口条 ── */
 .resume-bar {
   display: flex;
-  align-items: center;
   gap: 10px;
-  margin: 16px 20px 0;
+  align-items: center;
   padding: 12px 14px;
+  margin: 16px 20px 0;
+  cursor: pointer;
   background: var(--ink-700);
   border: 1.5px solid var(--brass-a50);
   border-radius: 16px;
-  cursor: pointer;
 }
 
 .resume-bar.busy {
-  opacity: 0.75;
   pointer-events: none;
+  opacity: 0.75;
 }
 
 .rb-icon {
   display: flex;
-  width: 36px;
-  height: 36px;
   flex: none;
   align-items: center;
   justify-content: center;
-  color: var(--vermillion);
+  width: 36px;
+  height: 36px;
   font-family: 'Noto Serif SC', serif;
   font-size: 18px;
   font-weight: 700;
+  color: var(--vermillion);
   background: var(--ink-600);
   border: 1.5px solid var(--brass-a50);
   border-radius: 50%;
@@ -1098,33 +1137,33 @@ function goManual() {
 
 .rb-main {
   display: flex;
-  min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .rb-t {
-  color: var(--brass);
   font-family: 'Noto Serif SC', serif;
   font-size: 15px;
   font-weight: 700;
+  color: var(--brass);
   letter-spacing: 0.04em;
 }
 
 .rb-s {
   overflow: hidden;
-  color: var(--dim);
-  font-size: 11px;
   text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--dim);
   white-space: nowrap;
 }
 
 .rb-chev {
   flex: none;
-  color: var(--brass);
   font-size: 18px;
   line-height: 1;
+  color: var(--brass);
 }
 
 /* ── 扇形 CTA ── */
@@ -1207,61 +1246,79 @@ function goManual() {
   transform: rotate(4deg);
 }
 
-/* ── 最近战绩 ── */
-.section.records {
-  padding: 22px 20px 0;
+/* ── 趣味方位突出入口（权重：低于主 CTA、高于快捷 pill） ── */
+
+/* 第二张入口卡（工资）与首张间距 */
+.funentry + .funentry {
+  margin-top: 10px;
 }
 
-.h2 {
-  display: block;
-  margin-bottom: 10px;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--on-ink);
-  letter-spacing: 0.05em;
+.funentry-y {
+  font-family: Oswald, sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--brass);
 }
 
-.flows {
+.funentry {
   display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding-top:20rpx;
-}
-
-.flow {
-  display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 11px 13px;
-  background: var(--ink-700);
-  border: 1px solid var(--on-ink-a04);
-  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 18px 20px 0;
+  background: var(--tile);
+  border: 1px solid var(--brass);
+  border-radius: var(--r-tile);
+  box-shadow: var(--shadow-tile);
 }
 
-.flow .who {
-  font-size: 13px;
-  color: var(--on-ink);
-}
-
-.flow .amt {
-  font-size: 17px;
-}
-
-.flow.empty {
+.funentry-ico {
+  display: flex;
+  flex: none;
+  align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--ink-700);
+  border-radius: 12px;
 }
 
-.cap {
+.funentry-ico-i {
+  font-size: 22px;
+  color: var(--brass);
+}
+
+.funentry-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.funentry-t {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--jet);
+  letter-spacing: 0.02em;
+}
+
+.funentry-s {
+  font-family: 'Noto Sans SC', sans-serif;
   font-size: 11px;
-  line-height: 1.55;
-  color: var(--dim);
+  color: var(--jet);
+  opacity: 0.6;
 }
 
-.rec-cap {
-  display: block;
-  margin-top: 8px;
+.funentry-c {
+  flex: none;
+  font-size: 18px;
+  color: var(--jet);
+  opacity: 0.4;
 }
+
+/* ── 预留广告位（最近战绩样式已随区块移除） ── */
 
 /* ── 广告位虚线占位 ── */
 .adslot {

@@ -29,6 +29,11 @@ export default defineConfig({
        * @default []
        */
       exclude: ['**/components/**/*.*'],
+      /**
+       * 分包扫描根（fun-compass 变更）：pages/fun 下六页进 subPackages，
+       * root 自动派生为 pages/fun（路由前缀 pages/fun/compass/* 不变），主包自动剔除
+       */
+      subPackages: ['src/pages/fun'],
     }),
     // https://github.com/uni-helper/vite-plugin-uni-layouts
     UniHelperLayouts(),

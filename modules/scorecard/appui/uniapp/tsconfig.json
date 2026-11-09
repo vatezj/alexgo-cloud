@@ -26,5 +26,8 @@
     "src/**/*.tsx",
     "src/**/*.vue"
   ],
-  "exclude": ["src/uni_modules"]
+  "exclude": [
+    "src/uni_modules",
+    "src/**/*.test.ts"
+  ]
 }

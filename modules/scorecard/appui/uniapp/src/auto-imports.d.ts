@@ -235,6 +235,9 @@ declare global {
   const useFocusWithin: typeof import('@vueuse/core')['useFocusWithin']
   const useFps: typeof import('@vueuse/core')['useFps']
   const useFullscreen: typeof import('@vueuse/core')['useFullscreen']
+  const useFunCompassArchivesStore: typeof import('./store/funCompass/archives')['useFunCompassArchivesStore']
+  const useFunCompassConfig: typeof import('./composables/funCompass/useFunCompassConfig')['useFunCompassConfig']
+  const useFunCompassRecommendationStore: typeof import('./store/funCompass/recommendation')['useFunCompassRecommendationStore']
   const useGamepad: typeof import('@vueuse/core')['useGamepad']
   const useGeolocation: typeof import('@vueuse/core')['useGeolocation']
   const useGlobalDialog: typeof import('./composables/useGlobalDialog')['useGlobalDialog']
@@ -296,6 +299,7 @@ declare global {
   const useSceneRoom: typeof import('./composables/scorecard/useSceneRoom')['useSceneRoom']
   const useScorecardAuthStore: typeof import('./store/scorecard/auth')['useScorecardAuthStore']
   const useScorecardRoomStore: typeof import('./store/scorecard/room')['useScorecardRoomStore']
+  const useScorecardShareConfigStore: typeof import('./store/scorecard/shareConfig')['useScorecardShareConfigStore']
   const useScorecardTheme: typeof import('./store/scorecard/theme')['useScorecardTheme']
   const useScorecardThemeStore: typeof import('./store/scorecard/theme')['useScorecardThemeStore']
   const useScorecardVoiceStore: typeof import('./store/scorecard/voice')['useScorecardVoiceStore']
@@ -612,6 +616,9 @@ declare module 'vue' {
     readonly useFocusWithin: UnwrapRef<typeof import('@vueuse/core')['useFocusWithin']>
     readonly useFps: UnwrapRef<typeof import('@vueuse/core')['useFps']>
     readonly useFullscreen: UnwrapRef<typeof import('@vueuse/core')['useFullscreen']>
+    readonly useFunCompassArchivesStore: UnwrapRef<typeof import('./store/funCompass/archives')['useFunCompassArchivesStore']>
+    readonly useFunCompassConfig: UnwrapRef<typeof import('./composables/funCompass/useFunCompassConfig')['useFunCompassConfig']>
+    readonly useFunCompassRecommendationStore: UnwrapRef<typeof import('./store/funCompass/recommendation')['useFunCompassRecommendationStore']>
     readonly useGamepad: UnwrapRef<typeof import('@vueuse/core')['useGamepad']>
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
     readonly useGlobalDialog: UnwrapRef<typeof import('./composables/useGlobalDialog')['useGlobalDialog']>
@@ -672,6 +679,7 @@ declare module 'vue' {
     readonly useSceneRoom: UnwrapRef<typeof import('./composables/scorecard/useSceneRoom')['useSceneRoom']>
     readonly useScorecardAuthStore: UnwrapRef<typeof import('./store/scorecard/auth')['useScorecardAuthStore']>
     readonly useScorecardRoomStore: UnwrapRef<typeof import('./store/scorecard/room')['useScorecardRoomStore']>
+    readonly useScorecardShareConfigStore: UnwrapRef<typeof import('./store/scorecard/shareConfig')['useScorecardShareConfigStore']>
     readonly useScorecardTheme: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardTheme']>
     readonly useScorecardThemeStore: UnwrapRef<typeof import('./store/scorecard/theme')['useScorecardThemeStore']>
     readonly useScorecardVoiceStore: UnwrapRef<typeof import('./store/scorecard/voice')['useScorecardVoiceStore']>

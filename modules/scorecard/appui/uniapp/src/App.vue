@@ -38,6 +38,9 @@ onLaunch(() => {
   setTheme(themeId.value)
   // 恢复上次未消费的 scene 暂存（storage → 内存；进程被杀冷启可续）
   restorePendingScene()
+  // 三页分享卡配置后台刷新（fire-and-forget：钩子读 persist 缓存，本次拉取只影响下次转发；
+  // 失败静默回退内置默认——openspec share-card-config）
+  void useScorecardShareConfigStore().ensureFresh()
   // #ifdef MP-WEIXIN
   // 冷启动静默登录（fire-and-forget）：不阻塞启动；首页 onShow 会 await ensureSilentLogin
   // 复用同一在途 promise（inFlight 去重）。失败静默降级（failed 封顶，不循环）。

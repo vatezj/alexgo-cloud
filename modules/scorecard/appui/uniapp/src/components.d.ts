@@ -7,6 +7,8 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    FunCompassModDisclaimer: typeof import('./components/funCompass/ModDisclaimer.vue')['default']
+    FunCompassModNav: typeof import('./components/funCompass/ModNav.vue')['default']
     GlobalDialog: typeof import('./components/GlobalDialog.vue')['default']
     GlobalLoading: typeof import('./components/GlobalLoading.vue')['default']
     GlobalToast: typeof import('./components/GlobalToast.vue')['default']
@@ -31,6 +33,7 @@ declare module 'vue' {
     WdIcon: typeof import('@wot-ui/ui/components/wd-icon/wd-icon.vue')['default']
     WdInput: typeof import('@wot-ui/ui/components/wd-input/wd-input.vue')['default']
     WdNotify: typeof import('@wot-ui/ui/components/wd-notify/wd-notify.vue')['default']
+    WdPicker: typeof import('@wot-ui/ui/components/wd-picker/wd-picker.vue')['default']
     WdPopup: typeof import('@wot-ui/ui/components/wd-popup/wd-popup.vue')['default']
     WdSwipeAction: typeof import('@wot-ui/ui/components/wd-swipe-action/wd-swipe-action.vue')['default']
     WdSwitch: typeof import('@wot-ui/ui/components/wd-switch/wd-switch.vue')['default']
