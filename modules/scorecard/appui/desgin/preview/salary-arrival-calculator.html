@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工资到账计算器 · 趣味小工具</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ 牌面设计系统 · tokens ============ */
+:root{
+  --bg:#14120F;          /* 页面底 ink */
+  --panel:#1E1B17;       /* 深面板 */
+  --press:#2A2722;       /* 按压 */
+  --bone:#F2EDE3;        /* 骨白牌面 */
+  --bone-fg:#2A2722;     /* 牌上字 */
+  --brass:#C9A24B;       /* 黄铜 */
+  --lacquer:#D23B22;     /* 漆红 · 仅小徽标 */
+  --fg:#EDE6D8;          /* 深底主文字 */
+  --muted:#9B917F;       /* 辅助 */
+  --jade:#3E7D5A;        /* 翠 · 隐私点 */
+
+  --bone-muted:color-mix(in oklch, var(--bone-fg) 60%, var(--bone));
+  --brass-ink:color-mix(in oklch, var(--brass) 72%, var(--bone-fg)); /* 骨白牌上的黄铜字 */
+  --bone-line:color-mix(in oklch, var(--bone-fg) 12%, var(--bone));
+  --brass-dim:color-mix(in oklch, var(--brass) 55%, var(--panel));
+  --ring:color-mix(in oklch, var(--brass) 70%, var(--fg));
+
+  --font-serif:"Noto Serif SC","Songti SC",serif;
+  --font-sans:"Noto Sans SC","PingFang SC","Hiragino Sans GB",sans-serif;
+  --font-num:"Oswald","DIN Alternate","Helvetica Neue",sans-serif;
+
+  --r-card:20px;   /* lg */
+  --r-md:14px;     /* md */
+  --r-sm:12px;     /* 牌 */
+  --r-full:999px;  /* 胶囊 */
+
+  --shadow-card:0 2px 0 rgba(0,0,0,.5), 0 10px 24px rgba(0,0,0,.45);
+  --shadow-soft:0 2px 0 rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.28);
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:#0B0A08;
+  font-family:var(--font-sans);
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:24px 0;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ============ 画布 390×844 ============ */
+.screen{
+  position:relative;
+  width:390px;height:844px;
+  background:var(--bg);
+  color:var(--fg);
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  border-radius:36px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(237,230,216,.06);
+}
+
+/* ============ StatusBar (44) ============ */
+.statusbar{
+  flex:none;height:44px;
+  display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 26px 8px;
+  font-size:14px;font-weight:600;letter-spacing:.02em;
+  color:var(--fg);
+}
+.statusbar .sb-icons{display:flex;align-items:center;gap:6px}
+.sb-icons svg{display:block}
+
+/* ============ 自绘 nav ============ */
+.nav{
+  flex:none;height:60px;
+  display:flex;align-items:center;
+  padding:0 8px 0 6px;
+  position:relative;z-index:3;
+}
+.nav-back{
+  width:44px;height:44px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:none;border:none;cursor:pointer;color:var(--fg);
+  border-radius:var(--r-full);
+  transition:background .15s ease, transform .1s ease;
+}
+.nav-back:active{background:var(--press);transform:scale(.94)}
+.nav-back:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
+.nav-titles{flex:1;min-width:0;padding-left:2px}
+.nav-titles h1{
+  font-family:var(--font-serif);font-weight:700;
+  font-size:19px;line-height:1.2;letter-spacing:.02em;
+  color:var(--fg);
+}
+.nav-titles .caption{
+  margin-top:3px;
+  font-size:11px;line-height:1.3;color:var(--muted);letter-spacing:.04em;
+}
+.nav-capsule{
+  flex:none;height:32px;min-width:74px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:0 12px;
+  border-radius:var(--r-full);
+  border:1px solid color-mix(in oklch, var(--muted) 35%, transparent);
+  background:color-mix(in oklch, var(--panel) 80%, transparent);
+  color:var(--muted);
+  cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.nav-capsule:active{background:var(--press);transform:scale(.96);border-color:var(--muted)}
+.nav-capsule:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.nav-capsule .dots{font-size:13px;letter-spacing:.12em;line-height:1;transform:translateY(-2px)}
+.nav-capsule .sep{width:1px;height:12px;background:color-mix(in oklch, var(--muted) 50%, transparent)}
+.nav-capsule .lens{font-size:12px;line-height:1}
+
+/* ============ 内容区 ============ */
+.content{
+  flex:1;min-height:0;
+  padding:10px 20px 14px;
+  display:flex;flex-direction:column;gap:14px;
+  overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.content::-webkit-scrollbar{display:none}
+
+/* 牌头 16px 牌背纹条带 */
+.band{
+  height:16px;width:100%;
+  border-radius:var(--r-card) var(--r-card) 0 0;
+  background-color:color-mix(in oklch, var(--bone-fg) 8%, var(--bone));
+  background-image:
+    repeating-linear-gradient(45deg,
+      color-mix(in oklch, var(--bone-fg) 16%, transparent) 0 1.5px,
+      transparent 1.5px 7px),
+    repeating-linear-gradient(-45deg,
+      color-mix(in oklch, var(--bone-fg) 10%, transparent) 0 1.5px,
+      transparent 1.5px 7px);
+  background-position:0 0;
+}
+.band--dark{
+  background-color:color-mix(in oklch, var(--brass) 14%, var(--panel));
+  background-image:
+    repeating-linear-gradient(45deg,
+      color-mix(in oklch, var(--brass) 30%, transparent) 0 1.5px,
+      transparent 1.5px 7px),
+    repeating-linear-gradient(-45deg,
+      color-mix(in oklch, var(--brass) 18%, transparent) 0 1.5px,
+      transparent 1.5px 7px);
+}
+
+/* ============ 输入卡（骨白） ============ */
+.card-input{
+  flex:none;
+  background:var(--bone);
+  border-radius:var(--r-card);
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+  color:var(--bone-fg);
+}
+.card-input .body{padding:14px 16px 14px}
+.card-input h2{
+  font-family:var(--font-serif);font-weight:700;
+  font-size:22px;line-height:1.25;letter-spacing:.02em;
+  color:var(--bone-fg);
+  margin-bottom:12px;
+}
+.row{display:flex;align-items:center;gap:10px}
+.row + .row{margin-top:8px}
+.row .lbl{
+  flex:none;width:36px;
+  font-size:13px;font-weight:500;color:var(--bone-muted);letter-spacing:.02em;
+}
+
+/* 深色胶囊输入 */
+.cap{
+  display:flex;align-items:center;justify-content:center;gap:2px;
+  height:44px;padding:0 16px;
+  background:var(--bg);
+  border:1.5px solid transparent;
+  border-radius:var(--r-full);
+  color:var(--fg);
+  transition:background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.cap:active{background:var(--press);transform:scale(.985)}
+.cap:focus-within{border-color:var(--brass)}
+.cap .cur{
+  font-family:var(--font-num);font-weight:600;font-size:15px;
+  color:var(--brass);margin-right:2px;
+}
+.cap input{
+  background:none;border:none;outline:none;
+  font-family:var(--font-num);font-weight:600;font-size:17px;
+  font-variant-numeric:tabular-nums;
+  color:var(--fg);width:100%;text-align:center;padding:0;
+  letter-spacing:.02em;
+}
+.cap--salary{flex:1;min-width:0;height:48px}
+.cap--salary input{
+  font-size:20px;
+  flex:0 1 auto;width:auto;min-width:64px;
+  text-align:left;
+}
+.cap--time{flex:1;min-width:0}
+.cap--time input{font-size:16px;cursor:pointer}
+.dash{
+  flex:none;width:16px;text-align:center;
+  color:var(--bone-muted);font-size:14px;
+  transform:translateY(-1px);
+}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* 卡底隐私行 */
+.privacy{
+  display:flex;align-items:center;gap:7px;
+  margin-top:12px;padding-top:11px;
+  border-top:1px solid var(--bone-line);
+  font-size:11px;color:var(--bone-muted);letter-spacing:.03em;
+}
+.dot-jade{
+  flex:none;width:7px;height:7px;border-radius:50%;
+  background:var(--jade);
+  box-shadow:0 0 0 3px color-mix(in oklch, var(--jade) 22%, transparent);
+}
+
+/* ============ Hero 入账卡 ============ */
+.card-hero{
+  flex:none;position:relative;
+  background:var(--panel);
+  border-radius:var(--r-card);
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+}
+/* 顶部 1px 黄铜渐变描边 */
+.card-hero::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--brass) 70%, transparent) 30%,
+    var(--brass) 50%,
+    color-mix(in oklch, var(--brass) 70%, transparent) 70%,
+    transparent 100%);
+  z-index:2;
+}
+/* 轻微径向暖光 */
+.card-hero::after{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(120% 90% at 50% -10%,
+    color-mix(in oklch, var(--brass) 13%, transparent) 0%,
+    transparent 60%);
+  pointer-events:none;
+}
+.card-hero .band{position:relative;z-index:1;border-radius:0}
+.card-hero .body{
+  position:relative;z-index:1;
+  padding:14px 20px 18px;
+  display:flex;flex-direction:column;align-items:center;
+}
+.hero-status{
+  display:flex;align-items:center;gap:7px;
+  font-size:11px;color:var(--muted);letter-spacing:.08em;
+  align-self:flex-start;
+}
+.pulse-dot{
+  flex:none;width:7px;height:7px;border-radius:50%;
+  background:var(--brass);
+  animation:pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{opacity:1;box-shadow:0 0 0 0 color-mix(in oklch, var(--brass) 55%, transparent)}
+  50%{opacity:.55;box-shadow:0 0 0 5px transparent}
+}
+.hero-main{
+  display:flex;align-items:baseline;justify-content:center;gap:8px;
+  margin-top:12px;
+}
+.hero-num{
+  font-family:var(--font-num);font-weight:700;
+  font-size:46px;line-height:1;letter-spacing:.01em;
+  color:var(--brass);
+  font-variant-numeric:tabular-nums;
+}
+/* 数字下方细黄铜进度流光 */
+.hero-flow{
+  width:196px;height:2px;margin-top:10px;
+  border-radius:2px;overflow:hidden;
+  background:color-mix(in oklch, var(--brass) 18%, transparent);
+  position:relative;
+}
+.hero-flow::after{
+  content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;
+  background:linear-gradient(90deg, transparent, var(--brass), transparent);
+  animation:flow 2.2s linear infinite;
+}
+@keyframes flow{to{left:110%}}
+.hero-rate-label{
+  margin-top:8px;
+  font-size:11px;color:var(--muted);letter-spacing:.14em;
+}
+.hero-work-label{
+  margin-top:13px;
+  font-size:11px;color:var(--muted);letter-spacing:.14em;
+}
+.hero-work-time{
+  margin-top:6px;
+  font-family:var(--font-num);font-weight:600;font-size:23px;
+  line-height:1;letter-spacing:.05em;
+  color:var(--fg);font-variant-numeric:tabular-nums;
+}
+
+/* ============ 明细四宫格（骨白） ============ */
+.grid{
+  flex:none;
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+}
+.cell{
+  background:var(--bone);
+  border-radius:var(--r-md);
+  box-shadow:var(--shadow-soft);
+  padding:12px 14px 13px;
+  color:var(--bone-fg);
+  position:relative;
+  min-height:76px;
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.cell .k{
+  font-size:11px;color:var(--bone-muted);letter-spacing:.05em;
+  display:flex;align-items:center;gap:5px;
+}
+.cell .v{
+  font-family:var(--font-num);font-weight:600;font-size:26px;line-height:1.1;
+  color:var(--bone-fg);font-variant-numeric:tabular-nums;
+  letter-spacing:.01em;
+}
+.cell .v .u{font-size:15px;font-weight:500;margin-left:2px;color:var(--bone-muted)}
+.cell .v--brass{color:var(--brass-ink)}
+.cell--wide{
+  grid-column:1 / -1;
+  flex-direction:row;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:70px;
+}
+.cell--wide .v{font-size:28px}
+.cell .k-block{display:flex;flex-direction:column;gap:3px}
+.cell .note{
+  font-size:9.5px;line-height:1.3;color:var(--bone-muted);
+  letter-spacing:.02em;
+}
+.info-badge{
+  flex:none;
+  width:13px;height:13px;border-radius:50%;
+  border:1px solid color-mix(in oklch, var(--bone-fg) 35%, transparent);
+  color:var(--bone-muted);
+  font-size:9px;font-weight:700;font-style:italic;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--font-serif);
+  cursor:help;
+}
+
+/* ============ 底注 ============ */
+.footer{
+  flex:none;
+  padding:14px 20px 16px;
+  text-align:center;
+  font-size:11px;line-height:1.4;
+  color:var(--muted);letter-spacing:.04em;
+}
+
+/* 减弱动效 */
+@media (prefers-reduced-motion: reduce){
+  .pulse-dot{animation:none}
+  .hero-flow::after{animation:none;left:0;width:100%;opacity:.7}
+}
+</style>
+</head>
+<body>
+
+<div class="screen" data-od-id="salary-calculator-screen">
+
+  <!-- StatusBar -->
+  <div class="statusbar" data-od-id="status-bar" aria-hidden="true">
+    <span>9:41</span>
+    <span class="sb-icons">
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1" opacity=".4"/></svg>
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1 3.5a10 10 0 0 1 14 0"/><path d="M3.6 6.2a6.3 6.3 0 0 1 8.8 0"/><circle cx="8" cy="9.3" r="1.2" fill="currentColor" stroke="none"/></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".5" y=".5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><path d="M23 4v4a2.2 2.2 0 0 0 0-4z" fill="currentColor" opacity=".45"/></svg>
+    </span>
+  </div>
+
+  <!-- 自绘 nav -->
+  <header class="nav" data-od-id="nav-header">
+    <button class="nav-back" type="button" aria-label="返回" data-od-id="nav-back">
+      <svg width="10" height="18" viewBox="0 0 10 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1L1.5 9L9 17"/></svg>
+    </button>
+    <div class="nav-titles">
+      <h1 data-od-id="nav-title">工资到账计算器</h1>
+      <div class="caption" data-od-id="nav-caption">趣味小工具 · 仅供娱乐</div>
+    </div>
+    <button class="nav-capsule" type="button" aria-label="更多" data-od-id="nav-capsule">
+      <span class="dots" aria-hidden="true">•••</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="lens" aria-hidden="true">◎</span>
+    </button>
+  </header>
+
+  <!-- 内容 -->
+  <main class="content">
+
+    <!-- 1. 输入卡 -->
+    <section class="card-input" data-od-id="input-card">
+      <div class="band" aria-hidden="true"></div>
+      <div class="body">
+        <h2 data-od-id="input-card-title">填工资，看入账</h2>
+
+        <div class="row" data-od-id="salary-row">
+          <span class="lbl">月薪</span>
+          <label class="cap cap--salary">
+            <span class="cur" aria-hidden="true">¥</span>
+            <input id="salary" type="number" inputmode="decimal" min="0" step="100"
+                   size="6" value="15000" aria-label="月薪金额" data-od-id="salary-input">
+          </label>
+        </div>
+
+        <div class="row" data-od-id="time-row-am">
+          <span class="lbl">上午</span>
+          <label class="cap cap--time">
+            <input id="amStart" type="text" inputmode="numeric" value="09:00" aria-label="上午开始时间" data-od-id="am-start">
+          </label>
+          <span class="dash" aria-hidden="true">—</span>
+          <label class="cap cap--time">
+            <input id="amEnd" type="text" inputmode="numeric" value="12:00" aria-label="上午结束时间" data-od-id="am-end">
+          </label>
+        </div>
+
+        <div class="row" data-od-id="time-row-pm">
+          <span class="lbl">下午</span>
+          <label class="cap cap--time">
+            <input id="pmStart" type="text" inputmode="numeric" value="13:30" aria-label="下午开始时间" data-od-id="pm-start">
+          </label>
+          <span class="dash" aria-hidden="true">—</span>
+          <label class="cap cap--time">
+            <input id="pmEnd" type="text" inputmode="numeric" value="18:00" aria-label="下午结束时间" data-od-id="pm-end">
+          </label>
+        </div>
+
+        <div class="privacy" data-od-id="privacy-note">
+          <span class="dot-jade" aria-hidden="true"></span>
+          <span>本机即时计算 · 数据不上传</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Hero 入账卡 -->
+    <section class="card-hero" data-od-id="hero-card">
+      <div class="band band--dark" aria-hidden="true"></div>
+      <div class="body">
+        <div class="hero-status" data-od-id="hero-status">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          <span>入账中…</span>
+        </div>
+        <div class="hero-main" data-od-id="hero-today-amount">
+          <span class="hero-num" id="todayIncome">¥413.78</span>
+        </div>
+        <div class="hero-flow" aria-hidden="true" data-od-id="hero-flow"></div>
+        <div class="hero-rate-label" data-od-id="hero-rate-caption">今日入账 · 每秒 +<span id="rateText">¥0.0255</span></div>
+        <div class="hero-work-label" data-od-id="hero-work-label">今日工作时间</div>
+        <div class="hero-work-time" id="workTime" data-od-id="hero-work-time">4:30:22</div>
+      </div>
+    </section>
+
+    <!-- 3. 明细四宫格 -->
+    <section class="grid" data-od-id="detail-grid">
+      <div class="cell cell--wide" data-od-id="cell-month-income">
+        <div class="k-block">
+          <div class="k">本月入账</div>
+          <div class="note">本月第 11 个工作日计</div>
+        </div>
+        <div class="v v--brass" id="monthIncome">¥7310.38</div>
+      </div>
+      <div class="cell" data-od-id="cell-workdays">
+        <div class="k-block">
+          <div class="k">
+            <span>每月工作日</span>
+            <span class="info-badge" title="法定月计薪天数 (365−104)/12" aria-label="法定月计薪天数">i</span>
+          </div>
+          <div class="note">法定月计薪天数</div>
+        </div>
+        <div class="v">21.75<span class="u">天</span></div>
+      </div>
+      <div class="cell" data-od-id="cell-daily-wage">
+        <div class="k">日薪</div>
+        <div class="v" id="dailyWage">¥689.66</div>
+      </div>
+      <div class="cell" data-od-id="cell-daily-hours">
+        <div class="k">每日工时</div>
+        <div class="v" id="dailyHours">7.5<span class="u">h</span></div>
+      </div>
+      <div class="cell" data-od-id="cell-hourly-wage">
+        <div class="k">时薪</div>
+        <div class="v" id="hourlyWage">¥91.95</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 底注 -->
+  <footer class="footer" data-od-id="footer-note">
+    结果仅供娱乐参考 · 算薪请以实际合同为准
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var WORKDAYS = 21.75;           // 法定月计薪天数 (365−104)/12
+  var NOW_MIN = 15 * 60;          // 口径快照：此刻 15:00（工作日）
+  var FULL_DAYS = 10;             // 本月已过完整工作日（第 11 个工作日）
+  var WORK_SECONDS = 4 * 3600 + 30 * 60 + 22; // 今日工作时间快照 4:30:22（15:00 · 4.5h + 22s）
+  var todayBase = 413.78;         // 今日入账起始快照
+  var amountAnchor = Date.now();  // 金额跳动锚点（改输入时重置）
+  var timeAnchor = Date.now();    // 时间跳动锚点（只设一次）
+  var perSec = 0.0255;
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  function parseHM(v){
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(v).trim());
+    if(!m) return null;
+    var h = +m[1], mi = +m[2];
+    if(h > 47 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+
+  function calcHours(){
+    var a1 = parseHM($('amStart').value), a2 = parseHM($('amEnd').value);
+    var p1 = parseHM($('pmStart').value), p2 = parseHM($('pmEnd').value);
+    if(a1 === null || a2 === null || p1 === null || p2 === null) return null;
+    var am = Math.max(0, a2 - a1), pm = Math.max(0, p2 - p1);
+    return (am + pm) / 60;
+  }
+
+  function fmtMoney(n){
+    return '¥' + n.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  // 整分金额格式化（避免浮点舍入偏差，不加千分位，与视觉稿一致）
+  function fmtCents(c){
+    var whole = Math.floor(c / 100), frac = Math.abs(c % 100);
+    return '¥' + whole + '.' + String(frac).padStart(2, '0');
+  }
+
+  // 今天已工作时长：上午整段 + 下午从 13:30 到此刻 15:00
+  function todayWorkedHours(){
+    var a1 = parseHM($('amStart').value), a2 = parseHM($('amEnd').value);
+    var p1 = parseHM($('pmStart').value), p2 = parseHM($('pmEnd').value);
+    if(a1 === null || a2 === null || p1 === null || p2 === null) return null;
+    var am = Math.max(0, a2 - a1);
+    var pmSpan = Math.max(0, p2 - p1);
+    var pmNow = Math.min(Math.max(0, NOW_MIN - p1), pmSpan);
+    return (am + pmNow) / 60;
+  }
+
+  function fmtHMS(total){
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  // 每秒同频跳动：金额 += perSec（toFixed(2)），时间 +1s
+  function tickToday(){
+    var now = Date.now();
+    var nAmt  = Math.floor((now - amountAnchor) / 1000);
+    var nTime = Math.floor((now - timeAnchor) / 1000);
+    $('todayIncome').textContent = '¥' + (todayBase + nAmt * perSec).toFixed(2);
+    $('workTime').textContent = fmtHMS(WORK_SECONDS + nTime);
+  }
+
+  function recompute(){
+    var salary = parseFloat($('salary').value);
+    if(!isFinite(salary) || salary < 0) salary = 0;
+
+    var hours = calcHours();
+    if(hours === null || hours <= 0) hours = 7.5;
+
+    var daily  = salary / WORKDAYS;          // 日薪
+    var hourly = daily / hours;              // 时薪
+    perSec     = hourly / 3600;              // 每秒
+
+    $('dailyWage').textContent  = fmtMoney(daily);
+    $('hourlyWage').textContent = fmtMoney(hourly);
+    $('dailyHours').innerHTML   = (Math.round(hours * 10) / 10) + '<span class="u">h</span>';
+    $('rateText').textContent   = '¥' + perSec.toFixed(4);
+
+    // 入账指标：今天 = 时薪 × 今天已工作；本月 = 日薪 × 10 个完整工作日 + 今天
+    var todayH = todayWorkedHours();
+    if(todayH === null || todayH <= 0) todayH = 4.5;
+    var hourlyCents = Math.round(hourly * 100);
+    var dailyCents  = Math.round(daily * 100);
+    var todayCents  = Math.round(hourlyCents * todayH);
+    var monthCents  = dailyCents * FULL_DAYS + todayCents;
+    todayBase = todayCents / 100;
+    amountAnchor = Date.now();
+    $('monthIncome').textContent = fmtCents(monthCents);
+    tickToday();
+  }
+
+  ['salary','amStart','amEnd','pmStart','pmEnd'].forEach(function(id){
+    $(id).addEventListener('input', recompute);
+  });
+  // 时间胶囊失焦时格式化为 HH:MM
+  ['amStart','amEnd','pmStart','pmEnd'].forEach(function(id){
+    $(id).addEventListener('blur', function(){
+      var v = this.value.trim();
+      if(/^\d{1,2}$/.test(v)) v = v + ':00';
+      if(/^\d{1,2}:\d{1,2}$/.test(v)){
+        var p = v.split(':');
+        v = String(p[0]).padStart(2,'0') + ':' + String(+p[1]).padStart(2,'0');
+      }
+      this.value = v;
+      recompute();
+    });
+  });
+
+  recompute();
+  setInterval(tickToday, 1000);
+})();
+</script>
+</body>
+</html>
