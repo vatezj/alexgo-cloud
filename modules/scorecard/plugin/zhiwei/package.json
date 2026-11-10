@@ -1,0 +1,23 @@
+{
+  "name": "zhiwei",
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "start": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "麻将选座排盘评分服务（紫微+奇门）",
+  "type": "module",
+  "dependencies": {
+    "@spensercai/qimen-rs": "^0.2.1",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "iztro": "^2.6.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
