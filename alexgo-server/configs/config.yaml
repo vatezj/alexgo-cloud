@@ -56,7 +56,7 @@ fishgame:
   test_login_secret: ""   # test_login 共享密钥（客户端 fishgame/test_secret 对齐）
 
 scorecard:
-  wxacode_env_version: "trial"  # 小程序码 env_version：trial=体验版（默认）/ release=正式版 / develop=开发版；正式发版改 release
+  wxacode_env_version: "release"  # 小程序码 env_version：trial=体验版（默认）/ release=正式版 / develop=开发版；正式发版改 release
 
 storage:
   root: ./data/uploads        # 盘根，驱动构造时 MkdirAll
