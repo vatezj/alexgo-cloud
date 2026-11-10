@@ -3,7 +3,8 @@ import type { CalcRecommendation } from '@/utils/funCompass/zhiwei'
 /**
  * 生辰录入 & 排盘页 pages/fun/compass/bazi（2026-11-06 修订轮）
  *
- * - 表单：年/月/日 + 时间 picker(时:分) + 性别 chip(默认男) + 称呼；数据用途行 = copy LOCAL_ONLY
+ * - 表单：年/月/日/时间 全选择器（修订轮 9：禁自由文本，默认 2006-08-08，
+ *   日选项随年月联动含闰年、越界钳制）+ 性别 chip(默认男) + 称呼；数据用途行 = copy LOCAL_ONLY
  * - CTA「排八字 · 看推荐」→ 后端 zhiwei POST /api/calc（zhiwei.ts）→ top3 推荐列表
  * - 「存入档案」写 fun_compass_archives（schema v2：hour/minute/gender）；query.id 首次 onShow 预填
  * - 无任何本地排盘计算；文案锁定 copy.ts；底部免责 ModDisclaimer
@@ -30,14 +31,31 @@ const toast = useToast()
 const { pageStyle } = useSystemBar()
 const store = useFunCompassArchivesStore()
 
-/* ── 表单状态 ── */
+/* ── 表单状态（修订轮 9：生辰单个 datetime-picker，默认 2006-08-08 14:30） ── */
 
-const yearStr = ref('1996')
-const monthStr = ref('8')
-const dayStr = ref('15')
-const timeStr = ref('14:30')
+/** 生辰唯一数据源（时间戳）；wd-datetime-picker 仅 confirm 时落值 */
+const birthTs = ref(new Date(2006, 7, 8, 14, 30).getTime())
+const showBirth = ref(false)
+const minBirth = new Date(1900, 0, 1).getTime()
+const maxBirth = new Date(2100, 11, 31, 23, 59, 59).getTime()
 const gender = ref<'male' | 'female'>('male')
 const nameStr = ref('')
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** 触发区回显：2006年8月8日 14:30 */
+const birthLabel = computed(() => {
+  const d = new Date(birthTs.value)
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+})
+
+/** 滚筒列文案：2026年 / 8月 / 8日 / 14时 / 30分 */
+function birthFormatter(type: 'year' | 'month' | 'date' | 'hour' | 'minute' | 'second', value: number | string): string {
+  const suffix: Record<string, string> = { year: '年', month: '月', date: '日', hour: '时', minute: '分', second: '秒' }
+  return `${value}${suffix[type] ?? ''}`
+}
 
 const recommendations = ref<CalcRecommendation[] | null>(null)
 const computing = ref(false)
@@ -52,10 +70,6 @@ function readQueryId(): string {
   return str
 }
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0')
-}
-
 onShow(() => {
   if (prefilled)
     return
@@ -67,43 +81,23 @@ onShow(() => {
   if (!archive)
     return
   editId.value = id
-  yearStr.value = String(archive.year)
-  monthStr.value = String(archive.month)
-  dayStr.value = String(archive.day)
-  timeStr.value = `${pad2(archive.hour)}:${pad2(archive.minute)}`
+  birthTs.value = new Date(archive.year, archive.month - 1, archive.day, archive.hour, archive.minute).getTime()
   gender.value = archive.gender
   nameStr.value = archive.name
 })
 
-function onTimeChange(e: { detail: { value: string } }) {
-  const v = e.detail?.value
-  if (typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v))
-    timeStr.value = v
-}
-
 /* ── 校验与排盘 ── */
 
 function parseForm(): { year: number, month: number, day: number, hour: number, minute: number } | null {
-  const year = Number(yearStr.value)
-  const month = Number(monthStr.value)
-  const day = Number(dayStr.value)
-  const [hStr, mStr] = timeStr.value.split(':')
-  const hour = Number(hStr)
-  const minute = Number(mStr)
-  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
-    toast.error({ msg: '年份填 1900–2100 之间' })
-    return null
-  }
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    toast.error({ msg: '月份填 1–12' })
-    return null
-  }
-  if (!Number.isInteger(day) || day < 1 || day > 31) {
-    toast.error({ msg: '日期填 1–31' })
-    return null
-  }
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
-    toast.error({ msg: '时间格式不对' })
+  const d = new Date(birthTs.value)
+  const year = d.getFullYear()
+  const month = d.getMonth() + 1
+  const day = d.getDate()
+  const hour = d.getHours()
+  const minute = d.getMinutes()
+  // datetime-picker min/max 已限 1900–2100，此处仅兜底非法时间戳
+  if (!Number.isFinite(birthTs.value) || year < 1900 || year > 2100) {
+    toast.error({ msg: '生辰选择有误，请重新选择' })
     return null
   }
   return { year, month, day, hour, minute }
@@ -177,51 +171,23 @@ function goBack() {
 
       <view class="fc-field">
         <text class="fc-field-k">
-          年
+          生辰
         </text>
-        <input
-          v-model="yearStr"
-          class="fc-input"
-          type="number"
-          :maxlength="4"
+        <view
+          class="fc-input fc-picker"
+          @click="showBirth = true"
         >
-      </view>
-      <view class="fc-field">
-        <text class="fc-field-k">
-          月
-        </text>
-        <input
-          v-model="monthStr"
-          class="fc-input"
-          type="number"
-          :maxlength="2"
-        >
-      </view>
-      <view class="fc-field">
-        <text class="fc-field-k">
-          日
-        </text>
-        <input
-          v-model="dayStr"
-          class="fc-input"
-          type="number"
-          :maxlength="2"
-        >
-      </view>
-
-      <view class="fc-field">
-        <text class="fc-field-k">
-          时间
-        </text>
-        <picker
-          type="time"
-          :value="timeStr"
-          @change="onTimeChange"
-        >
-          <view class="fc-input fc-picker">
-            {{ timeStr }}
-          </view>
-        </picker>
+          {{ birthLabel }}
+        </view>
+        <wd-datetime-picker
+          v-model="birthTs"
+          v-model:visible="showBirth"
+          type="datetime"
+          title="选择生辰"
+          :min-date="minBirth"
+          :max-date="maxBirth"
+          :formatter="birthFormatter"
+        />
       </view>
 
       <view class="fc-field">

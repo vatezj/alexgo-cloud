@@ -29,6 +29,7 @@ declare module 'vue' {
     ScorecardVoiceToggle: typeof import('./components/scorecard/VoiceToggle.vue')['default']
     WdButton: typeof import('@wot-ui/ui/components/wd-button/wd-button.vue')['default']
     WdConfigProvider: typeof import('@wot-ui/ui/components/wd-config-provider/wd-config-provider.vue')['default']
+    WdDatetimePicker: typeof import('@wot-ui/ui/components/wd-datetime-picker/wd-datetime-picker.vue')['default']
     WdDialog: typeof import('@wot-ui/ui/components/wd-dialog/wd-dialog.vue')['default']
     WdIcon: typeof import('@wot-ui/ui/components/wd-icon/wd-icon.vue')['default']
     WdInput: typeof import('@wot-ui/ui/components/wd-input/wd-input.vue')['default']

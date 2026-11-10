@@ -11,7 +11,7 @@
 
 ## What Changes
 
-- **出生信息录入改为「年月日 + 时间 + 性别」**：替换原 12 时辰 chip（zhiwei 接口以 `birthDate` + `birthHourIndex` + `gender` 为入参；时间 picker 采集时分，前端换算时辰序号）。
+- **出生信息录入改为「年月日 + 时间 + 性别」**：替换原 12 时辰 chip（zhiwei 接口以 `birthDate` + `birthHourIndex` + `gender` 为入参；时间 picker 采集时分，前端换算时辰序号）。**2026-11-10 修订**：年/月/日也全部改选择器（禁自由文本），默认生辰 2006-08-08，日选项随年月联动（含闰年、越界钳制）。
 - **排盘计算移到后端**：前端调用 zhiwei 插件服务 `POST /api/calc`（`modules/scorecard/plugin/zhiwei`，紫微 iztro + 奇门 qimen-rs + 评分引擎，已有 37 项测试全过）；返回 top3 推荐方位（direction/score/reason），**四座高亮按 8→4 聚合**（间向半分归邻座）；删除前端 lunar-javascript 排盘。
 - **首页突出入口**：宿主首页 fan-cta 下方新增醒目入口卡 → `pages/fun/compass/index`（同样受 `fun_compass_enable` 门控）；【我的】折叠组保留为次级入口。
 - **模块整体改为分包**：`pages/fun/compass/*` 六页进 subPackages（root=`pages/fun`），主包只留宿主页与【我的】；路由前缀不变。

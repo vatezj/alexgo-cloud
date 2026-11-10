@@ -61,3 +61,9 @@
 - [x] 8.1 新建 `src/config/tools.ts` 统一配置（读 env + 去尾斜杠 + 本地兜底 + TOOL_ENDPOINTS 汇总，文件头含修改指引）；`zhiwei.ts` 改为消费 `TOOL_ENDPOINTS.zhiweiCalc`
 - [x] 8.2 `.env.production` 修正为 `https://alexcloud.vate.ren`（原 `/zhiwei` 前缀是错的）；staging 同步「域名根」约定；生产 `POST https://alexcloud.vate.ren/api/calc` 实测通过（推荐返回 + 缺参 400）
 - [x] 8.3 lint + type-check + build:h5 + build:mp-weixin 全绿；产物含根域名、无 `zhiwei/api/calc` 错误拼接
+
+## 9. 修订轮（2026-11-10 用户：年月日改选择器 + 默认 2006-08-08）
+
+- [x] 9.1 `bazi.vue` + `simulator.vue`：年/月/日/时间四字段（原 number input + 原生 time picker）**合并为单个「生辰」字段 + wot `wd-datetime-picker`**（type=datetime 五列、min/max 1900–2100、formatter 年月日时分后缀）；唯一数据源 `birthTs` 时间戳，confirm 落值；默认 `2006-08-08 14:30`；档案编辑与「从档案选择」以 `new Date(y,m-1,d,h,min)` 覆盖默认
+- [x] 9.2 `parseForm` 从 `birthTs` 取年月日时分（非法时间戳兜底）；`summaryLine`/`birthLabel` 统一由 birthTs 派生；原 yearOptions/dayOptions/clampDay/onTimeChange 全删
+- [x] 9.3 验证：lint + type-check + build:h5 + build:mp-weixin 全绿；H5 e2e（两页单字段回显 2006年8月8日 14:30 无 input、触发区 276px 撑满、弹层五列+formatter 生效、滚轮确认回写、档案预填 1998-12-31 23:45/女/称呼 覆盖默认）；`openspec validate` 通过
