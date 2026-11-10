@@ -42,7 +42,10 @@ var FxModule = fx.Module("fishgame",
 		func(cfg *config.Config) *service.WechatClient {
 			return service.NewWechatClient(cfg.Fishgame.Wechat.Appid, cfg.Fishgame.Wechat.Secret)
 		},
-		service.NewAuthService,
+		// AuthService：测试登录双闸（名单+密钥）从 cfg.Fishgame 注入。
+		func(cfg *config.Config, wechat *service.WechatClient, players repository.PlayerRepository, sessionRepo repository.SessionRepository) *service.AuthService {
+			return service.NewAuthService(wechat, players, sessionRepo, cfg.Fishgame.TestAccounts, cfg.Fishgame.TestLoginSecret)
+		},
 		service.NewDailyService,
 		service.NewTrackService,
 		service.NewDexService,
@@ -139,8 +142,10 @@ func (m *fishgameModule) RegisterRoutes(r *gin.RouterGroup) {
 	}
 	// pinTidZero：游戏段全量钉 tid=0（含 login/公开读），防 X-Tenant-ID 扰动。
 	v1 := r.Group("/v1", pinTidZero)
-	// login 不挂中间件（自鉴权入口）。
+	// login / 测试登录不挂中间件（自鉴权入口；test_* 仅编辑器联调，名单+密钥双闸）。
 	v1.POST("/auth/login", m.authCtrl.Login)
+	v1.POST("/auth/test_login", m.authCtrl.TestLogin)
+	v1.GET("/auth/test_accounts", m.authCtrl.TestAccounts)
 	// Task 6-8 业务路由挂 v1Auth（X-Session）。
 	v1Auth := v1.Group("", m.sessionMW)
 	v1Auth.GET("/config/daily", m.dailyCtrl.DailyConfig)

@@ -52,6 +52,8 @@ fishgame:
     appid: ""             # 小游戏 appid（联调时填）
     secret: ""            # 小游戏 secret
   public_base_url: ""     # 空 = 由请求 Host + https 拼接（share/image 的 url）
+  test_accounts: [alice, bob]   # 编辑器测试账号名单（名单即账号，test_login 首登自动建号）
+  test_login_secret: ""   # test_login 共享密钥（客户端 fishgame/test_secret 对齐）
 
 scorecard:
   wxacode_env_version: "trial"  # 小程序码 env_version：trial=体验版（默认）/ release=正式版 / develop=开发版；正式发版改 release

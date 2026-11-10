@@ -134,6 +134,10 @@ type Config struct {
 		} `mapstructure:"wechat"`
 		// PublicBaseURL 分享图绝对 URL 前缀；空 = 由请求 Host + https 拼接。
 		PublicBaseURL string `mapstructure:"public_base_url"`
+		// TestAccounts 编辑器测试账号名单（名单即账号，test_login 首登自动建号）。
+		TestAccounts []string `mapstructure:"test_accounts"`
+		// TestLoginSecret test_login 共享密钥；空 = 只验名单（仅限本地开发，线上必配）。
+		TestLoginSecret string `mapstructure:"test_login_secret"`
 	} `mapstructure:"fishgame"`
 
 	// Scorecard：scorecard《打牌记账》模块配置。

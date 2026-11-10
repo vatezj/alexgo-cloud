@@ -64,7 +64,7 @@ func newModuleTestRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	m := NewModule(ModuleParams{
 		Cfg: cfg,
 		AuthCtrl: app.NewAuthController(
-			service.NewAuthService(service.NewWechatClient("", ""), players, sessions)),
+			service.NewAuthService(service.NewWechatClient("", ""), players, sessions, []string{"alice"}, "s3cret")),
 		DailyCtrl:   app.NewDailyController(service.NewDailyService(configs, fishes, signs)),
 		TrackCtrl:   app.NewTrackController(service.NewTrackService(events, fishes, dex)),
 		DexCtrl:     app.NewDexController(service.NewDexService(fishes, dex)),
@@ -95,6 +95,37 @@ func TestRegisterRoutes_LoginReachableWithoutSession(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "unauthorized") {
 		t.Fatalf("login 不应被 session 中间件拦截: %s", w.Body.String())
+	}
+}
+
+// TestRegisterRoutes_TestLoginReachableWithoutSession 测试登录/名单挂 session 中间件之外：
+// 空 body → 400 invalid_body；对密钥+名单内 → 200 session；名单外 → 401。
+func TestRegisterRoutes_TestLoginReachableWithoutSession(t *testing.T) {
+	r, _ := newModuleTestRouter(t)
+	post := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/test_login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		return w
+	}
+	w := post("{}")
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "invalid_body") {
+		t.Fatalf("test_login 空 body 应 400 invalid_body, got %d %s", w.Code, w.Body.String())
+	}
+	w = post(`{"account":"alice","secret":"s3cret"}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"session"`) {
+		t.Fatalf("名单内+对密钥应 200 session, got %d %s", w.Code, w.Body.String())
+	}
+	w = post(`{"account":"mallory","secret":"s3cret"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("名单外应 401, got %d %s", w.Code, w.Body.String())
+	}
+	// 名单拉取免 session
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/api/v1/auth/test_accounts", nil))
+	if w2.Code != http.StatusOK || !strings.Contains(w2.Body.String(), `"alice"`) {
+		t.Fatalf("test_accounts 应 200 含 alice, got %d %s", w2.Code, w2.Body.String())
 	}
 }
 
