@@ -36,14 +36,15 @@ export function scoreSeats(qimenPalaces, ziweiPalaces) {
     const dir = QIMEN_PALACE_TO_DIRECTION[shengmen.palaceIndex];
     if (dir && scores[dir]) {
       scores[dir].score += 50;
-      scores[dir].reasons.push('奇门生门落此方，主生机与财气');
+      // 上架口径：reason 仅中性评分说明（fun-compass-review-copy D2），分值逻辑不动
+      scores[dir].reasons.push('传统方位模型在此向给出正向评分');
 
       const palaceName = shengmen.palaceName;
       const wangShuai = palaceName ? SHENGMEN_WANG_SHUAI[palaceName] : undefined;
       if (wangShuai !== undefined) {
         scores[dir].score += wangShuai;
-        if (wangShuai > 0) scores[dir].reasons.push(`生门在${palaceName}旺相`);
-        if (wangShuai < 0) scores[dir].reasons.push(`生门在${palaceName}衰囚`);
+        if (wangShuai > 0) scores[dir].reasons.push('该向综合权重上调');
+        if (wangShuai < 0) scores[dir].reasons.push('该向综合权重下调');
       }
     }
   }
@@ -58,15 +59,11 @@ export function scoreSeats(qimenPalaces, ziweiPalaces) {
 
     if (lucky.length >= 2) {
       scores[dir].score += 25;
-      scores[dir].reasons.push(
-        `紫微${zp.name}吉星聚集（${lucky.map((s) => s.name).join('、')}）`,
-      );
+      scores[dir].reasons.push('辅助因子聚集，得分上调');
     }
     if (malefic.length >= 2) {
       scores[dir].score -= 15;
-      scores[dir].reasons.push(
-        `${zp.name}煞星较多（${malefic.map((s) => s.name).join('、')}），建议避开`,
-      );
+      scores[dir].reasons.push('辅助因子不利，得分下调，建议优先其他向');
     }
   }
 
@@ -74,7 +71,7 @@ export function scoreSeats(qimenPalaces, ziweiPalaces) {
     .map(([direction, v]) => ({
       direction,
       score: v.score,
-      reason: v.reasons.length ? v.reasons.join('；') : '无显著吉凶信号',
+      reason: v.reasons.length ? v.reasons.join('；') : '无显著方位信号',
     }))
     .filter((r) => r.score > 0) // 只返回正分方位，避免推荐“煞方”
     .sort((a, b) => b.score - a.score)

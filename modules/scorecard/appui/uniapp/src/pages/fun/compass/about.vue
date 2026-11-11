@@ -42,7 +42,7 @@ async function onClear() {
     try {
       await dialog.confirm({
         title: '清除本工具全部档案',
-        msg: '只清空趣味方位工具的生辰档案，不会影响您的账本记录，确认清除？',
+        msg: '只清空趣味方位工具的出生档案，不会影响您的账本记录，确认清除？',
         confirmButtonText: '确认清除',
         cancelButtonText: '取消',
       })
@@ -98,7 +98,7 @@ function goBack() {
       <view class="fc-priv">
         <view class="fc-priv-dot" />
         <text class="fc-priv-t">
-          生辰信息仅存本机，不上传
+          出生信息仅存本机，不上传
         </text>
       </view>
     </view>

@@ -722,7 +722,7 @@ function goSalary() {
           趣味方位 · 罗盘选座
         </text>
         <text class="funentry-s">
-          生辰 · 罗盘 · 选座小彩蛋
+          出生时间 · 罗盘 · 选座小彩蛋
         </text>
       </view>
       <wd-icon

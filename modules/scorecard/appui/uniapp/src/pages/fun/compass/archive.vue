@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FunCompassArchive } from '@/store/funCompass/archives'
 /**
- * 生辰档案列表页 pages/fun/compass/archive（2026-11-06 修订轮）
+ * 出生档案列表页 pages/fun/compass/archive（2026-11-06 修订轮）
  *
  * - 列表来自 fun_compass_archives store（本机持久化，只读写本键；schema v2）
  * - 每卡：称呼 + 生辰行（年月日 时间 · 性别）+ 编辑/删除（五行标签随本地排盘废止）
@@ -63,7 +63,7 @@ async function onDelete(a: FunCompassArchive) {
     try {
       await dialog.confirm({
         title: '删除档案',
-        msg: `删除「${a.name || '未命名'}」的生辰档案？只删本机数据，不影响账本记录。`,
+        msg: `删除「${a.name || '未命名'}」的出生档案？只删本机数据，不影响账本记录。`,
         confirmButtonText: '确认删除',
         cancelButtonText: '再想想',
       })
@@ -86,7 +86,7 @@ async function onDelete(a: FunCompassArchive) {
     :style="pageStyle"
   >
     <ModNav
-      title="生辰档案"
+      title="出生档案"
       @back="goBack"
     />
 

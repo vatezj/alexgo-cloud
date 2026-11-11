@@ -139,7 +139,7 @@ function onExplain() {
   dialog
     .confirm({
       title: '方位说明',
-      msg: '东=木 · 南=火 · 西=金 · 北=水。方位读数来自设备磁力计（不获取定位），民俗趣味参考，和记账理财无关。',
+      msg: '东向 · 南向 · 西向 · 北向。方位读数来自设备磁力计（不获取定位），民俗趣味参考，和记账理财无关。',
       confirmButtonText: '知道了',
       cancelButtonText: '',
     })
@@ -347,7 +347,7 @@ const ticks = Array.from({ length: 36 }, (_, i) => ({
     <!-- 四方位映射条（骨白） -->
     <view class="fc-map-bar">
       <view
-        v-for="m in ['东=木', '南=火', '西=金', '北=水']"
+        v-for="m in ['东向', '南向', '西向', '北向']"
         :key="m"
         class="fc-map-cell"
       >

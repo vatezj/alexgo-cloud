@@ -254,7 +254,7 @@ function goSalary() {
             趣味方位参考
           </text>
           <text class="r-s">
-            排八字 · 看罗盘 · 求个座
+            测方位 · 看罗盘 · 求个座
           </text>
         </view>
         <text class="badge-new">

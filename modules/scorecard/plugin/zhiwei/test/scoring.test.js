@@ -29,20 +29,20 @@ function ziweiPalace(name, earthlyBranch, starNames) {
   };
 }
 
-test('生门落艮宫：+50 且旺相 +15，得 65 分并带两条理由', () => {
+test('生门落艮宫：+50 且旺衰 +15，得 65 分并带两条理由', () => {
   const r = scoreSeats(qimenFixture(8), []);
   const east = r.find((x) => x.direction === '东北');
   assert.ok(east, '东北方向应存在');
   assert.equal(east.score, 65);
-  assert.match(east.reason, /生门落此方/);
-  assert.match(east.reason, /生门在艮宫旺相/);
+  assert.match(east.reason, /正向评分/);
+  assert.match(east.reason, /综合权重上调/);
 });
 
-test('生门落坎宫（囚）：+50-5=45，理由含衰囚', () => {
+test('生门落坎宫（囚）：+50-5=45，理由含权重下调', () => {
   const r = scoreSeats(qimenFixture(1), []);
   const north = r.find((x) => x.direction === '北');
   assert.equal(north.score, 45);
-  assert.match(north.reason, /生门在坎宫衰囚/);
+  assert.match(north.reason, /综合权重下调/);
 });
 
 test('生门落震宫（死）：+50-10=40', () => {
@@ -56,18 +56,18 @@ test('无生门时所有方向 0 分，返回空数组', () => {
   assert.deepEqual(r, []);
 });
 
-test('紫微财帛宫吉星≥2：+25 并列出吉星名', () => {
+test('目标宫吉星≥2：+25 并给出中性上调理由', () => {
   const ziwei = [
     ziweiPalace('财帛宫', '寅', ['禄存', '天马', '擎羊']),
   ];
   const r = scoreSeats(qimenFixture(null), ziwei);
   const east = r.find((x) => x.direction === '东北');
   assert.equal(east.score, 25);
-  assert.match(east.reason, /财帛宫吉星聚集/);
-  assert.match(east.reason, /禄存/);
+  assert.match(east.reason, /辅助因子聚集/);
+  assert.match(east.reason, /得分上调/);
 });
 
-test('紫微命宫煞星≥2：-15 并提示避开', () => {
+test('目标宫煞星≥2：-15 并提示优先其他向', () => {
   const ziwei = [
     ziweiPalace('命宫', '午', ['擎羊', '陀罗', '左辅']),
   ];
@@ -76,7 +76,7 @@ test('紫微命宫煞星≥2：-15 并提示避开', () => {
   const withSheng = scoreSeats(qimenFixture(9), ziwei);
   const south = withSheng.find((x) => x.direction === '南');
   assert.equal(south.score, 50 + 8 - 15);
-  assert.match(south.reason, /煞星较多/);
+  assert.match(south.reason, /辅助因子不利/);
   assert.equal(r.length, 0, '纯负分方向不应返回');
 });
 
@@ -112,10 +112,10 @@ test('结果按分数降序、最多 3 条、只含正分', () => {
   assert.equal(r[1].score, 25);
 });
 
-test('生门落乾宫（休，权重 0）：仅 +50 生门主理由', () => {
+test('生门落乾宫（休，权重 0）：仅 +50 主理由', () => {
   const r = scoreSeats(qimenFixture(6), []);
   const northwest = r.find((x) => x.direction === '西北');
   assert.equal(northwest.score, 50);
-  assert.match(northwest.reason, /生门落此方/);
-  assert.ok(!/旺相|衰囚/.test(northwest.reason), '权重 0 不应有旺衰理由');
+  assert.match(northwest.reason, /正向评分/);
+  assert.ok(!/权重上调|权重下调/.test(northwest.reason), '权重 0 不应有旺衰理由');
 });

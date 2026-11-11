@@ -3,7 +3,7 @@
  * 趣味方位参考 · 模块首页（设计 preview/index-about.html 屏 01；spec 模块首页结构）
  *
  * - 唯一入口来自【我的】折叠组；返回 → 回【我的】（栈深 1 兜底 replaceAll）
- * - 三张骨白入口卡：生辰档案→bazi / 实时罗盘→compass / 座位模拟器→simulator
+ * - 三张骨白入口卡：出生档案→bazi / 实时罗盘→compass / 座位模拟器→simulator
  * - 前置提示与脚注为锁定文案（copy.ts 逐字）；底部免责 ModDisclaimer
  * - 无 TabBar；语义类 fc- 前缀
  */
@@ -81,10 +81,10 @@ function goAbout() {
       </view>
       <view class="fc-card-main">
         <text class="fc-card-t">
-          生辰档案
+          出生档案
         </text>
         <text class="fc-card-s">
-          本地生辰，算五行
+          本地出生时间，测方位
         </text>
       </view>
       <wd-icon
@@ -134,7 +134,7 @@ function goAbout() {
           座位模拟器
         </text>
         <text class="fc-card-s">
-          排八字，求个座
+          测个方位，求个座
         </text>
       </view>
       <wd-icon

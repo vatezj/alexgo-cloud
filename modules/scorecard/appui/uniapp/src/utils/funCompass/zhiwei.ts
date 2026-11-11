@@ -82,17 +82,17 @@ export async function calcRecommend(input: CalcInput): Promise<CalcResult> {
       header: { 'Content-Type': 'application/json' },
       timeout: 10000,
       success: resolve,
-      fail: err => reject(new Error(err.errMsg || '排盘请求失败')),
+      fail: err => reject(new Error(err.errMsg || '测算请求失败')),
     })
   })
   if (res.statusCode < 200 || res.statusCode >= 300) {
     const msg = res.data as { error?: string } | string | undefined
     const text = typeof msg === 'string' ? msg : msg?.error
-    throw new Error(text || `排盘服务异常(${res.statusCode})`)
+    throw new Error(text || `测算服务异常(${res.statusCode})`)
   }
   const data = res.data as CalcResult
   if (!data || !Array.isArray(data.recommendations))
-    throw new Error('排盘服务返回格式异常')
+    throw new Error('测算服务返回格式异常')
   return data
 }
 

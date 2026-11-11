@@ -86,7 +86,7 @@ function parseForm(): { year: number, month: number, day: number, hour: number, 
   const minute = d.getMinutes()
   // datetime-picker min/max 已限 1900–2100，此处仅兜底非法时间戳
   if (!Number.isFinite(birthTs.value) || year < 1900 || year > 2100) {
-    toast.error({ msg: '生辰选择有误，请重新选择' })
+    toast.error({ msg: '出生时间选择有误，请重新选择' })
     return null
   }
   return { year, month, day, hour, minute }
@@ -115,7 +115,7 @@ async function onCompute() {
       toast.info({ msg: '本次无显著方位，随缘落座' })
   }
   catch (err) {
-    toast.error({ msg: err instanceof Error ? err.message : '排盘失败，请重试' })
+    toast.error({ msg: err instanceof Error ? err.message : '测算失败，请重试' })
   }
   finally {
     computing.value = false
@@ -188,7 +188,7 @@ const detailReasons = computed(() => agg.value.reasons)
 function onPickFromArchives() {
   const list = archiveStore.sorted
   if (list.length === 0) {
-    toast.error({ msg: '还没有档案，先去排盘页存一份' })
+    toast.error({ msg: '还没有档案，先去测算页存一份' })
     return
   }
   uni.showActionSheet({
@@ -256,7 +256,7 @@ function goBack() {
     <template v-if="phase === 'form'">
       <view class="fc-form-card">
         <text class="fc-form-t">
-          填生辰，排个座
+          填出生时间，测个座
         </text>
         <view class="fc-priv">
           <view class="fc-priv-dot" />
@@ -267,7 +267,7 @@ function goBack() {
 
         <view class="fc-field">
           <text class="fc-field-k">
-            生辰
+            出生时间
           </text>
           <view
             class="fc-input fc-picker"
@@ -279,7 +279,7 @@ function goBack() {
             v-model="birthTs"
             v-model:visible="showBirth"
             type="datetime"
-            title="选择生辰"
+            title="选择出生时间"
             :min-date="minBirth"
             :max-date="maxBirth"
             :formatter="birthFormatter"
@@ -313,7 +313,7 @@ function goBack() {
           @click="onPickFromArchives"
         >
           <text class="fc-from-arch-t">
-            从生辰档案选择
+            从出生档案选择
           </text>
           <wd-icon
             css-icon
@@ -329,7 +329,7 @@ function goBack() {
           :class="{ disabled: computing }"
           @click="onCompute"
         >
-          {{ computing ? '排盘中…' : '排八字 · 求个座' }}
+          {{ computing ? '计算中…' : '试试方位 · 求个座' }}
         </view>
       </view>
     </template>
@@ -494,7 +494,7 @@ function goBack() {
           :class="{ disabled: computing }"
           @click="onRefresh"
         >
-          {{ computing ? '排盘中…' : '换个推荐' }}
+          {{ computing ? '计算中…' : '换个推荐' }}
         </view>
         <view
           class="fc-btn ghost"

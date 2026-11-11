@@ -5,7 +5,7 @@ import type { CalcRecommendation } from '@/utils/funCompass/zhiwei'
  *
  * - 表单：年/月/日/时间 全选择器（修订轮 9：禁自由文本，默认 2006-08-08，
  *   日选项随年月联动含闰年、越界钳制）+ 性别 chip(默认男) + 称呼；数据用途行 = copy LOCAL_ONLY
- * - CTA「排八字 · 看推荐」→ 后端 zhiwei POST /api/calc（zhiwei.ts）→ top3 推荐列表
+ * - CTA「测个方位 · 看推荐」→ 后端 zhiwei POST /api/calc（zhiwei.ts）→ top3 推荐列表
  * - 「存入档案」写 fun_compass_archives（schema v2：hour/minute/gender）；query.id 首次 onShow 预填
  * - 无任何本地排盘计算；文案锁定 copy.ts；底部免责 ModDisclaimer
  */
@@ -97,7 +97,7 @@ function parseForm(): { year: number, month: number, day: number, hour: number, 
   const minute = d.getMinutes()
   // datetime-picker min/max 已限 1900–2100，此处仅兜底非法时间戳
   if (!Number.isFinite(birthTs.value) || year < 1900 || year > 2100) {
-    toast.error({ msg: '生辰选择有误，请重新选择' })
+    toast.error({ msg: '出生时间选择有误，请重新选择' })
     return null
   }
   return { year, month, day, hour, minute }
@@ -115,7 +115,7 @@ async function onCompute() {
       toast.info({ msg: '本次无显著方位，随缘落座' })
   }
   catch (err) {
-    toast.error({ msg: err instanceof Error ? err.message : '排盘失败，请重试' })
+    toast.error({ msg: err instanceof Error ? err.message : '测算失败，请重试' })
   }
   finally {
     computing.value = false
@@ -153,14 +153,14 @@ function goBack() {
     :style="pageStyle"
   >
     <ModNav
-      title="生辰排盘"
+      title="趣味方位"
       @back="goBack"
     />
 
     <!-- 生辰表单卡 -->
     <view class="fc-form-card">
       <text class="fc-form-t">
-        填生辰，排个盘
+        填出生时间，测个方位
       </text>
       <view class="fc-priv">
         <view class="fc-priv-dot" />
@@ -171,7 +171,7 @@ function goBack() {
 
       <view class="fc-field">
         <text class="fc-field-k">
-          生辰
+          出生时间
         </text>
         <view
           class="fc-input fc-picker"
@@ -183,7 +183,7 @@ function goBack() {
           v-model="birthTs"
           v-model:visible="showBirth"
           type="datetime"
-          title="选择生辰"
+          title="选择出生时间"
           :min-date="minBirth"
           :max-date="maxBirth"
           :formatter="birthFormatter"
@@ -281,7 +281,7 @@ function goBack() {
         :class="{ disabled: computing }"
         @click="onCompute"
       >
-        {{ computing ? '排盘中…' : '排八字 · 看推荐' }}
+        {{ computing ? '计算中…' : '测个方位 · 看推荐' }}
       </view>
       <view
         class="fc-btn ghost"
