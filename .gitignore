@@ -78,3 +78,6 @@ datalog
 
 # Playwright MCP 会话快照
 .playwright-mcp/
+
+# Redis 本地落盘
+dump.rdb
