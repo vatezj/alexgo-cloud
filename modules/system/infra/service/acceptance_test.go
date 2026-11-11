@@ -123,10 +123,10 @@ func TestM3_Acceptance_PreviewDownload(t *testing.T) {
 	}
 	var paths []string
 	for _, f := range files {
-		// M4 起 preview 含 front 产物（apps/web-antd/ 前缀），server 仍落 modules/infra/。
+		// M4 起 preview 含 front 产物（frontend/admin/apps/web-antd/ 前缀），server 仍落 modules/infra/。
 		if !strings.HasPrefix(f.Path, "modules/infra/") &&
-			!strings.HasPrefix(f.Path, "apps/web-antd/") {
-			t.Errorf("path=%q, want modules/infra/ 或 apps/web-antd/ 前缀", f.Path)
+			!strings.HasPrefix(f.Path, "frontend/admin/apps/web-antd/") {
+			t.Errorf("path=%q, want modules/infra/ 或 frontend/admin/apps/web-antd/ 前缀", f.Path)
 		}
 		if len(f.Content) == 0 {
 			t.Errorf("%s content 为空", f.Path)

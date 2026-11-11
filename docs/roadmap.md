@@ -64,5 +64,5 @@
 ## 执行约定
 
 - **顺序**：P0 按 1→2→3 严格推进；P0 清完再进 P1（P1 内五项无依赖，可任选）；P2 按需。
-- **流程**：每项先写实现计划（`docs/superpowers/plans/`）→ 执行 → 测试绿（`CGO_ENABLED=0 go test ./...` + `pnpm run typecheck`）→ 单独提交落 main。
+- **流程**：每项先写实现计划（`docs/superpowers/plans/`）→ 执行 → 测试绿（`CGO_ENABLED=0 go test ./...` + `cd frontend/admin && pnpm run typecheck`）→ 单独提交落 main。
 - **本文档**：每完成一项更新状态列与提交号；新发现的缺口追加到对应层，不在会话中散失。

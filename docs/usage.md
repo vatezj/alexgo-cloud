@@ -29,7 +29,7 @@
 
 ### 1.1 界面操作
 
-入口：管理后台 **系统管理 → 菜单管理**（`apps/web-antd/src/views/system/SystemMenusPage.vue`）。
+入口：管理后台 **系统管理 → 菜单管理**（`frontend/admin/apps/web-antd/src/views/system/SystemMenusPage.vue`）。
 
 - 表格为**树形表**（按 `parent_id` 转树，默认全部展开，点名称列箭头折叠），一次性加载全量菜单，不分页。
 - **新建**：右上「新建」打开弹窗，填写名称/类型/路径/组件/权限码/图标/排序/状态。
@@ -57,7 +57,7 @@
 | PUT | `/api/admin/system/menus/:id` | 编辑 |
 | DELETE | `/api/admin/system/menus/:id` | 删除 |
 
-编辑/新建载荷（`MenuPayload`，见 `apps/web-antd/src/api/admin.ts`）：
+编辑/新建载荷（`MenuPayload`，见 `frontend/admin/apps/web-antd/src/api/admin.ts`）：
 
 ```json
 {
@@ -237,10 +237,10 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 
 | 模板 | 产物（`{module}` / `{business}` 为模块名与表的业务名） |
 | --- | --- |
-| `types.ts` | `apps/web-antd/src/api/{module}/{business}/types.ts` — 实体类型 |
+| `types.ts` | `frontend/admin/apps/web-antd/src/api/{module}/{business}/types.ts` — 实体类型 |
 | `api.ts` | `.../api.ts` — CRUD 封装 + `matchQuery` 客户端过滤 + `queryOps` |
 | `index.ts` | `.../index.ts` — 桶导出 |
-| `list.vue` | `apps/web-antd/src/views/{module}/{business}/list.vue` — vxe-grid 列表页 |
+| `list.vue` | `frontend/admin/apps/web-antd/src/views/{module}/{business}/list.vue` — vxe-grid 列表页 |
 | `form.vue` | `.../form.vue` — 新建/编辑弹窗 |
 | `drawer.vue` | `.../drawer.vue` — 详情抽屉 |
 | `api.test.ts` | `.../__tests__/{business}.test.ts` — vitest 表无关断言 |
@@ -252,7 +252,7 @@ go run ./tools/codegen -module=order -import        # -tables 留空 = schema �
 - **权限**：列表页按钮挂 `v-access:code="['{module}:{business}:*']"`。需要在菜单管理建菜单
   （权限串 `{module}:{business}:*`）并绑定角色；`permissionRoutes` 需有对应前缀 → 路由条目，
   否则接口 403。前端 `accessCodes` 是登录时缓存的，改权限后要**重新登录**按钮才会出现。
-- **运行测试**：`pnpm --filter @vben/web-antd test`（vitest，node 环境，跑 `src/**/*.test.ts`）。
+- **运行测试**：`cd frontend/admin && pnpm --filter @vben/web-antd test`（vitest，node 环境，跑 `src/**/*.test.ts`）。
 - **本地验收链路**：生成 → 接线 module.go 路由与 `permissionRoutes` → 建菜单绑角色 → 重登 →
   页面 CRUD 全链路（E2E 用例即按此执行）。
 
@@ -333,7 +333,7 @@ controller 一次性返回全量行，查询表单提交值经 `matchQuery` 客�
 
 ### 3.3 公告附件闭环（前端示例）
 
-`apps/web-antd/src/utils/notice-attachments.ts`：上传恒 `public:true + bizType:'notice'`，
+`frontend/admin/apps/web-antd/src/utils/notice-attachments.ts`：上传恒 `public:true + bizType:'notice'`，
 把返回的 `{id,name,size,url}` 序列化成 JSON 数组存进 `system_notices.attachments`
 （varchar 4096，后端原样存取不解析）；展示时按 `url` 直接走公开读端点。
 
@@ -362,8 +362,8 @@ curl -X POST http://localhost:8080/api/admin/infra/file/upload \
 
 响应为**下载流**（豁免信封）：`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 + `Content-Disposition: attachment`（RFC5987 文件名）。前端走 `requestClient.download`
-（`exportUsers` / `exportOrders`，见 `apps/web-antd/src/api/admin.ts`），
-Blob 错误体会按信封解 `msg` 弹 toast（`apps/web-antd/src/api/blob-error.ts`）；
+（`exportUsers` / `exportOrders`，见 `frontend/admin/apps/web-antd/src/api/admin.ts`），
+Blob 错误体会按信封解 `msg` 弹 toast（`frontend/admin/apps/web-antd/src/api/blob-error.ts`）；
 member 导出端点暂无前端按钮（后端 curl 可用）。
 
 ```bash

@@ -9,6 +9,9 @@ import (
 	"alexGo-cloud/pkg/codegen/model"
 )
 
+// WebAntdRoot 相对仓库根（go.mod 所在）的管理后台前端根路径。
+const WebAntdRoot = "frontend/admin/apps/web-antd"
+
 // serverSingleTemplates：单表后端模板族。key=embed 相对路径（templates/ 之后），value=输出路径模式。
 var serverSingleTemplates = map[string]string{
 	"server/go/single/model.go.tmpl":            "modules/{module}/model/{snake}.go",
@@ -68,8 +71,8 @@ func ServerTreeTemplatePattern(name string) string {
 // 完全相同——按输出模式**覆盖**（非追加），族产物恒 14。
 // ParseFS 缺文件即整族报错，登记与文件必须同笔落地。
 var frontTreeTemplates = map[string]string{
-	"front/vben5_antd/tree/list.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/list.vue",
-	"front/vben5_antd/tree/form.vue.tmpl": "apps/web-antd/src/views/{module}/{business}/form.vue",
+	"front/vben5_antd/tree/list.vue.tmpl": WebAntdRoot + "/src/views/{module}/{business}/list.vue",
+	"front/vben5_antd/tree/form.vue.tmpl": WebAntdRoot + "/src/views/{module}/{business}/form.vue",
 }
 
 // FrontTreeTemplateNames 返回排序后的树表前端模板名列表（确定性）。
@@ -89,13 +92,13 @@ func FrontTreeTemplatePattern(name string) string {
 // frontSingleTemplates：vben5_antd 单表前端模板族（spec §3）。
 // 按任务渐进登记：只列已存在的模板文件（ParseFS 缺文件即整族报错）。
 var frontSingleTemplates = map[string]string{
-	"front/vben5_antd/single/types.ts.tmpl":    "apps/web-antd/src/api/{module}/{business}/types.ts",
-	"front/vben5_antd/single/api.ts.tmpl":      "apps/web-antd/src/api/{module}/{business}/api.ts",
-	"front/vben5_antd/single/index.ts.tmpl":    "apps/web-antd/src/api/{module}/{business}/index.ts",
-	"front/vben5_antd/single/list.vue.tmpl":    "apps/web-antd/src/views/{module}/{business}/list.vue",
-	"front/vben5_antd/single/form.vue.tmpl":    "apps/web-antd/src/views/{module}/{business}/form.vue",
-	"front/vben5_antd/single/drawer.vue.tmpl":  "apps/web-antd/src/views/{module}/{business}/drawer.vue",
-	"front/vben5_antd/single/api.test.ts.tmpl": "apps/web-antd/src/api/{module}/{business}/__tests__/{business}.test.ts",
+	"front/vben5_antd/single/types.ts.tmpl":    WebAntdRoot + "/src/api/{module}/{business}/types.ts",
+	"front/vben5_antd/single/api.ts.tmpl":      WebAntdRoot + "/src/api/{module}/{business}/api.ts",
+	"front/vben5_antd/single/index.ts.tmpl":    WebAntdRoot + "/src/api/{module}/{business}/index.ts",
+	"front/vben5_antd/single/list.vue.tmpl":    WebAntdRoot + "/src/views/{module}/{business}/list.vue",
+	"front/vben5_antd/single/form.vue.tmpl":    WebAntdRoot + "/src/views/{module}/{business}/form.vue",
+	"front/vben5_antd/single/drawer.vue.tmpl":  WebAntdRoot + "/src/views/{module}/{business}/drawer.vue",
+	"front/vben5_antd/single/api.test.ts.tmpl": WebAntdRoot + "/src/api/{module}/{business}/__tests__/{business}.test.ts",
 }
 
 // FrontSingleTemplateNames 返回排序后的前端模板名列表（确定性）。

@@ -157,7 +157,7 @@ func TestApply_RollbackOnFailure(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(o.Root, "modules/demo/module.go")); !os.IsNotExist(err) {
 		t.Error("回滚应删掉先前已建文件")
 	}
-	if _, err := os.Stat(filepath.Join(o.Root, "apps/web-antd/src/api/demo/product/types.ts")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(o.Root, "frontend/admin/apps/web-antd/src/api/demo/product/types.ts")); !os.IsNotExist(err) {
 		t.Error("回滚应删掉 apps 新建文件")
 	}
 	// 空目录也被清掉（pruneEmptyDirs），modules/demo 整树不留残渣
@@ -179,7 +179,7 @@ func TestRun_SkipFrontend(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range cs.Creates {
-		if strings.HasPrefix(c.Path, "apps/") {
+		if strings.HasPrefix(c.Path, "frontend/admin/apps/") {
 			t.Errorf("SkipFrontend 不应新建 %s", c.Path)
 		}
 		if strings.Contains(c.Path, "_menus") {

@@ -56,8 +56,8 @@ func TestEntityFiles(t *testing.T) {
 		"modules/demo/controller/admin/category.go",
 		"modules/demo/controller/app/category.go",
 		"modules/demo/module_register_category.go",
-		"apps/web-antd/src/api/demo/category/types.ts",
-		"apps/web-antd/src/views/demo/category/list.vue",
+		"frontend/admin/apps/web-antd/src/api/demo/category/types.ts",
+		"frontend/admin/apps/web-antd/src/views/demo/category/list.vue",
 	} {
 		if !byPath[want] {
 			t.Errorf("missing %s", want)

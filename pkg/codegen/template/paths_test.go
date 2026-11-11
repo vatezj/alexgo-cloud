@@ -77,8 +77,8 @@ func TestServerTreePaths(t *testing.T) {
 func TestFrontTreePaths(t *testing.T) {
 	b := template.NewBind(fixtureTable())
 	want := map[string]string{
-		"list.vue.tmpl": "apps/web-antd/src/views/order/order_item/list.vue",
-		"form.vue.tmpl": "apps/web-antd/src/views/order/order_item/form.vue",
+		"list.vue.tmpl": "frontend/admin/apps/web-antd/src/views/order/order_item/list.vue",
+		"form.vue.tmpl": "frontend/admin/apps/web-antd/src/views/order/order_item/form.vue",
 	}
 	singleByBase := map[string]string{}
 	for _, n := range template.FrontSingleTemplateNames() {
@@ -104,13 +104,13 @@ func TestFrontTreePaths(t *testing.T) {
 func TestFrontSinglePaths(t *testing.T) {
 	b := template.NewBind(fixtureTable())
 	want := map[string]string{
-		"types.ts.tmpl":    "apps/web-antd/src/api/order/order_item/types.ts",
-		"api.ts.tmpl":      "apps/web-antd/src/api/order/order_item/api.ts",
-		"index.ts.tmpl":    "apps/web-antd/src/api/order/order_item/index.ts",
-		"list.vue.tmpl":    "apps/web-antd/src/views/order/order_item/list.vue",
-		"form.vue.tmpl":    "apps/web-antd/src/views/order/order_item/form.vue",
-		"drawer.vue.tmpl":  "apps/web-antd/src/views/order/order_item/drawer.vue",
-		"api.test.ts.tmpl": "apps/web-antd/src/api/order/order_item/__tests__/order_item.test.ts",
+		"types.ts.tmpl":    "frontend/admin/apps/web-antd/src/api/order/order_item/types.ts",
+		"api.ts.tmpl":      "frontend/admin/apps/web-antd/src/api/order/order_item/api.ts",
+		"index.ts.tmpl":    "frontend/admin/apps/web-antd/src/api/order/order_item/index.ts",
+		"list.vue.tmpl":    "frontend/admin/apps/web-antd/src/views/order/order_item/list.vue",
+		"form.vue.tmpl":    "frontend/admin/apps/web-antd/src/views/order/order_item/form.vue",
+		"drawer.vue.tmpl":  "frontend/admin/apps/web-antd/src/views/order/order_item/drawer.vue",
+		"api.test.ts.tmpl": "frontend/admin/apps/web-antd/src/api/order/order_item/__tests__/order_item.test.ts",
 	}
 	names := template.FrontSingleTemplateNames()
 	if len(names) != len(want) {

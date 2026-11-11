@@ -15,7 +15,7 @@
 5. [member — 会员模块](#5-member--会员模块)
 6. [oauth2 — OAuth2 授权模块](#6-oauth2--oauth2-授权模块)
 7. [order — 订单模块](#7-order--订单模块)
-8. [前端总览（apps/web-antd）](#8-前端总览appsweb-antd)
+8. [前端总览（frontend/admin/apps/web-antd）](#8-前端总览frontendadminappsweb-antd)
 9. [权限码速查总表](#9-权限码速查总表)
 10. [文档地图](#10-文档地图)
 11. [scorecard — 打牌记账模块](#11-scorecard--打牌记账模块)
@@ -688,7 +688,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 
 ---
 
-## 8. 前端总览（apps/web-antd）
+## 8. 前端总览（frontend/admin/apps/web-antd）
 
 ### 8.1 路由与权限模式
 
@@ -984,7 +984,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 | 30106 | 房号生成冲突重试耗尽 | 30113 | 目标不是房间成员 |
 | 30107 | 转让目标无效（不在房/拉黑/同人） | | |
 
-### 11.9 前端页面（apps/web-antd，4 页）
+### 11.9 前端页面（frontend/admin/apps/web-antd，4 页）
 
 | 路由 | 组件 | 功能 | 权限与可见性 |
 | --- | --- | --- | --- |
@@ -1104,7 +1104,7 @@ admin 全走 `resp.OK/Fail/Page` 统一信封；`resp.statusFor` 把 304xx 映�
 | 30401 | 图鉴条目不存在（查无/跨租户；重复 fish_id 复用此码） | 30403 | 鱼王指定的条目不存在或已停用 |
 | 30402 | 条目已被进度或事件引用，不可删除 | 30404 | 运营配置不存在 |
 
-### 12.8 前端页面（apps/web-antd，5 页）
+### 12.8 前端页面（frontend/admin/apps/web-antd，5 页）
 
 | 路由 | 组件 | 功能 |
 | --- | --- | --- |

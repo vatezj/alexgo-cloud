@@ -254,8 +254,8 @@ func TestGenerate_TreeGolden(t *testing.T) {
 		{"modules/order/service/codegen_demo_menu.go", "validateParent("},
 		{"modules/order/service/codegen_demo_menu_test.go", "TestCodegenDemoMenuService_Tree"},
 		{"modules/order/model/codegen_demo_menu.go", "ParentID"},
-		{"apps/web-antd/src/views/order/codegen_demo_menu/list.vue", "treeConfig"},
-		{"apps/web-antd/src/views/order/codegen_demo_menu/form.vue", "componentProps: () =>"},
+		{"frontend/admin/apps/web-antd/src/views/order/codegen_demo_menu/list.vue", "treeConfig"},
+		{"frontend/admin/apps/web-antd/src/views/order/codegen_demo_menu/form.vue", "componentProps: () =>"},
 	}
 	for _, c := range checks {
 		if !bytes.Contains(byPath[c.p], []byte(c.want)) {
@@ -405,7 +405,7 @@ func TestGenerate_FrontOmitsHiddenColumns(t *testing.T) {
 			}
 			found := 0
 			for _, f := range files {
-				if !strings.Contains(f.Path, "apps/web-antd/") {
+				if !strings.Contains(f.Path, "frontend/admin/apps/web-antd/") {
 					continue
 				}
 				found++
@@ -440,7 +440,7 @@ func TestGenerate_FrontNoDelimResidue(t *testing.T) {
 				t.Fatalf("Generate: %v", err)
 			}
 			for _, f := range files {
-				if !strings.Contains(f.Path, "apps/web-antd/") {
+				if !strings.Contains(f.Path, "frontend/admin/apps/web-antd/") {
 					continue
 				}
 				if loc := re.FindIndex(f.Content); loc != nil {
@@ -476,7 +476,7 @@ func TestGenerate_FrontFixturesToDisk(t *testing.T) {
 			t.Fatalf("Generate: %v", err)
 		}
 		for _, f := range files {
-			if !strings.HasPrefix(f.Path, "apps/web-antd/") {
+			if !strings.HasPrefix(f.Path, "frontend/admin/apps/web-antd/") {
 				continue
 			}
 			dst := filepath.Join("..", "..", filepath.FromSlash(f.Path))
@@ -492,7 +492,7 @@ func TestGenerate_FrontFixturesToDisk(t *testing.T) {
 	if written < 12 {
 		t.Fatalf("written front files = %d, want >= 12 (single 7 + tree 7)", written)
 	}
-	t.Logf("wrote %d fixture files under apps/web-antd/src (clean up after typecheck)", written)
+	t.Logf("wrote %d fixture files under frontend/admin/apps/web-antd/src (clean up after typecheck)", written)
 }
 
 func pathsOf(files []model.GeneratedFile) []string {

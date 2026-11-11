@@ -18,8 +18,8 @@ Task 12 已把三端老登录端点内部切到统一登录（`UnifiedLogin.Logi
 ## 2. 消费方盘点（仓库内证据）
 
 ```bash
-$ grep -rn "loginApi" apps/web-antd/src        # Task 14 之后、本任务删除之前
-apps/web-antd/src/api/core/auth.ts:24:export async function loginApi(...)
+$ grep -rn "loginApi" frontend/admin/apps/web-antd/src        # Task 14 之后、本任务删除之前
+frontend/admin/apps/web-antd/src/api/core/auth.ts:24:export async function loginApi(...)
 $ grep -rn '"/auth/login"' modules/ --include='*.go'
 modules/member/module.go:56:	appGroup.POST("/auth/login", m.authCtrl.Login)
 modules/system/module.go:218:	appGroup.POST("/auth/login", m.appCtrl.Login)
@@ -31,7 +31,7 @@ modules/system/controller/vben/controller.go:42:	r.POST("/auth/login", ctrl.Logi
 
 ## 3. 下线条件（全部满足才动服务端）
 
-- [ ] 仓库内零调用（本任务达成：`grep -rn "loginApi" apps/web-antd/src` 无输出）
+- [ ] 仓库内零调用（本任务达成：`grep -rn "loginApi" frontend/admin/apps/web-antd/src` 无输出）
 - [ ] app 端发版确认改用 `POST /api/oauth2/token`（grant_type=password + client alexgo-app）
 - [ ] 老端点 QPS 观测归零 ≥ 2 周（含 member refresh/logout）
 - [ ] member 外部接入方（H5/小程序）盘点完毕并书面确认迁移
@@ -47,4 +47,4 @@ modules/system/controller/vben/controller.go:42:	r.POST("/auth/login", ctrl.Logi
 
 服务端兼容层**保留**，按 §3 清单推进下线；本任务只落地仓库内可证的部分：
 删除 web-antd 的 `loginApi` 与 `AuthApi.LoginParams`/`AuthApi.LoginResult`
-（`refreshTokenApi` 仍被 `apps/web-antd/src/api/request.ts` 消费，保留）。
+（`refreshTokenApi` 仍被 `frontend/admin/apps/web-antd/src/api/request.ts` 消费，保留）。

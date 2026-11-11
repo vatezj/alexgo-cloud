@@ -27,7 +27,7 @@
 
 ## 1. SSO 登录链路（授权码 + PKCE S256）
 
-后台前端（`apps/web-antd`）登录走完整授权码流，**不经过** `/api/auth/login`（那是兼容层，见 §7）：
+后台前端（`frontend/admin/apps/web-antd`）登录走完整授权码流，**不经过** `/api/auth/login`（那是兼容层，见 §7）：
 
 ```
 登录表单 (store/auth.ts)
@@ -122,7 +122,7 @@ curl -X POST http://localhost:8080/api/oauth2/token \
 
 ## 6. 客户端管理（管理后台）
 
-入口：**OAuth2 → 客户端管理**（`apps/web-antd/src/views/system/Oauth2ClientsPage.vue`，菜单由 `20261011000003_oauth2_client_menu` 种入）。
+入口：**OAuth2 → 客户端管理**（`frontend/admin/apps/web-antd/src/views/system/Oauth2ClientsPage.vue`，菜单由 `20261011000003_oauth2_client_menu` 种入）。
 
 - 权限码 `oauth2:client` → 前缀 `/api/admin/oauth2/clients`（`permission_routes.go` 注册，通配覆盖子资源）。
 - 字段要点：`grant_types` 逗号分隔白名单、`redirect_uris` 多行精确白名单、`account_types` 账号类型白名单、`activity` 停用即全端点 400 `invalid_client`。
