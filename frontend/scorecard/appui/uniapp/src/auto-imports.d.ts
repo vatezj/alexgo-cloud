@@ -616,9 +616,6 @@ declare module 'vue' {
     readonly useFocusWithin: UnwrapRef<typeof import('@vueuse/core')['useFocusWithin']>
     readonly useFps: UnwrapRef<typeof import('@vueuse/core')['useFps']>
     readonly useFullscreen: UnwrapRef<typeof import('@vueuse/core')['useFullscreen']>
-    readonly useFunCompassArchivesStore: UnwrapRef<typeof import('./store/funCompass/archives')['useFunCompassArchivesStore']>
-    readonly useFunCompassConfig: UnwrapRef<typeof import('./composables/funCompass/useFunCompassConfig')['useFunCompassConfig']>
-    readonly useFunCompassRecommendationStore: UnwrapRef<typeof import('./store/funCompass/recommendation')['useFunCompassRecommendationStore']>
     readonly useGamepad: UnwrapRef<typeof import('@vueuse/core')['useGamepad']>
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
     readonly useGlobalDialog: UnwrapRef<typeof import('./composables/useGlobalDialog')['useGlobalDialog']>

@@ -13,12 +13,6 @@ type _LocationUrl =
   "/pages/records/index" |
   "/pages/room/index" |
   "/pages/settle/index" |
-  "/pages/fun/compass/about" |
-  "/pages/fun/compass/archive" |
-  "/pages/fun/compass/bazi" |
-  "/pages/fun/compass/compass" |
-  "/pages/fun/compass/index" |
-  "/pages/fun/compass/simulator" |
   "/pages/fun/salary/index";
 
 interface NavigateToOptions {

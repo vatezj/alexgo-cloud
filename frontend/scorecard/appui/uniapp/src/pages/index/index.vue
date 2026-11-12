@@ -26,7 +26,6 @@ import { stat } from '@/api/scorecard/record'
 import { createRoom, joinRoom, snapshot } from '@/api/scorecard/room'
 import PlayCard from '@/components/scorecard/PlayCard.vue'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
-import { useFunCompassConfig } from '@/composables/funCompass/useFunCompassConfig'
 import { useProfileGate } from '@/composables/scorecard/useProfileGate'
 import { bindInviterSilently, useSceneRoom } from '@/composables/scorecard/useSceneRoom'
 import { useSystemBar } from '@/composables/useSystemBar'
@@ -46,9 +45,6 @@ const toast = useToast()
 const { pendingScene, consumeScene, setPendingScene } = useSceneRoom()
 const { pageStyle } = useSystemBar()
 const gate = useProfileGate()
-/** 趣味方位开关（与【我的】折叠组同源；false 时首页入口卡一并隐藏）。 */
-const { enabled: funEnabled } = useFunCompassConfig()
-
 const statData = ref<StatResult | null>(null)
 const friendCount = ref(0)
 const creating = ref(false)
@@ -508,12 +504,7 @@ function goMine() {
   router.push({ path: '/pages/mine/index' })
 }
 
-/** 趣味方位突出入口（fun-compass 修订轮 C2）→ 模块首页；受 fun_compass_enable 门控。 */
-function goFunCompass() {
-  router.push({ path: '/pages/fun/compass/index' })
-}
-
-/** 工资到账计算器直达入口（fun-salary-home-entry）→ 分包页；同开关门控。 */
+/** 工资到账计算器直达入口（fun-salary-home-entry）→ 分包页。 */
 function goSalary() {
   router.push({ path: '/pages/fun/salary/index' })
 }
@@ -704,37 +695,8 @@ function goSalary() {
       </button>
     </view>
 
-    <!-- 趣味方位突出入口（fun-compass C2：一键达模块；fun_compass_enable 门控） -->
+    <!-- 工资到账计算器直达入口（fun-salary-home-entry） -->
     <view
-      v-if="funEnabled"
-      class="funentry"
-      @click="goFunCompass"
-    >
-      <view class="funentry-ico">
-        <wd-icon
-          css-icon
-          class="funentry-ico-i"
-          name="i-carbon-compass"
-        />
-      </view>
-      <view class="funentry-main">
-        <text class="funentry-t">
-          趣味方位 · 罗盘选座
-        </text>
-        <text class="funentry-s">
-          出生时间 · 罗盘 · 选座小彩蛋
-        </text>
-      </view>
-      <wd-icon
-        css-icon
-        class="funentry-c"
-        name="i-carbon-chevron-right"
-      />
-    </view>
-
-    <!-- 工资到账计算器直达入口（fun-salary-home-entry；与趣味方位同款同开关） -->
-    <view
-      v-if="funEnabled"
       class="funentry"
       @click="goSalary"
     >

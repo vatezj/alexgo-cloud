@@ -5,17 +5,14 @@
  * - 迷你身份牌行 → ProfileGate edit（未登录先去登录，与首页点头像同语义）
  * - 常规分组：使用手册 / 客服（wd-button open-type=contact，同房间页筹码轨）/
  *   获取头像昵称（MP 官方 chooseAvatar/nickname 快捷通道 = ProfileGate 的 MP 分支，H5 隐藏）
- * - 「更多趣味小工具」折叠分组：趣味方位参考 / 工资到账计算器 / 日期计算器（占位）；fun_compass_enable 显式 false 时整组不渲染
- *   （useFunCompassConfig，spec 入口门控）；趣味方位参考 → pages/fun/compass/index
+ * - 「更多趣味小工具」折叠分组：工资到账计算器 / 日期计算器（占位）；方位算卜已下线（fun-compass-off）
  * - 自绘 nav 沿用 manual 页模式；色值全走 token，无硬编码
  * - 语义类 mine-* 前缀（scoped 样式，避 UnoCSS 全局工具类撞名清单）
  */
 import { stat } from '@/api/scorecard/record'
 import ProfileGate from '@/components/scorecard/ProfileGate.vue'
-import { useFunCompassConfig } from '@/composables/funCompass/useFunCompassConfig'
 import { useSystemBar } from '@/composables/useSystemBar'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
-import { MINE_GROUP_FOOT } from '@/utils/funCompass/copy'
 import pkg from '../../../package.json'
 
 definePage({
@@ -28,7 +25,6 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useScorecardAuthStore()
 const { pageStyle } = useSystemBar()
-const { enabled } = useFunCompassConfig()
 
 const isLoggedIn = computed(() => Boolean(authStore.token))
 const version = pkg.version
@@ -92,10 +88,6 @@ function onProfileSaved() {
 
 function goManual() {
   router.push({ path: '/pages/manual/index' })
-}
-
-function goCompass() {
-  router.push({ path: '/pages/fun/compass/index' })
 }
 
 /** 工资到账计算器（fun-salary 变更）→ 分包 pages/fun/salary/index */
@@ -229,42 +221,12 @@ function goSalary() {
       <!-- #endif -->
     </view>
 
-    <!-- 更多趣味小工具（fun_compass_enable=false 时整组不渲染） -->
-    <view
-      v-if="enabled"
-      class="mine-group"
-    >
+    <!-- 更多趣味小工具（方位算卜已下线 fun-compass-off） -->
+    <view class="mine-group">
       <view class="g-head">
         <text class="g-t">
           更多趣味小工具
         </text>
-      </view>
-
-      <view
-        class="g-row fun-row"
-        @click="goCompass"
-      >
-        <view class="fc-tile">
-          <text class="fc-tile-t">
-            東
-          </text>
-        </view>
-        <view class="r-main">
-          <text class="r-t">
-            趣味方位参考
-          </text>
-          <text class="r-s">
-            测方位 · 看罗盘 · 求个座
-          </text>
-        </view>
-        <text class="badge-new">
-          新
-        </text>
-        <wd-icon
-          css-icon
-          class="chev"
-          name="i-carbon-chevron-right"
-        />
       </view>
 
       <view
@@ -303,7 +265,7 @@ function goSalary() {
       </view>
 
       <text class="g-foot">
-        {{ MINE_GROUP_FOOT }}
+        小工具仅供娱乐
       </text>
     </view>
 

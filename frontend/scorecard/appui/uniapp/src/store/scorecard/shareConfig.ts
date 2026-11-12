@@ -13,7 +13,7 @@ import type { ShareCard, ShareCards } from '@/api/scorecard/sharecfg'
 /** 内置默认（与服务端 sharecfg.go shareCardDefaults 逐字一致）。 */
 const DEFAULTS: ShareCards = {
   index: { title: '登录后开房记账 · 好友互通', imageUrl: 'http://qiniucdn.vate.ren/dapaijizhang/logo.png' },
-  simulator: { title: '座位模拟器 · 趣味方位参考 · 仅供娱乐', imageUrl: '' },
+  simulator: { title: '趣味小工具 · 仅供娱乐', imageUrl: '' },
   salary: { title: '工资到账计算器 · 填工资看入账', imageUrl: '' },
 }
 
