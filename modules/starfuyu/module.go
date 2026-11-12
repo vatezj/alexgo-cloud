@@ -14,23 +14,17 @@ import (
 )
 
 // FxModule starfuyu 模块的 fx 装配（newmodule 生成，业务逻辑请手工扩展）。
+// Task 3 级联：四实体（Profile/Bazi/Divination/Fortune）的脚手架 service/admin
+// 控制器已随仓储覆盖删除，Task 4+ 重建；limit 全链与 app Ping 控制器保留。
 var FxModule = fx.Module("starfuyu",
 	fx.Provide(
 		repository.NewProfileRepository,
-		service.NewProfileService,
-		admin.NewAdminProfileController,
 		app.NewAppProfileController,
 		repository.NewBaziRepository,
-		service.NewBaziService,
-		admin.NewAdminBaziController,
 		app.NewAppBaziController,
 		repository.NewDivinationRepository,
-		service.NewDivinationService,
-		admin.NewAdminDivinationController,
 		app.NewAppDivinationController,
 		repository.NewFortuneRepository,
-		service.NewFortuneService,
-		admin.NewAdminFortuneController,
 		app.NewAppFortuneController,
 		repository.NewLimitRepository,
 		service.NewLimitService,
@@ -57,47 +51,35 @@ var FxModule = fx.Module("starfuyu",
 type ModuleParams struct {
 	fx.In
 
-	Cfg                 *config.Config
-	ProfileAdminCtrl    *admin.AdminProfileController
-	ProfileAppCtrl      *app.AppProfileController
-	BaziAdminCtrl       *admin.AdminBaziController
-	BaziAppCtrl         *app.AppBaziController
-	DivinationAdminCtrl *admin.AdminDivinationController
-	DivinationAppCtrl   *app.AppDivinationController
-	FortuneAdminCtrl    *admin.AdminFortuneController
-	FortuneAppCtrl      *app.AppFortuneController
-	LimitAdminCtrl      *admin.AdminLimitController
-	LimitAppCtrl        *app.AppLimitController
+	Cfg               *config.Config
+	ProfileAppCtrl    *app.AppProfileController
+	BaziAppCtrl       *app.AppBaziController
+	DivinationAppCtrl *app.AppDivinationController
+	FortuneAppCtrl    *app.AppFortuneController
+	LimitAdminCtrl    *admin.AdminLimitController
+	LimitAppCtrl      *app.AppLimitController
 }
 
 type starfuyuModule struct {
-	cfg                 *config.Config
-	ProfileAdminCtrl    *admin.AdminProfileController
-	ProfileAppCtrl      *app.AppProfileController
-	BaziAdminCtrl       *admin.AdminBaziController
-	BaziAppCtrl         *app.AppBaziController
-	DivinationAdminCtrl *admin.AdminDivinationController
-	DivinationAppCtrl   *app.AppDivinationController
-	FortuneAdminCtrl    *admin.AdminFortuneController
-	FortuneAppCtrl      *app.AppFortuneController
-	LimitAdminCtrl      *admin.AdminLimitController
-	LimitAppCtrl        *app.AppLimitController
+	cfg               *config.Config
+	ProfileAppCtrl    *app.AppProfileController
+	BaziAppCtrl       *app.AppBaziController
+	DivinationAppCtrl *app.AppDivinationController
+	FortuneAppCtrl    *app.AppFortuneController
+	LimitAdminCtrl    *admin.AdminLimitController
+	LimitAppCtrl      *app.AppLimitController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
 func NewModule(p ModuleParams) server.Module {
 	return &starfuyuModule{
-		cfg:                 p.Cfg,
-		ProfileAdminCtrl:    p.ProfileAdminCtrl,
-		ProfileAppCtrl:      p.ProfileAppCtrl,
-		BaziAdminCtrl:       p.BaziAdminCtrl,
-		BaziAppCtrl:         p.BaziAppCtrl,
-		DivinationAdminCtrl: p.DivinationAdminCtrl,
-		DivinationAppCtrl:   p.DivinationAppCtrl,
-		FortuneAdminCtrl:    p.FortuneAdminCtrl,
-		FortuneAppCtrl:      p.FortuneAppCtrl,
-		LimitAdminCtrl:      p.LimitAdminCtrl,
-		LimitAppCtrl:        p.LimitAppCtrl,
+		cfg:               p.Cfg,
+		ProfileAppCtrl:    p.ProfileAppCtrl,
+		BaziAppCtrl:       p.BaziAppCtrl,
+		DivinationAppCtrl: p.DivinationAppCtrl,
+		FortuneAppCtrl:    p.FortuneAppCtrl,
+		LimitAdminCtrl:    p.LimitAdminCtrl,
+		LimitAppCtrl:      p.LimitAppCtrl,
 	}
 }
 
@@ -110,14 +92,6 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 			return
 		}
 	}
-	// Profile 的 CRUD 路由由 codegen 生成的 module_register_profile.go 声明，这里接线。
-	RegisterProfileDBRoutes(r, m.ProfileAdminCtrl)
-	// Bazi 的 CRUD 路由由 codegen 生成的 module_register_bazi.go 声明，这里接线。
-	RegisterBaziDBRoutes(r, m.BaziAdminCtrl)
-	// Divination 的 CRUD 路由由 codegen 生成的 module_register_divination.go 声明，这里接线。
-	RegisterDivinationDBRoutes(r, m.DivinationAdminCtrl)
-	// Fortune 的 CRUD 路由由 codegen 生成的 module_register_fortune.go 声明，这里接线。
-	RegisterFortuneDBRoutes(r, m.FortuneAdminCtrl)
 	// Limit 的 CRUD 路由由 codegen 生成的 module_register_limit.go 声明，这里接线。
 	RegisterLimitDBRoutes(r, m.LimitAdminCtrl)
 
