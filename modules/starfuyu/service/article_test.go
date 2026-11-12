@@ -105,11 +105,11 @@ func itoa(n int) string {
 
 // articleFixture 组装 ArticleService：stub 运势/图片 + 真 WeChatMPClient（打假微信）。
 type articleFixture struct {
-	svc  ArticleService
-	mp   *wechatMPClient
-	drv  *stubMPDriver
-	cfg  *config.Config
-	srv  *httptest.Server
+	svc ArticleService
+	mp  *wechatMPClient
+	drv *stubMPDriver
+	cfg *config.Config
+	srv *httptest.Server
 }
 
 func newArticleFixture(t *testing.T, draftErrCode int) *articleFixture {

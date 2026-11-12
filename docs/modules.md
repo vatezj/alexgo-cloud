@@ -36,6 +36,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 | **oauth2** | `modules/system/oauth2` | OAuth2 协议端点（授权码+PKCE/四种 grant）、统一登录门面、客户端管理、第三方登录（`social/` 子包，微信一期，见 §6.7） | `/api/oauth2`、`/api/admin/oauth2`、`/api/app/social`、`/api/app/member/auth`（social 三端点）、`/api/admin/social` | 17 | client 全局；授权码手管 `tenant_id`；social 两表租户级 |
 | **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 3 | 无（gap，见 §7.4） |
 | scorecard | modules/scorecard | 打牌记账（房间/计分/茶饭/战绩/好友） | /api/app/scorecard、/api/admin/scorecard | 23 | 全表 tenant_id |
+| starfuyu | modules/starfuyu | 星座运势/八字/求签 | /api/app/starfuyu、/api/admin/starfuyu、/api/public/starfuyu | 13+8+1 | 内容表 tid=0，用户表 tenant_id |
 
 所有模块实现 `server.Module.RegisterRoutes`，由 `alexgo-server/server/http.go` 统一挂到 `/api` 组。
 
@@ -788,7 +789,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 21 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 28 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -813,6 +814,13 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 | `scorecard:room` | `/api/admin/scorecard/rooms`, `/api/admin/scorecard/rooms/*` |
 | `scorecard:record` | `/api/admin/scorecard/records`, `/api/admin/scorecard/records/*` |
 | `scorecard:friend` | `/api/admin/scorecard/friends`, `/api/admin/scorecard/friends/*` |
+| `fishgame:fish` | `/api/admin/fishgame/fishes`, `/api/admin/fishgame/fishes/*` |
+| `fishgame:config` | `/api/admin/fishgame/configs`, `/api/admin/fishgame/configs/*` |
+| `fishgame:event` | `/api/admin/fishgame/events`, `/api/admin/fishgame/events/*` |
+| `fishgame:player` | `/api/admin/fishgame/players`, `/api/admin/fishgame/players/*` |
+| `fishgame:stats` | `/api/admin/fishgame/stats` |
+| `starfuyu:fortune` | `/api/admin/starfuyu/fortunes`, `/api/admin/starfuyu/fortunes/*` |
+| `starfuyu:task` | `/api/admin/starfuyu/tasks`, `/api/admin/starfuyu/tasks/*`, `/api/admin/starfuyu/limits` |
 
 ### 9.2 前端 `v-access:code` 使用清单
 
@@ -1123,6 +1131,140 @@ API 封装 `src/api/fishgame.ts`（requestClient → `/api/admin/fishgame/**`）
 2. 客户端 `online_service.gd` 顶部 `base_url` 填后端地址。
 3. 微信开发者工具 Network 面板观察 `/track` 批量上报与 dedup 幂等。
 4. admin 下发指定 fish_id 的 `fish_king` 配置，验证游戏内当周鱼王切换。
+
+---
+
+## 13. starfuyu — 星座运势模块
+
+### 13.1 功能
+
+星座运势 / 生辰八字 / 求签解读的 C 端内容服务（goLucky 独立后端融入）：每日 12 星座运势抓取与运势图生成、公众号文章 HTML 生成与草稿箱上传、我的星座偏好 / 八字 / 求签（日限流 + 签文按号缓存）。设计见
+[`superpowers/specs/2026-11-12-starfuyu-module-design.md`](superpowers/specs/2026-11-12-starfuyu-module-design.md)；
+luckyU 小程序前端**不在本期**（原样保留于 `modules/starfuyu/luckyU/`，接入为后续票，见 §13.10）。
+
+装配要点（`modules/starfuyu/module.go`；`alexgo-server/configs/config.yaml` 的 `modules.starfuyu: false` 时三段路由全不注册）：
+
+- **Repository**：Profile / Fortune / Bazi / Divination / RequestLimit / SignCache 六类；内容表读写显式 `tid=0`，用户表走租户插件
+- **Service**：Fortune（一次 DeepSeek 拉 12 星座、补缺语义）、Image（gg + 内置中文字体 + storage 落盘）、Article（公众号文章 + 草稿箱上传）、Bazi、Divination（含 `sign_cache`）、Limit（沪时区日限流）、Task（cron 编排）
+- **Controller**：`controller/app`（13 条业务端点，Bearer member 自鉴权，scorecard 同构，**不走 casbin**）与 `controller/admin`（8 端点，casbin 放行后不取 claims）
+- **定时任务**：fx OnStart/OnStop 起停 robfig/cron 两任务（§13.7）
+- **图片**：不落业务表——storage 盘 + 确定性 key `fortune/{date}/{constellation}.jpg`（幂等覆盖），公开读走 §13.5
+- 用户体系**复用 member**：不建用户表、不做登录，身份 = member token claims（goLucky 自有 `users` 表 + JWT 不迁移）
+
+### 13.2 权限与菜单
+
+| 端 | 范围 | 鉴权 |
+| --- | --- | --- |
+| app | `/api/app/starfuyu` 13 条业务端点 | Bearer member 自鉴权：缺/坏 token 401 `20001`、非 member 403 `20003`；token 内 tenant 写回 ctx（用户表走租户插件） |
+| admin | `/api/admin/starfuyu` 8 端点 | 管理员 token + casbin，两前缀 `starfuyu:fortune` / `starfuyu:task`（已登记 `permission_routes.go`，见 §9.1） |
+| public | `/api/public/starfuyu/image/*key` | 免鉴权（storage key 公开读，不存在 30010） |
+
+本期 **无 admin 前端页面 → 不种菜单**（避免侧栏死链）；菜单种子 + vben 页面随后续票补
+（届时迁移 SQL 仿 `modules/system/migrations/20261023000001_fishgame_menus.up.sql` 幂等模式）。
+
+### 13.3 C 端端点（13 条业务路由，前缀 `/api/app/starfuyu`，统一信封）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/fortune/today` | 今日 12 星座运势（内容钉 tid=0）；无数据返回空列表而非报错（凌晨任务未跑时兜底） |
+| GET | `/fortune/:date` | 指定日期运势（`YYYY-MM-DD` 校验 10001） |
+| GET | `/fortune/my/today` | 我的今日运势（需星座偏好；未设 → 30505） |
+| GET | `/fortune/my/:date` | 我的指定日期运势（同上） |
+| GET | `/fortune/image/:constellation/:date` | 该星座当日运势图（返回 `{url}` 包装；图不存在且开关允许时现场生成） |
+| POST | `/bazi/calculate` | DeepSeek 算八字并**覆盖保存**我的八字；日限流 `bazi_calculate`（超 → 30503） |
+| GET | `/bazi/my` | 我的八字（无 → 30504） |
+| PUT | `/bazi/my` | 更新我的八字（同 calculate，同限流） |
+| POST | `/divination/draw` | 求签：随机 1–100 签（经 `starfuyu_sign_cache` 取/写，同号稳定）+ DeepSeek 解读（结合我的八字，无八字降级纯签文）；日限流 `divination_draw`；落表 |
+| GET | `/divination/history` | 我的求签历史（分页 `page/size`，size≤100） |
+| GET | `/divination/sign/:number` | 指定签号签文（1–100，越界 10001）；**按签号缓存**——首访生成后落表，此后直读不实时打 DeepSeek |
+| GET | `/profile` | 我的星座偏好（未设 → `constellation:""` 不报错） |
+| PUT | `/profile` | 设置/更新星座（12 星座枚举校验 10001） |
+
+另有脚手架保留的 5 条健康端点 `GET /profiles/ping`、`/bazis/ping`、`/divinations/ping`、
+`/fortunes/ping`、`/limits/ping`（无业务语义，不计入 13）。goLucky 老路径 `/api/auth/login`、
+`/api/user/*`、`/api/test/token` 不迁移。
+
+### 13.4 admin 端点（8 条，前缀 `/api/admin/starfuyu`，统一信封）
+
+| 方法 | 路径 | 权限码 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/fortunes` | `starfuyu:fortune` | 运势分页，`date`/`constellation` 筛选（缺省不过滤） |
+| GET | `/fortunes/:date` | `starfuyu:fortune` | 指定日期全星座运势 |
+| GET | `/fortunes/:date/article` | `starfuyu:fortune` | 生成公众号文章 HTML（预览，不上传） |
+| POST | `/fortunes/:date/upload-mp` | `starfuyu:fortune` | 生成文章 + 图片素材 → 传公众号草稿箱，返回每篇 `{title,media_id}` |
+| POST | `/tasks/fetch-fortune` | `starfuyu:task` | 手动抓取（body `date` 缺省今日）：**默认只补缺，`force:true` 覆盖重抓**；同步返回可能长挂 |
+| POST | `/tasks/generate-images` | `starfuyu:task` | 手动生图：指定日全部星座，同步返回 |
+| POST | `/tasks/execute-all` | `starfuyu:task` | 抓取（同样支持 `force`）+ 生图一条龙 |
+| GET | `/limits` | `starfuyu:task` | 今日各类型限流消耗概览（运维排查，聚合 count） |
+
+写操作一律 POST（goLucky 的 GET 型 task 触发不保留）；全部走 `resp.OK/Fail/Page` 信封。
+
+### 13.5 公开端点（1 条，前缀 `/api/public/starfuyu`，免鉴权）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/image/*key` | 运势图公开读（storage key → inline 图片，不存在统一 30010） |
+
+### 13.6 数据模型（6 表）
+
+迁移 `modules/starfuyu/migrations/20261112000001_starfuyu_tables.{up,down}.sql`
+（`CREATE TABLE IF NOT EXISTS`、无外键）。**6 表全带 `tenant_id`** + `created_at`/`updated_at`：
+
+| 表 | 要点 |
+| --- | --- |
+| `starfuyu_profile` | 星座偏好：`member_user_id`（唯一索引含 tenant）、`constellation`（12 星座枚举值） |
+| `starfuyu_fortune` | 运势内容：`(date, constellation)` 唯一；分值字段全集（overall/love/career/wealth/health + `lucky_number` + `daily_overview`）、`lucky_color` JSON、`summary`/四 tip；**tenant_id 恒 0** |
+| `starfuyu_bazi` | 我的八字：`member_user_id` 唯一（含 tenant）、`birth_date/birth_time/birth_place`、`bazi_info` JSON（四柱/五行/节气/农历/生肖/星座） |
+| `starfuyu_divination` | 求签记录：`member_user_id`、`bazi_id` 可空、`question`、`sign_number`(1–100)、`sign_content`、`interpretation`、`category`、`lucky_direction/lucky_color/advice`；索引 `(member_user_id, created_at)` |
+| `starfuyu_request_limit` | 日限流：`(member_user_id, date, type)` 唯一（含 tenant）、`count`；type ∈ `bazi_calculate` / `divination_draw` |
+| `starfuyu_sign_cache` | 签文缓存：`sign_number`(1–100) 唯一 + `sign_content`；**tenant_id 恒 0**（全局内容）；draw 与公开 GET 共用 |
+
+JSON 列（`lucky_color`/`bazi_info`）照 goLucky 的 `driver.Valuer/Scanner` 模式迁移。
+
+### 13.7 定时任务（fx OnStart/OnStop + robfig/cron）
+
+| 缺省时刻 | 任务 | 行为 |
+| --- | --- | --- |
+| 每天 00:10 | 抓今日运势 | DeepSeek 一次拉 12 星座 → upsert `starfuyu_fortune`（tid=0）；已有当日 12 条则跳过（补缺语义，覆盖重抓走 admin `force:true`）；单星座失败记 log 继续 |
+| 每天 00:20 | 生成全部星座图 | 读当日 12 条运势 → gg 绘图 → storage 落盘（确定性 key 覆盖） |
+
+- 表达式读 `cfg.Starfuyu.Cron.*`（缺省 `"10 0 * * *"` / `"20 0 * * *"`），**恒加 `CRON_TZ=Asia/Shanghai` 前缀**；5 段标准 parser（不用 WithSeconds），进程嵌入 `time/tzdata`——`TZ=UTC` 容器下日期串仍按沪时区翻转（限流 `date`、运势 `date`、文章日期统一走模块内 `nowSH()`）。
+- DeepSeek 空 api_key **无条件跳过**并记 warn（空配可启动联调）；cron 任务 panic 由外壳 recover 成 warn 不崩进程。
+- 启动不补跑（错过等次日，与 goLucky 一致）；补跑走 admin `POST /tasks/*`。OnStop 等在跑任务收尾。
+
+### 13.8 错误码（30501–30507）
+
+`pkg/errors/code.go` 的 starfuyu 段（3 段码 → HTTP 400，`resp.statusFor`）：
+
+| 码 | 含义 | 码 | 含义 |
+| --- | --- | --- | --- |
+| 30501 | 运势数据不存在 | 30505 | 尚未设置星座 |
+| 30502 | 图片生成失败（gg 绘制/背景/字体缺失） | 30506 | 运势抓取失败（DeepSeek 返回不合法/超时） |
+| 30503 | 今日请求次数已达上限（bazi/divination 共用，响应带 type） | 30507 | 公众号上传失败（access_token/草稿箱 API） |
+| 30504 | 尚未保存生辰八字 | | |
+
+### 13.9 与 goLucky 的差异摘要（spec §10 浓缩）
+
+| goLucky | starfuyu 模块 | 原因 |
+| --- | --- | --- |
+| 自有 `users` 表 + JWT + `/api/auth/login` | 不迁移；member + social 登录 | 用户决议 |
+| `{"code":200,"message","data"}` 自制信封 | `pkg/resp` 统一信封 | 仓库惯例 |
+| `/api/fortune/*`、`/api/bazi/*`… 平铺路由 | `/api/app/starfuyu/*` + `/api/admin/starfuyu/*` 双前缀 | 双前缀惯例 |
+| GET 型 task 触发 | 一律 POST | 写操作语义 |
+| 图片写 `images/` + `/api/fortune/image/file/*` | storage 盘 + `/api/public/starfuyu/image/*key` | 复用 infra 文件能力 |
+| CORS 中间件、`cmd/gen-token`、Swagger 注解 | 不迁移 | 全局中间件已有；测试 token 无意义 |
+| `GET /api/fortune/today/article`（C 端可读） | admin `GET /fortunes/:date/article` | 文章生成是运营动作，不进 C 端 |
+| 限流配置 `limit.*` | `starfuyu.limits.*` | 归模块配置段；密钥不入库（goLucky config.yaml 曾明文写公众号 appid/secret，运维另填并轮换） |
+
+goLucky 源码目录（含自带 `.git` 与构建产物）已随本模块收口从工作区整目录移除——该目录
+从未纳入本仓库 git（嵌套独立仓库），移除后仅剩本节与 spec/迁移提交中的对照记录；
+`luckyU/` 小程序前端原样保留在 `modules/starfuyu/luckyU/`。
+
+### 13.10 后续票（本期明确切出）
+
+1. luckyU 小程序切换 member/social 登录 + 对接新 API 契约（前端原样保留，见 §13.9）。
+2. admin vben 页面（运势列表/任务中心/限流概览）+ 菜单种子 + `permission_routes` 联调——本期无菜单无页面。
+3. （可选）签文模板库表化、运势内容租户化运营、公众号定时自动上传（现为手动触发）。
 
 ---
 
