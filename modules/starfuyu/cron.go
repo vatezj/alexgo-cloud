@@ -3,6 +3,12 @@ package starfuyu
 import (
 	"context"
 	"fmt"
+	// 嵌入 tzdata：CronSpec 的 CRON_TZ= 前缀让 robfig 走 time.LoadLocation，
+	// 瘦身容器（scratch/alpine 无 /usr/share/zoneinfo）会失败 → AddFunc 报错 →
+	// fx OnStart 拒启、进程起不来。进程级嵌入后 LoadLocation 恒成功；放 cron.go
+	// 而非 service/clock.go：失败点在这条路径，且 clock.go 的 FixedZone 回退
+	// 只护它自己那两次 LoadLocation，护不到 cron 这条无降级点的链。
+	_ "time/tzdata"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
@@ -32,6 +38,19 @@ func safeJob(name string, fn func(ctx context.Context)) func() {
 	}
 }
 
+// skipFetch 空 DeepSeek APIKey 跳过抓取：return 无条件（logger.Log 为 nil 时
+// 也必须跳过——旧写法 `key=="" && logger.Log != nil` 会让注定失败的空 key 请求
+// 照跑），仅日志行受 logger.Log 门控。
+func skipFetch(apiKey string) bool {
+	if apiKey == "" {
+		if logger.Log != nil {
+			logger.Log.Warn("starfuyu fetch_fortune skipped: deepseek api_key empty")
+		}
+		return true
+	}
+	return false
+}
+
 // cronLifecycle OnStart 起 cron（两任务读 cfg 表达式），OnStop c.Stop() 等在跑任务收尾。
 // 模式照 modules/system/module.go 的 token SweepExpired fx.Invoke 生命周期。
 func cronLifecycle(lc fx.Lifecycle, cfg *config.Config, runner service.TaskRunner) {
@@ -42,8 +61,7 @@ func cronLifecycle(lc fx.Lifecycle, cfg *config.Config, runner service.TaskRunne
 
 			fetchSpec := service.CronSpec(cfg.Starfuyu.Cron.FetchFortune)
 			if _, err := c.AddFunc(fetchSpec, safeJob("fetch_fortune", func(ctx context.Context) {
-				if cfg.Starfuyu.Deepseek.APIKey == "" && logger.Log != nil {
-					logger.Log.Warn("starfuyu fetch_fortune skipped: deepseek api_key empty")
+				if skipFetch(cfg.Starfuyu.Deepseek.APIKey) {
 					return
 				}
 				if err := runner.FetchToday(ctx, false); err != nil && logger.Log != nil {
