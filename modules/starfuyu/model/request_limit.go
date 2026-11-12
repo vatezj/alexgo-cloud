@@ -21,8 +21,3 @@ const (
 	RequestTypeBaziCalculate  = "bazi_calculate"  // 八字计算
 	RequestTypeDivinationDraw = "divination_draw" // 求签
 )
-
-// Limit 是脚手架占位类型名的兼容别名：脚手架 service/controller 层仍引用
-// model.Limit（Task 3+ 逐层重写为 RequestLimit 后删除本别名）。表名恒
-// starfuyu_request_limit，不产生裸表名。
-type Limit = RequestLimit

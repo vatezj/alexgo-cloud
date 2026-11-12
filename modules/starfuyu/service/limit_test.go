@@ -2,81 +2,108 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+
 	"alexGo-cloud/modules/starfuyu/model"
-	"alexGo-cloud/pkg/tenant"
+	"alexGo-cloud/modules/starfuyu/repository"
+	"alexGo-cloud/pkg/config"
+	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
-type fakeLimitRepo struct {
-	data map[uint64]*model.Limit
-	seq  uint64
-}
-
-var errLimitRecordNotFound = errors.New("record not found")
-
-func (f *fakeLimitRepo) Create(_ context.Context, e *model.Limit) error {
-	f.seq++
-	e.ID = f.seq
-	f.data[e.ID] = e
-	return nil
-}
-
-func (f *fakeLimitRepo) List(_ context.Context, _ uint64) ([]*model.Limit, error) {
-	out := make([]*model.Limit, 0, len(f.data))
-	for _, e := range f.data {
-		out = append(out, e)
+// newTask5DB sqlite 内存库 + 六模型 AutoMigrate + gormplugin（照 repository_test 惯例，
+// Task 5 的 limit/bazi/profile 三组测试共用）。
+func newTask5DB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return out, nil
-}
-
-func (f *fakeLimitRepo) GetByID(_ context.Context, _ uint64, id uint64) (*model.Limit, error) {
-	if e, ok := f.data[id]; ok {
-		return e, nil
+	if err := db.AutoMigrate(
+		&model.Profile{}, &model.Fortune{}, &model.Bazi{},
+		&model.Divination{}, &model.RequestLimit{}, &model.SignCache{},
+	); err != nil {
+		t.Fatal(err)
 	}
-	return nil, errLimitRecordNotFound
+	if err := gormplugin.Register(db, gormplugin.Options{ExemptTables: []string{"tenants", "casbin_rule"}}); err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
-func (f *fakeLimitRepo) Update(_ context.Context, e *model.Limit) error {
-	f.data[e.ID] = e
-	return nil
-}
-
-func (f *fakeLimitRepo) Delete(_ context.Context, _ uint64, id uint64) error {
-	delete(f.data, id)
-	return nil
-}
-
-func TestLimitService_CRUD(t *testing.T) {
-	svc := NewLimitService(&fakeLimitRepo{data: map[uint64]*model.Limit{}})
+// TestLimit_AllowBlocksOverDaily brief 用例：cfg limit=2，Allow 第 1/2 次 nil，第 3 次 30503；
+// 超限那次的计数不回滚（新 count > limit 判定，增量保留在行上）。
+func TestLimit_AllowBlocksOverDaily(t *testing.T) {
+	db := newTask5DB(t)
+	repo := repository.NewRequestLimitRepository(db)
+	cfg := &config.Config{}
+	cfg.Starfuyu.Limits.BaziCalculateDaily = 2
+	svc := NewLimitService(repo, cfg)
 	ctx := context.Background()
-	ctx = tenant.WithTenantID(ctx, 42)
 
-	e := &model.Limit{}
-	if err := svc.Create(ctx, e); err != nil {
-		t.Fatalf("Create: %v", err)
+	for i := 1; i <= 2; i++ {
+		if err := svc.Allow(ctx, 7, TypeBaziCalculate); err != nil {
+			t.Fatalf("第 %d 次 Allow 应 nil, got %v", i, err)
+		}
 	}
-	if e.TenantID != 42 {
-		t.Fatalf("Create 应从 ctx 打戳租户 42, got %d", e.TenantID)
+	err := svc.Allow(ctx, 7, TypeBaziCalculate)
+	if !errs.Is(err, errs.CodeStarfuyuLimitExceeded) {
+		t.Fatalf("第 3 次 Allow 应 30503, got %v", err)
 	}
-	if e.ID == 0 {
-		t.Fatal("Create should assign ID")
+
+	var row model.RequestLimit
+	if dbErr := db.Where("member_user_id = ? AND type = ?", 7, TypeBaziCalculate).First(&row).Error; dbErr != nil {
+		t.Fatalf("读限流行 err = %v", dbErr)
 	}
-	if _, err := svc.GetByID(ctx, e.ID); err != nil {
-		t.Fatalf("GetByID: %v", err)
+	if row.Count != 3 {
+		t.Fatalf("超限调用不回滚计数, count = %d, want 3", row.Count)
 	}
-	if err := svc.Update(ctx, e); err != nil {
-		t.Fatalf("Update: %v", err)
+}
+
+// TestLimit_UsesShanghaiDate brief 用例：TZ=UTC 下限流 key 日期仍 == TodaySH()（沪时区日历日）。
+func TestLimit_UsesShanghaiDate(t *testing.T) {
+	t.Setenv("TZ", "UTC")
+	db := newTask5DB(t)
+	repo := repository.NewRequestLimitRepository(db)
+	svc := NewLimitService(repo, &config.Config{})
+	ctx := context.Background()
+
+	if err := svc.Allow(ctx, 9, TypeBaziCalculate); err != nil {
+		t.Fatalf("首次 Allow 应 nil, got %v", err)
 	}
-	list, err := svc.List(ctx)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("List: err=%v len=%d", err, len(list))
+	var row model.RequestLimit
+	if dbErr := db.Where("member_user_id = ? AND type = ?", 9, TypeBaziCalculate).First(&row).Error; dbErr != nil {
+		t.Fatalf("读限流行 err = %v", dbErr)
 	}
-	if err := svc.Delete(ctx, e.ID); err != nil {
-		t.Fatalf("Delete: %v", err)
+	if row.Date != TodaySH() {
+		t.Fatalf("限流 key 日期 = %q, want TodaySH() %q", row.Date, TodaySH())
 	}
-	if list, _ = svc.List(ctx); len(list) != 0 {
-		t.Fatalf("after Delete len=%d", len(list))
+}
+
+// TestLimit_DefaultsFiveAndTen brief 缺省：cfg <=0 时 bazi=5、divination=10。
+func TestLimit_DefaultsFiveAndTen(t *testing.T) {
+	db := newTask5DB(t)
+	repo := repository.NewRequestLimitRepository(db)
+	svc := NewLimitService(repo, &config.Config{})
+	ctx := context.Background()
+
+	for i := 1; i <= 5; i++ {
+		if err := svc.Allow(ctx, 11, TypeBaziCalculate); err != nil {
+			t.Fatalf("bazi 第 %d 次应 nil（缺省 5）, got %v", i, err)
+		}
+	}
+	if err := svc.Allow(ctx, 11, TypeBaziCalculate); !errs.Is(err, errs.CodeStarfuyuLimitExceeded) {
+		t.Fatalf("bazi 第 6 次应 30503, got %v", err)
+	}
+	for i := 1; i <= 10; i++ {
+		if err := svc.Allow(ctx, 11, TypeDivinationDraw); err != nil {
+			t.Fatalf("divination 第 %d 次应 nil（缺省 10）, got %v", i, err)
+		}
+	}
+	if err := svc.Allow(ctx, 11, TypeDivinationDraw); !errs.Is(err, errs.CodeStarfuyuLimitExceeded) {
+		t.Fatalf("divination 第 11 次应 30503, got %v", err)
 	}
 }

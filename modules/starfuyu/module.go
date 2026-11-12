@@ -5,7 +5,6 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
-	"alexGo-cloud/modules/starfuyu/controller/admin"
 	"alexGo-cloud/modules/starfuyu/controller/app"
 	"alexGo-cloud/modules/starfuyu/repository"
 	"alexGo-cloud/modules/starfuyu/service"
@@ -15,7 +14,9 @@ import (
 
 // FxModule starfuyu 模块的 fx 装配（newmodule 生成，业务逻辑请手工扩展）。
 // Task 3 级联：四实体（Profile/Bazi/Divination/Fortune）的脚手架 service/admin
-// 控制器已随仓储覆盖删除，Task 4+ 重建；limit 全链与 app Ping 控制器保留。
+// 控制器已随仓储覆盖删除，Task 4+ 重建；Task 5 级联：limit 脚手架全链
+// （admin CRUD 控制器 / module_register / LimitRepository）删除，服务层换为
+// RequestLimit 限流三服务，admin 面由 Task 11 重建；app Ping 控制器保留。
 var FxModule = fx.Module("starfuyu",
 	fx.Provide(
 		repository.NewProfileRepository,
@@ -28,9 +29,11 @@ var FxModule = fx.Module("starfuyu",
 		service.NewDeepSeekFetcher, // FortuneFetcher（Task 4 抓取器，Task 10 控制器消费）
 		service.NewFortuneService,  // FortuneService（Task 4）
 		app.NewAppFortuneController,
-		repository.NewLimitRepository,
-		service.NewLimitService,
-		admin.NewAdminLimitController,
+		repository.NewRequestLimitRepository, // Task 3 deferred Provide，Task 5 补
+		service.NewLimitService,              // LimitService.Allow（Task 5 每日限流）
+		service.NewProfileService,            // ProfileService（Task 5）
+		service.NewBaziService,               // BaziService（Task 5）
+		service.NewDeepSeekBaziCalculator,    // BaziCalculator（Task 5 DeepSeek 实现）
 		app.NewAppLimitController,
 	),
 	fx.Provide(
@@ -58,7 +61,6 @@ type ModuleParams struct {
 	BaziAppCtrl       *app.AppBaziController
 	DivinationAppCtrl *app.AppDivinationController
 	FortuneAppCtrl    *app.AppFortuneController
-	LimitAdminCtrl    *admin.AdminLimitController
 	LimitAppCtrl      *app.AppLimitController
 }
 
@@ -68,7 +70,6 @@ type starfuyuModule struct {
 	BaziAppCtrl       *app.AppBaziController
 	DivinationAppCtrl *app.AppDivinationController
 	FortuneAppCtrl    *app.AppFortuneController
-	LimitAdminCtrl    *admin.AdminLimitController
 	LimitAppCtrl      *app.AppLimitController
 }
 
@@ -80,7 +81,6 @@ func NewModule(p ModuleParams) server.Module {
 		BaziAppCtrl:       p.BaziAppCtrl,
 		DivinationAppCtrl: p.DivinationAppCtrl,
 		FortuneAppCtrl:    p.FortuneAppCtrl,
-		LimitAdminCtrl:    p.LimitAdminCtrl,
 		LimitAppCtrl:      p.LimitAppCtrl,
 	}
 }
@@ -94,9 +94,6 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 			return
 		}
 	}
-	// Limit 的 CRUD 路由由 codegen 生成的 module_register_limit.go 声明，这里接线。
-	RegisterLimitDBRoutes(r, m.LimitAdminCtrl)
-
 	appGroup := r.Group("/app/starfuyu")
 	appGroup.GET("/profiles/ping", m.ProfileAppCtrl.Ping)
 	appGroup.GET("/bazis/ping", m.BaziAppCtrl.Ping)

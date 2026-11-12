@@ -14,7 +14,6 @@ import (
 
 // RequestLimitRepository 每日请求限流（brief 钉死签名，Task 5 服务层唯一数据入口）。
 // 用户表：不显式加 tenant 过滤——依赖 gormplugin + claims 写回的 ctx（scorecard 惯例）。
-// 注意：本文件与脚手架 limit.go（LimitRepository，service/limit 重写前的过渡依赖）并存。
 type RequestLimitRepository interface {
 	// CheckAndIncrement 查或建当日行并 count+1；返回新 count。超限由 service 判定。
 	CheckAndIncrement(ctx context.Context, memberUserID uint64, date, typ string) (int, error)
