@@ -44,6 +44,7 @@ var FxModule = fx.Module("starfuyu",
 		},
 		service.NewArticleService, // ArticleService（Task 8 草稿箱上传）
 		app.NewAppLimitController,
+		service.NewTaskRunner, // TaskRunner（Task 9 定时任务编排）
 	),
 	fx.Provide(
 		fx.Annotate(
@@ -59,6 +60,9 @@ var FxModule = fx.Module("starfuyu",
 			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
+	// 定时任务（Task 9）：OnStart 起 robfig/cron（5 段标准 spec + CRON_TZ=Asia/Shanghai），
+	// OnStop c.Stop() 等在跑任务收尾——细节见 cron.go。
+	fx.Invoke(cronLifecycle),
 )
 
 // ModuleParams 聚合依赖（fx.In）。
