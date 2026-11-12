@@ -38,6 +38,11 @@ var FxModule = fx.Module("starfuyu",
 		service.NewDivinationService,         // DivinationService（Task 6 签文缓存 + 求签/历史）
 		service.NewDeepSeekSignInterpreter,   // SignInterpreter（Task 6 DeepSeek 实现）
 		service.NewImageService,              // ImageService（Task 7 运势生图，storage.Driver 由 system 模块提供）
+		// Task 8：公众号文章 + 微信 MP 客户端（appid/secret 从 cfg 注入；driver 读封面字节）。
+		func(cfg *config.Config) service.MPClient {
+			return service.NewWeChatMPClient(cfg.Starfuyu.WechatMp.AppID, cfg.Starfuyu.WechatMp.AppSecret)
+		},
+		service.NewArticleService, // ArticleService（Task 8 草稿箱上传）
 		app.NewAppLimitController,
 	),
 	fx.Provide(

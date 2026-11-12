@@ -1,0 +1,235 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+
+	errs "alexGo-cloud/pkg/errors"
+)
+
+// wechatBaseURL 微信公众号 API 根（测试用 baseURL 字段覆盖为 httptest）。
+const wechatBaseURL = "https://api.weixin.qq.com"
+
+// tokenEarlyRefresh access_token 提前刷新窗口（照 goLucky service/wechat_mp.go：到期前 5 分钟重取）。
+const tokenEarlyRefresh = 5 * time.Minute
+
+// MPClient 微信公众号客户端（草稿箱路径）。
+// 合同：所有方法失败一律包 30507（errs.CodeStarfuyuMpUploadFailed）。
+type MPClient interface {
+	// UploadImageMaterial 上传永久图片素材（controller 裁定：收 bytes 非文件路径，
+	// ArticleService 经 storage.Driver.Open(key) 读字节后传入）。
+	UploadImageMaterial(ctx context.Context, data []byte) (mediaID string, err error)
+	// AddDraft 新建草稿（articles 至少 1 条），返回草稿 media_id。
+	AddDraft(ctx context.Context, articles []MPArticle) (mediaID string, err error)
+}
+
+// MPArticle 草稿箱文章条目（字段对齐微信 draft/add articles[]）。
+type MPArticle struct {
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Digest       string `json:"digest,omitempty"`
+	Author       string `json:"author,omitempty"`
+	ShowCoverPic int    `json:"show_cover_pic"`
+	ThumbMediaID string `json:"thumb_media_id,omitempty"`
+}
+
+type wechatMPClient struct {
+	appID     string
+	appSecret string
+	baseURL   string
+	client    *http.Client
+
+	mu            sync.RWMutex
+	accessToken   string
+	tokenExpireAt time.Time
+}
+
+// NewWeChatMPClient 构造公众号客户端。access_token 进程内缓存照 goLucky（提前 5 分钟刷新）。
+// appID/appSecret 空配时所有调用直接 30507、不打网络。
+func NewWeChatMPClient(appID, appSecret string) MPClient {
+	return &wechatMPClient{
+		appID:     appID,
+		appSecret: appSecret,
+		baseURL:   wechatBaseURL,
+		client:    &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func mpFail(format string, args ...any) error {
+	return errs.New(errs.CodeStarfuyuMpUploadFailed, fmt.Errorf(format, args...))
+}
+
+// getAccessToken 取缓存 token；缺失/临近过期（5 分钟内）则回源刷新。
+func (c *wechatMPClient) getAccessToken(ctx context.Context) (string, error) {
+	if c.appID == "" || c.appSecret == "" {
+		return "", mpFail("wechat_mp appid/secret 未配置")
+	}
+
+	c.mu.RLock()
+	if c.accessToken != "" && time.Now().Before(c.tokenExpireAt.Add(-tokenEarlyRefresh)) {
+		tok := c.accessToken
+		c.mu.RUnlock()
+		return tok, nil
+	}
+	c.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// 双重检查（照 goLucky）。
+	if c.accessToken != "" && time.Now().Before(c.tokenExpireAt.Add(-tokenEarlyRefresh)) {
+		return c.accessToken, nil
+	}
+
+	q := url.Values{}
+	q.Set("grant_type", "client_credential")
+	q.Set("appid", c.appID)
+	q.Set("secret", c.appSecret)
+	full := fmt.Sprintf("%s/cgi-bin/token?%s", c.baseURL, q.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return "", mpFail("构造 token 请求: %w", err)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", mpFail("请求微信 token 失败: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", mpFail("读取 token 响应失败: %w", err)
+	}
+	var result struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+		ErrCode     int    `json:"errcode"`
+		ErrMsg      string `json:"errmsg"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", mpFail("解析 token 响应失败: %w", err)
+	}
+	if result.ErrCode != 0 || result.AccessToken == "" {
+		return "", mpFail("微信 token errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+
+	c.accessToken = result.AccessToken
+	c.tokenExpireAt = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	return c.accessToken, nil
+}
+
+// doJSON POST JSON 到 cgi-bin 路径，统一解包 errcode/media_id。
+func (c *wechatMPClient) doJSON(ctx context.Context, path string, payload any) ([]byte, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, mpFail("序列化请求失败: %w", err)
+	}
+	full := fmt.Sprintf("%s%s?access_token=%s", c.baseURL, path, url.QueryEscape(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, full, bytes.NewReader(data))
+	if err != nil {
+		return nil, mpFail("构造请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, mpFail("请求微信失败 %s: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, mpFail("读取响应失败 %s: %w", path, err)
+	}
+	return body, nil
+}
+
+// checkErrCode 解包 {errcode,errmsg,media_id}；errcode≠0 → 30507。
+func checkErrCode(path string, body []byte) (mediaID string, err error) {
+	var result struct {
+		MediaID string `json:"media_id"`
+		URL     string `json:"url"`
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", mpFail("解析 %s 响应失败: %w", path, err)
+	}
+	if result.ErrCode != 0 {
+		return "", mpFail("微信API错误 %s: errcode=%d errmsg=%s", path, result.ErrCode, result.ErrMsg)
+	}
+	if result.MediaID == "" {
+		return "", mpFail("%s 响应缺 media_id", path)
+	}
+	return result.MediaID, nil
+}
+
+// UploadImageMaterial 上传永久图片素材（multipart media 字段，收 bytes）。
+func (c *wechatMPClient) UploadImageMaterial(ctx context.Context, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", mpFail("图片字节为空")
+	}
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("media", "thumb.jpg")
+	if err != nil {
+		return "", mpFail("创建素材表单字段失败: %w", err)
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", mpFail("写入素材字节失败: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return "", mpFail("关闭素材 multipart 失败: %w", err)
+	}
+
+	full := fmt.Sprintf("%s/cgi-bin/material/add_material?access_token=%s&type=image",
+		c.baseURL, url.QueryEscape(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, full, &buf)
+	if err != nil {
+		return "", mpFail("构造素材请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", mpFail("上传图片素材失败: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", mpFail("读取素材响应失败: %w", err)
+	}
+	return checkErrCode("/cgi-bin/material/add_material", body)
+}
+
+// AddDraft 新建草稿（个人订阅号草稿箱接口，照 goLucky）。
+func (c *wechatMPClient) AddDraft(ctx context.Context, articles []MPArticle) (string, error) {
+	if len(articles) == 0 {
+		return "", mpFail("articles 为空")
+	}
+	body, err := c.doJSON(ctx, "/cgi-bin/draft/add", struct {
+		Articles []MPArticle `json:"articles"`
+	}{Articles: articles})
+	if err != nil {
+		return "", err
+	}
+	return checkErrCode("/cgi-bin/draft/add", body)
+}
