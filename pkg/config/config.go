@@ -140,6 +140,31 @@ type Config struct {
 		TestLoginSecret string `mapstructure:"test_login_secret"`
 	} `mapstructure:"fishgame"`
 
+	// Starfuyu：starfuyu 星座运势模块配置（spec §8）。
+	Starfuyu struct {
+		Deepseek struct {
+			APIKey     string `mapstructure:"api_key"`
+			BaseURL    string `mapstructure:"base_url"`
+			Model      string `mapstructure:"model"`
+			Timeout    int    `mapstructure:"timeout"`     // 秒，<=0 取 120
+			MaxRetries int    `mapstructure:"max_retries"` // <=0 取 3
+			RetryDelay int    `mapstructure:"retry_delay"` // 秒，<=0 取 2
+		} `mapstructure:"deepseek"`
+		WechatMp struct {
+			AppID     string `mapstructure:"app_id"`
+			AppSecret string `mapstructure:"app_secret"`
+		} `mapstructure:"wechat_mp"`
+		Limits struct {
+			BaziCalculateDaily  int `mapstructure:"bazi_calculate_daily"`  // <=0 取 5
+			DivinationDrawDaily int `mapstructure:"divination_draw_daily"` // <=0 取 10
+		} `mapstructure:"limits"`
+		Cron struct {
+			FetchFortune   string `mapstructure:"fetch_fortune"`   // 缺省 "10 0 * * *"
+			GenerateImages string `mapstructure:"generate_images"` // 缺省 "20 0 * * *"
+		} `mapstructure:"cron"`
+		AssetsDir string `mapstructure:"assets_dir"` // 缺省 "modules/starfuyu/assets"
+	} `mapstructure:"starfuyu"`
+
 	// Scorecard：scorecard《打牌记账》模块配置。
 	Scorecard struct {
 		// WxacodeEnvVersion 房间小程序码 env_version（getwxacodeunlimit 透传）：

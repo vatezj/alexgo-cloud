@@ -25,20 +25,33 @@ func TestRegistryNoDuplicateAndAllHaveMsg(t *testing.T) {
 		CodeMobileTaken,
 		CodeFileNotFound, CodeFileTypeNotAllowed, CodeFileTooLarge,
 		CodeExportTooManyRows,
-		CodeSocialAppNotConfigured,  // 30301
-		CodeSocialExchangeFailed,    // 30302
-		CodeSocialIdentityBound,     // 30303
-		CodeSocialMobileBound,       // 30304
-		CodeSocialMergeRefused,      // 30305
-		CodeSocialUnbindLast,        // 30306
-		CodeFishgameFishNotFound,    // 30401
-		CodeFishgameFishReferenced,  // 30402
-		CodeFishgameFishKingInvalid, // 30403
-		CodeFishgameConfigNotFound,  // 30404
+		CodeSocialAppNotConfigured,       // 30301
+		CodeSocialExchangeFailed,         // 30302
+		CodeSocialIdentityBound,          // 30303
+		CodeSocialMobileBound,            // 30304
+		CodeSocialMergeRefused,           // 30305
+		CodeSocialUnbindLast,             // 30306
+		CodeFishgameFishNotFound,         // 30401
+		CodeFishgameFishReferenced,       // 30402
+		CodeFishgameFishKingInvalid,      // 30403
+		CodeFishgameConfigNotFound,       // 30404
+		CodeStarfuyuFortuneNotFound,      // 30501
+		CodeStarfuyuImageFailed,          // 30502
+		CodeStarfuyuLimitExceeded,        // 30503
+		CodeStarfuyuBaziNotFound,         // 30504
+		CodeStarfuyuConstellationMissing, // 30505
+		CodeStarfuyuFetchFailed,          // 30506
+		CodeStarfuyuMpUploadFailed,       // 30507
 		CodeInternal,
 	} {
 		if _, ok := registry[c]; !ok {
 			t.Errorf("exported code %d missing from registry", c)
+		}
+	}
+	// starfuyu 305xx 必须齐且文案非空（spec §7）。
+	for _, c := range []Code{30501, 30502, 30503, 30504, 30505, 30506, 30507} {
+		if registry[c] == "" {
+			t.Errorf("code %d missing registry message", c)
 		}
 	}
 }

@@ -98,6 +98,22 @@ const (
 	// CodeFishgameConfigNotFound fishgame：运营配置不存在（查无/跨租户）。
 	CodeFishgameConfigNotFound Code = 30404
 
+	// ---- 305xx starfuyu ----
+	// CodeStarfuyuFortuneNotFound starfuyu：指定日期/星座无运势行（admin 详情与 my 类接口）。
+	CodeStarfuyuFortuneNotFound Code = 30501
+	// CodeStarfuyuImageFailed starfuyu：图片生成失败（gg 绘制或背景图/字体资源缺失）。
+	CodeStarfuyuImageFailed Code = 30502
+	// CodeStarfuyuLimitExceeded starfuyu：今日请求次数已达上限（bazi/divination 限流命中）。
+	CodeStarfuyuLimitExceeded Code = 30503
+	// CodeStarfuyuBaziNotFound starfuyu：尚未保存生辰八字（GET /bazi/my 无数据）。
+	CodeStarfuyuBaziNotFound Code = 30504
+	// CodeStarfuyuConstellationMissing starfuyu：尚未设置星座（fortune/my/* 需要 profile）。
+	CodeStarfuyuConstellationMissing Code = 30505
+	// CodeStarfuyuFetchFailed starfuyu：运势抓取失败（DeepSeek 返回不合法/超时）。
+	CodeStarfuyuFetchFailed Code = 30506
+	// CodeStarfuyuMpUploadFailed starfuyu：公众号上传失败（access_token / 草稿箱 API 错误）。
+	CodeStarfuyuMpUploadFailed Code = 30507
+
 	// 5xxxx 系统
 	CodeInternal Code = 50000
 	// CodeWxacodeNotConfigured scorecard 小程序码：租户未配置（或已停用）微信小程序渠道，
@@ -159,6 +175,14 @@ var registry = map[Code]string{
 	CodeFishgameFishReferenced:  "条目已被进度或事件引用，不可删除",
 	CodeFishgameFishKingInvalid: "鱼王指定的条目不存在或已停用",
 	CodeFishgameConfigNotFound:  "运营配置不存在",
+
+	CodeStarfuyuFortuneNotFound:      "运势数据不存在",
+	CodeStarfuyuImageFailed:          "图片生成失败",
+	CodeStarfuyuLimitExceeded:        "今日请求次数已达上限",
+	CodeStarfuyuBaziNotFound:         "尚未保存生辰八字",
+	CodeStarfuyuConstellationMissing: "尚未设置星座",
+	CodeStarfuyuFetchFailed:          "运势抓取失败",
+	CodeStarfuyuMpUploadFailed:       "公众号上传失败",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 

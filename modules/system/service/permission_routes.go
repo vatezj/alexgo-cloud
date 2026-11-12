@@ -35,6 +35,10 @@ var permissionRoutes = map[string][]string{
 	"scorecard:friend": {"/api/admin/scorecard/friends", "/api/admin/scorecard/friends/*"},
 	"scorecard:record": {"/api/admin/scorecard/records", "/api/admin/scorecard/records/*"},
 	"scorecard:room":   {"/api/admin/scorecard/rooms", "/api/admin/scorecard/rooms/*"},
+	// starfuyu 只登记 fortune/task 两个监管页前缀（spec §7；脚手架 5 实体
+	// 收敛为 2 个，limit 并入 task 页）。entity CRUD 与 admin 路由后续任务重写。
+	"starfuyu:fortune": {"/api/admin/starfuyu/fortunes", "/api/admin/starfuyu/fortunes/*"},
+	"starfuyu:task":    {"/api/admin/starfuyu/tasks", "/api/admin/starfuyu/tasks/*", "/api/admin/starfuyu/limits"},
 	"system:user":      {"/api/admin/system/users", "/api/admin/system/users/*"},
 	"system:role":      {"/api/admin/system/roles", "/api/admin/system/roles/*"},
 	"system:menu":      {"/api/admin/system/menus", "/api/admin/system/menus/*"},

@@ -46,6 +46,7 @@ modules:
   order: true
   scorecard: true
   fishgame: true
+  starfuyu: true
 
 fishgame:
   wechat:
@@ -62,3 +63,22 @@ storage:
   root: ./data/uploads        # 盘根，驱动构造时 MkdirAll
   max_size_mb: 10             # 单文件上限
   # allowed_exts: [jpg, jpeg, png, gif, webp, pdf, zip, xlsx]  # 省略则用内置白名单
+
+starfuyu:
+  deepseek:
+    api_key: ""               # 密钥不入库，运维另填（不抄 goLucky 明文）
+    base_url: "https://api.deepseek.com/v1/chat/completions"
+    model: "deepseek-chat"
+    timeout: 120              # 秒，<=0 取 120
+    max_retries: 3            # <=0 取 3
+    retry_delay: 2            # 秒，<=0 取 2
+  wechat_mp:                  # 公众号（草稿箱上传）
+    app_id: ""
+    app_secret: ""
+  limits:
+    bazi_calculate_daily: 5   # <=0 取 5
+    divination_draw_daily: 10 # <=0 取 10
+  cron:
+    fetch_fortune: "10 0 * * *"       # 模块内恒加 CRON_TZ=Asia/Shanghai 前缀
+    generate_images: "20 0 * * *"
+  assets_dir: "modules/starfuyu/assets"   # bgimage/bg.png + fonts/*.ttf
