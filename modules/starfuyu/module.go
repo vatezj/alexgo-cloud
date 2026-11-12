@@ -37,6 +37,7 @@ var FxModule = fx.Module("starfuyu",
 		repository.NewSignCacheRepository,    // Task 3 deferred Provide，Task 6 补
 		service.NewDivinationService,         // DivinationService（Task 6 签文缓存 + 求签/历史）
 		service.NewDeepSeekSignInterpreter,   // SignInterpreter（Task 6 DeepSeek 实现）
+		service.NewImageService,              // ImageService（Task 7 运势生图，storage.Driver 由 system 模块提供）
 		app.NewAppLimitController,
 	),
 	fx.Provide(
