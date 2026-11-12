@@ -38,7 +38,7 @@ func (s *stubFortune) ListAdmin(context.Context, string, string, int, int) ([]*m
 
 // stubImages 记录 GenerateAll 入参（date）。
 type stubImages struct {
-	log  *[]string
+	log   *[]string
 	dates []string
 	ok    int
 	err   error
@@ -97,6 +97,54 @@ func TestFetchToday_UsesTodaySH(t *testing.T) {
 	}
 	if f.dates[0] != TodaySH() {
 		t.Fatalf("Fetch date = %q, want TodaySH()=%q（TZ=UTC 下仍须上海日历日）", f.dates[0], TodaySH())
+	}
+	if !f.forces[0] {
+		t.Fatal("force 未透传：want true")
+	}
+}
+
+// TestFetchDate_Passthrough Task 11：FetchDate 透传 date+force 到 FortuneService.Fetch
+// （admin 手动触发的日期/强制语义；FetchToday 委托本方法，既有用例继续钉 TodaySH）。
+func TestFetchDate_Passthrough(t *testing.T) {
+	f := &stubFortune{}
+	runner := NewTaskRunner(f, &stubImages{})
+
+	if err := runner.FetchDate(context.Background(), "2026-11-01", true); err != nil {
+		t.Fatalf("FetchDate: %v", err)
+	}
+	if len(f.dates) != 1 || f.dates[0] != "2026-11-01" {
+		t.Fatalf("Fetch date = %v want [2026-11-01]", f.dates)
+	}
+	if len(f.forces) != 1 || !f.forces[0] {
+		t.Fatalf("Fetch force = %v want [true]（force 未透传）", f.forces)
+	}
+}
+
+// TestGenerateImagesDate_Passthrough GenerateImagesDate 透传 date 到 ImageService.GenerateAll。
+func TestGenerateImagesDate_Passthrough(t *testing.T) {
+	im := &stubImages{}
+	runner := NewTaskRunner(&stubFortune{}, im)
+
+	if err := runner.GenerateImagesDate(context.Background(), "2026-11-01"); err != nil {
+		t.Fatalf("GenerateImagesDate: %v", err)
+	}
+	if len(im.dates) != 1 || im.dates[0] != "2026-11-01" {
+		t.Fatalf("GenerateAll date = %v want [2026-11-01]", im.dates)
+	}
+}
+
+// TestExecuteAllDate_Order 调用序钉死（同 ExecuteAll）：先 Fetch 后 Generate，date/force 透传。
+func TestExecuteAllDate_Order(t *testing.T) {
+	var order []string
+	f := &stubFortune{log: &order}
+	im := &stubImages{log: &order, ok: 12}
+	runner := NewTaskRunner(f, im)
+
+	if err := runner.ExecuteAllDate(context.Background(), "2026-11-01", true); err != nil {
+		t.Fatalf("ExecuteAllDate: %v", err)
+	}
+	if len(order) != 2 || order[0] != "fetch:2026-11-01" || order[1] != "images:2026-11-01" {
+		t.Fatalf("调用序 = %v want [fetch:2026-11-01 images:2026-11-01]", order)
 	}
 	if !f.forces[0] {
 		t.Fatal("force 未透传：want true")

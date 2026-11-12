@@ -5,6 +5,7 @@ import (
 	"go.uber.org/fx"
 
 	"alexGo-cloud/alexgo-server/server"
+	"alexGo-cloud/modules/starfuyu/controller/admin"
 	"alexGo-cloud/modules/starfuyu/controller/app"
 	"alexGo-cloud/modules/starfuyu/repository"
 	"alexGo-cloud/modules/starfuyu/service"
@@ -48,6 +49,10 @@ var FxModule = fx.Module("starfuyu",
 		// Task 10：C 端 13 端点合一控制器（Bearer member 自鉴权，spec §4.1）。
 		// token.Validator 的接口映射归入口（main.go），模块内不重复 Provide。
 		app.NewAppController,
+		// Task 11：admin 8 端点（casbin 全局中间件鉴权，handler 不取 claims）
+		// + 公开图片读（storage.Driver 由 system 模块提供）。
+		admin.NewAdminController,
+		admin.NewPublicController,
 	),
 	fx.Provide(
 		fx.Annotate(
@@ -78,7 +83,9 @@ type ModuleParams struct {
 	DivinationAppCtrl *app.AppDivinationController
 	FortuneAppCtrl    *app.AppFortuneController
 	LimitAppCtrl      *app.AppLimitController
-	AppCtrl           *app.AppController // Task 10：C 端 13 端点
+	AppCtrl           *app.AppController      // Task 10：C 端 13 端点
+	AdminCtrl         *admin.AdminController  // Task 11：admin 8 端点（spec §4.2）
+	PublicCtrl        *admin.PublicController // Task 11：公开图片读（spec §4.3）
 }
 
 type starfuyuModule struct {
@@ -89,6 +96,8 @@ type starfuyuModule struct {
 	FortuneAppCtrl    *app.AppFortuneController
 	LimitAppCtrl      *app.AppLimitController
 	AppCtrl           *app.AppController
+	AdminCtrl         *admin.AdminController
+	PublicCtrl        *admin.PublicController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
@@ -101,18 +110,37 @@ func NewModule(p ModuleParams) server.Module {
 		FortuneAppCtrl:    p.FortuneAppCtrl,
 		LimitAppCtrl:      p.LimitAppCtrl,
 		AppCtrl:           p.AppCtrl,
+		AdminCtrl:         p.AdminCtrl,
+		PublicCtrl:        p.PublicCtrl,
 	}
 }
 
-// RegisterRoutes 挂载 starfuyu 路由。入参是 /api group（见 server/http.go），
-// 故 admin 用 /admin/starfuyu、app 用 /app/starfuyu（member 基准双前缀）。
-// config 开关：modules.starfuyu: false 时跳过注册。
+// RegisterRoutes 挂载 starfuyu 三段路由。入参是 /api group（见 server/http.go），
+// 故 admin 用 /admin/starfuyu、app 用 /app/starfuyu（member 基准双前缀）、
+// 公开读用 /public/starfuyu（免鉴权）。
+// config 开关：modules.starfuyu: false 时跳过注册——判断置于所有 group 创建之前。
 func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 	if m.cfg != nil {
 		if on, ok := m.cfg.Modules["starfuyu"]; ok && !on {
 			return
 		}
 	}
+	// 公开读（免鉴权，spec §4.3）：入参是 /api group → /api/public/starfuyu/image/*key。
+	// *key 通配：storage key（fortune/{date}/{c}.jpg）含斜杠，:key 单段截不住。
+	r.GET("/public/starfuyu/image/*key", m.PublicCtrl.Image)
+
+	// admin 段（spec §4.2）：统一信封 + casbin 按 permissionRoutes 前缀鉴权
+	// （starfuyu:fortune / starfuyu:task，Task 1 已登记；handler 不取 claims）。
+	adminG := r.Group("/admin/starfuyu")
+	adminG.GET("/fortunes", m.AdminCtrl.ListFortunes)
+	adminG.GET("/fortunes/:date", m.AdminCtrl.FortuneByDate)
+	adminG.GET("/fortunes/:date/article", m.AdminCtrl.FortuneArticle)
+	adminG.POST("/fortunes/:date/upload-mp", m.AdminCtrl.UploadMP)
+	adminG.POST("/tasks/fetch-fortune", m.AdminCtrl.TaskFetchFortune)
+	adminG.POST("/tasks/generate-images", m.AdminCtrl.TaskGenerateImages)
+	adminG.POST("/tasks/execute-all", m.AdminCtrl.TaskExecuteAll)
+	adminG.GET("/limits", m.AdminCtrl.Limits)
+
 	appGroup := r.Group("/app/starfuyu")
 	appGroup.GET("/profiles/ping", m.ProfileAppCtrl.Ping)
 	appGroup.GET("/bazis/ping", m.BaziAppCtrl.Ping)
