@@ -25,6 +25,8 @@ var FxModule = fx.Module("starfuyu",
 		repository.NewDivinationRepository,
 		app.NewAppDivinationController,
 		repository.NewFortuneRepository,
+		service.NewDeepSeekFetcher, // FortuneFetcher（Task 4 抓取器，Task 10 控制器消费）
+		service.NewFortuneService,  // FortuneService（Task 4）
 		app.NewAppFortuneController,
 		repository.NewLimitRepository,
 		service.NewLimitService,

@@ -1,0 +1,237 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"alexGo-cloud/modules/starfuyu/model"
+	"alexGo-cloud/pkg/config"
+)
+
+// FortuneFetcher 每日运势抓取器：一次调用必须恰好返回 12 星座，否则 error（无部分落库）。
+// 抽接口便于测试替换（stub）。
+type FortuneFetcher interface {
+	FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, error)
+}
+
+// deepSeekFetcher 真实现：POST cfg.Starfuyu.Deepseek.BaseURL，prompt 照 goLucky service/deepseek.go。
+type deepSeekFetcher struct {
+	apiKey     string
+	baseURL    string
+	model      string
+	maxRetries int
+	retryDelay time.Duration
+	client     *http.Client
+}
+
+// NewDeepSeekFetcher 从全局配置构造抓取器；超时/重试 <=0 取缺省 120s / 3 次 / 2s。
+func NewDeepSeekFetcher(cfg *config.Config) FortuneFetcher {
+	timeout := 120 * time.Second
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+	var apiKey, baseURL, model string
+	if cfg != nil {
+		ds := cfg.Starfuyu.Deepseek
+		apiKey, baseURL, model = ds.APIKey, ds.BaseURL, ds.Model
+		if ds.Timeout > 0 {
+			timeout = time.Duration(ds.Timeout) * time.Second
+		}
+		if ds.MaxRetries > 0 {
+			maxRetries = ds.MaxRetries
+		}
+		if ds.RetryDelay > 0 {
+			retryDelay = time.Duration(ds.RetryDelay) * time.Second
+		}
+	}
+	return &deepSeekFetcher{
+		apiKey:     apiKey,
+		baseURL:    baseURL,
+		model:      model,
+		maxRetries: maxRetries,
+		retryDelay: retryDelay,
+		client:     &http.Client{Timeout: timeout},
+	}
+}
+
+type deepSeekRequest struct {
+	Model    string            `json:"model"`
+	Messages []deepSeekMessage `json:"messages"`
+}
+
+type deepSeekMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type deepSeekResponse struct {
+	Choices []struct {
+		Message deepSeekMessage `json:"message"`
+	} `json:"choices"`
+	Error struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"error"`
+}
+
+// FetchFortunes 一次 HTTP 调用拉 12 星座；网络类错误按 cfg 重试，其余错误不重试
+// （分类照 goLucky service/deepseek.go）。
+func (f *deepSeekFetcher) FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, error) {
+	if f.apiKey == "" {
+		return nil, fmt.Errorf("starfuyu: deepseek api_key 未配置")
+	}
+	if f.baseURL == "" {
+		return nil, fmt.Errorf("starfuyu: deepseek base_url 未配置")
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= f.maxRetries; attempt++ {
+		if attempt > 1 {
+			log.Printf("[DeepSeek] 第 %d 次重试获取运势数据 (日期: %s)", attempt, date)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(f.retryDelay):
+			}
+		}
+
+		fortunes, err := f.callAPI(ctx, date)
+		if err == nil {
+			log.Printf("[DeepSeek] 成功获取运势数据 (日期: %s, 星座数量: %d)", date, len(fortunes))
+			return fortunes, nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+	return nil, fmt.Errorf("获取运势数据失败 (日期: %s): %w", date, lastErr)
+}
+
+// isRetryable 仅网络/超时类错误重试（照 goLucky）。
+func isRetryable(err error) bool {
+	msg := err.Error()
+	for _, kw := range []string{"timeout", "deadline exceeded", "connection", "network", "EOF"} {
+		if strings.Contains(msg, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fortune, error) {
+	prompt := fmt.Sprintf(`您是一个专业的星座运势API服务。请根据我提供的日期，为所有12个星座生成对应的运势数据，并返回一个格式严格的JSON数组。
+
+### **角色与输入**
+- **角色**：专业的星座运势数据生成器。
+- **输入**：一个名为 date 的参数，其值为格式为 YYYY-MM-DD 的日期字符串（例如：%s）。这是生成运势的唯一依据。
+
+### **输出规范**
+1. **格式**：一个纯JSON数组，包含12个对象，每个对象对应一个星座的运势数据。
+2. **纯净性**：响应必须只包含这个JSON数组，没有任何额外的解释、问候语、代码标记或上下文文本。
+3. **顺序**：数组中的对象顺序必须固定为：白羊座、金牛座、双子座、巨蟹座、狮子座、处女座、天秤座、天蝎座、射手座、摩羯座、水瓶座、双鱼座。
+
+### **JSON对象结构**
+每个星座对象必须严格遵循以下字段定义：
+{
+  "constellation": "星座中文名",
+  "date": "YYYY-MM-DD",
+  "daily_overview": "今天是YYYY年MM月DD日 星期X。今天[星座名]整体运势[用一句话概括]。爱情运势X星，[一句话说明]。事业运势X星，[一句话说明]。财务运势X星，[一句话说明]。健康运势X星，[一句话说明]。幸运颜色是X，幸运数字是X。",
+  "overall_score": 75,
+  "love_score": 80,
+  "career_score": 70,
+  "wealth_score": 65,
+  "health_score": 85,
+  "lucky_color": {
+    "chinese": "红色",
+    "english": "Red",
+    "hex": "#FF0000"
+  },
+  "lucky_number": 7,
+  "summary": "今日运势平稳，宜规划未来。",
+  "love_tip": "多与伴侣进行深度交流。",
+  "career_tip": "处理文件时请仔细核对。",
+  "wealth_tip": "避免进行高风险的投资。",
+  "health_tip": "注意规律作息，补充水分。"
+}
+
+### **生成要求**
+1. 所有分数应为0-100的整数。
+2. 运势描述（summary，*_tip）和daily_overview需基于日期和星座生成，确保内容每日不同且合理。
+3. 幸运色和幸运数字应具备一定的多样性，避免全部相同。
+4. 在生成 daily_overview 时，需要根据当前星座的运势趋势，确定该星座的爱情、事业、财务、健康运势的星级（1-5星），然后为每个运势生成一句简短的说明。
+
+请严格遵循以上规则。现在，请根据日期 %s 生成包含12个星座详细数据的运势信息。`, date, date)
+
+	body, err := json.Marshal(deepSeekRequest{
+		Model:    f.model,
+		Messages: []deepSeekMessage{{Role: "user", Content: prompt}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.baseURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+f.apiKey)
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应体失败 (状态码: %d): %w", resp.StatusCode, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		var errorResp deepSeekResponse
+		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error.Message != "" {
+			return nil, fmt.Errorf("API错误 (状态码: %d, 类型: %s): %s", resp.StatusCode, errorResp.Error.Type, errorResp.Error.Message)
+		}
+		return nil, fmt.Errorf("API返回错误 (状态码: %d): %s", resp.StatusCode, truncate(string(respBody), 200))
+	}
+
+	var dsResp deepSeekResponse
+	if err := json.Unmarshal(respBody, &dsResp); err != nil {
+		return nil, fmt.Errorf("解析响应JSON失败: %w", err)
+	}
+	if len(dsResp.Choices) == 0 {
+		return nil, fmt.Errorf("API返回空数据")
+	}
+	content := strings.TrimSpace(dsResp.Choices[0].Message.Content)
+	if content == "" {
+		return nil, fmt.Errorf("API返回内容为空")
+	}
+
+	var fortunes []*model.Fortune
+	if err := json.Unmarshal([]byte(content), &fortunes); err != nil {
+		return nil, fmt.Errorf("解析运势数据JSON失败: %w, 内容预览: %s", err, truncate(content, 200))
+	}
+	if len(fortunes) != 12 {
+		return nil, fmt.Errorf("运势数据不完整，期望12个，实际%d个", len(fortunes))
+	}
+	// 日期/租户由 service 侧钉死（内容表 tid=0），这里同样置位保证直接可用。
+	for _, row := range fortunes {
+		row.TenantID = 0
+		row.Date = date
+	}
+	return fortunes, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
