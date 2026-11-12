@@ -34,6 +34,9 @@ var FxModule = fx.Module("starfuyu",
 		service.NewProfileService,            // ProfileService（Task 5）
 		service.NewBaziService,               // BaziService（Task 5）
 		service.NewDeepSeekBaziCalculator,    // BaziCalculator（Task 5 DeepSeek 实现）
+		repository.NewSignCacheRepository,    // Task 3 deferred Provide，Task 6 补
+		service.NewDivinationService,         // DivinationService（Task 6 签文缓存 + 求签/历史）
+		service.NewDeepSeekSignInterpreter,   // SignInterpreter（Task 6 DeepSeek 实现）
 		app.NewAppLimitController,
 	),
 	fx.Provide(
