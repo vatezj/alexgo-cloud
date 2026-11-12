@@ -179,6 +179,74 @@ func TestFortuneFetch_FetcherError(t *testing.T) {
 	}
 }
 
+// TestFortuneFetch_NilRow 终审 Critical：JSON `[null,{…}×11]` 过 len==12 后
+// row.TenantID 会 panic → 必须 30506、零落库、不崩。
+func TestFortuneFetch_NilRow(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	const date = "2026-11-12"
+	rows := twelveRows(date, "空行")
+	rows[3] = nil // 12 行中夹一个 nil
+	stub := &stubFetcher{rows: rows}
+	svc := NewFortuneService(repo, stub)
+	ctx := context.Background()
+
+	skipped, err := svc.Fetch(ctx, date, false)
+	if err == nil {
+		t.Fatalf("含 nil 行应报错, skipped=%v err=nil", skipped)
+	}
+	if !errs.Is(err, errs.CodeStarfuyuFetchFailed) {
+		t.Fatalf("nil 行错误码应为 30506, got %v", err)
+	}
+	if n, cerr := repo.CountByDate(ctx, date); cerr != nil || n != 0 {
+		t.Fatalf("nil 行批不得落库, CountByDate = %d, %v; want 0, nil", n, cerr)
+	}
+}
+
+// TestFortuneFetch_DuplicateConstellation 终审 Important：12 行含重复星座 →
+// UpsertBatch 会静默折叠、CountByDate 永远 <12 → 必须 30506、零落库。
+func TestFortuneFetch_DuplicateConstellation(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	const date = "2026-11-12"
+	rows := twelveRows(date, "重复")
+	rows[1].Constellation = rows[0].Constellation // 金牛→白羊，白羊出现两次
+	stub := &stubFetcher{rows: rows}
+	svc := NewFortuneService(repo, stub)
+	ctx := context.Background()
+
+	skipped, err := svc.Fetch(ctx, date, false)
+	if err == nil {
+		t.Fatalf("重复星座应报错, skipped=%v err=nil", skipped)
+	}
+	if !errs.Is(err, errs.CodeStarfuyuFetchFailed) {
+		t.Fatalf("重复星座错误码应为 30506, got %v", err)
+	}
+	if n, cerr := repo.CountByDate(ctx, date); cerr != nil || n != 0 {
+		t.Fatalf("重复星座批不得落库, CountByDate = %d, %v; want 0, nil", n, cerr)
+	}
+}
+
+// TestFortuneFetch_UnknownConstellation 同校验：未知星座名 → 30506、零落库。
+func TestFortuneFetch_UnknownConstellation(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	const date = "2026-11-12"
+	rows := twelveRows(date, "未知")
+	rows[0].Constellation = "不存在座"
+	stub := &stubFetcher{rows: rows}
+	svc := NewFortuneService(repo, stub)
+	ctx := context.Background()
+
+	_, err := svc.Fetch(ctx, date, false)
+	if !errs.Is(err, errs.CodeStarfuyuFetchFailed) {
+		t.Fatalf("未知星座错误码应为 30506, got %v", err)
+	}
+	if n, _ := repo.CountByDate(ctx, date); n != 0 {
+		t.Fatalf("未知星座批不得落库, CountByDate = %d, want 0", n)
+	}
+}
+
 // TestFortuneGetByDate_Empty库 brief 用例 5：空库 → 空切片非 error。
 func TestFortuneGetByDate_Empty库(t *testing.T) {
 	db := newTestDB(t)

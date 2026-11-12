@@ -57,7 +57,24 @@ func (s *fortuneService) Fetch(ctx context.Context, date string, force bool) (bo
 		return false, errs.New(errs.CodeStarfuyuFetchFailed,
 			fmt.Errorf("运势数据不完整，期望12个，实际%d个", len(rows)))
 	}
+	// nil 行 + 星座合法性/唯一性校验：`[null,…]` 过 len 检查后 row.TenantID 会
+	// panic；重复/未知星座过 len 但 UpsertBatch 静默折叠 → CountByDate 永远 <12。
+	// 任一不合法 → 30506、零落库。
+	seen := make(map[string]struct{}, 12)
 	for _, row := range rows {
+		if row == nil {
+			return false, errs.New(errs.CodeStarfuyuFetchFailed,
+				fmt.Errorf("运势数据含空行"))
+		}
+		if !IsValidConstellation(row.Constellation) {
+			return false, errs.New(errs.CodeStarfuyuFetchFailed,
+				fmt.Errorf("非法星座名: %q", row.Constellation))
+		}
+		if _, dup := seen[row.Constellation]; dup {
+			return false, errs.New(errs.CodeStarfuyuFetchFailed,
+				fmt.Errorf("星座重复: %q", row.Constellation))
+		}
+		seen[row.Constellation] = struct{}{}
 		row.TenantID = 0 // 内容表恒 0
 		row.Date = date  // 以入参日期为准
 	}

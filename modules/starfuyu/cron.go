@@ -57,6 +57,13 @@ func cronLifecycle(lc fx.Lifecycle, cfg *config.Config, runner service.TaskRunne
 	var c *cron.Cron
 	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
+			// 模块开关同 RegisterRoutes：modules.starfuyu: false 时不启动任何
+			// cron（否则夜间任务仍会打 DeepSeek）。判断置于 cron.New 之前。
+			if cfg != nil {
+				if on, ok := cfg.Modules["starfuyu"]; ok && !on {
+					return nil
+				}
+			}
 			c = cron.New(cron.WithParser(cronParser))
 
 			fetchSpec := service.CronSpec(cfg.Starfuyu.Cron.FetchFortune)

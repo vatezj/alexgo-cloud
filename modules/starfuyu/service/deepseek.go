@@ -222,7 +222,11 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
 		return nil, fmt.Errorf("运势数据不完整，期望12个，实际%d个", len(fortunes))
 	}
 	// 日期/租户由 service 侧钉死（内容表 tid=0），这里同样置位保证直接可用。
+	// JSON `[null, {...}×11]` 能过 len==12，nil 行必须先挡（否则 row.TenantID panic）。
 	for _, row := range fortunes {
+		if row == nil {
+			return nil, fmt.Errorf("运势数据含空行")
+		}
 		row.TenantID = 0
 		row.Date = date
 	}
