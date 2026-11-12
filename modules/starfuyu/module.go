@@ -45,6 +45,9 @@ var FxModule = fx.Module("starfuyu",
 		service.NewArticleService, // ArticleService（Task 8 草稿箱上传）
 		app.NewAppLimitController,
 		service.NewTaskRunner, // TaskRunner（Task 9 定时任务编排）
+		// Task 10：C 端 13 端点合一控制器（Bearer member 自鉴权，spec §4.1）。
+		// token.Validator 的接口映射归入口（main.go），模块内不重复 Provide。
+		app.NewAppController,
 	),
 	fx.Provide(
 		fx.Annotate(
@@ -75,6 +78,7 @@ type ModuleParams struct {
 	DivinationAppCtrl *app.AppDivinationController
 	FortuneAppCtrl    *app.AppFortuneController
 	LimitAppCtrl      *app.AppLimitController
+	AppCtrl           *app.AppController // Task 10：C 端 13 端点
 }
 
 type starfuyuModule struct {
@@ -84,6 +88,7 @@ type starfuyuModule struct {
 	DivinationAppCtrl *app.AppDivinationController
 	FortuneAppCtrl    *app.AppFortuneController
 	LimitAppCtrl      *app.AppLimitController
+	AppCtrl           *app.AppController
 }
 
 // NewModule 聚合控制器，产出 server.Module（挂进 group:"modules"）。
@@ -95,6 +100,7 @@ func NewModule(p ModuleParams) server.Module {
 		DivinationAppCtrl: p.DivinationAppCtrl,
 		FortuneAppCtrl:    p.FortuneAppCtrl,
 		LimitAppCtrl:      p.LimitAppCtrl,
+		AppCtrl:           p.AppCtrl,
 	}
 }
 
@@ -113,6 +119,22 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 	appGroup.GET("/divinations/ping", m.DivinationAppCtrl.Ping)
 	appGroup.GET("/fortunes/ping", m.FortuneAppCtrl.Ping)
 	appGroup.GET("/limits/ping", m.LimitAppCtrl.Ping)
+	// C 端业务 13 端点（Task 10，spec §4.1）。静态段（/fortune/today、/fortune/my/*、
+	// /fortune/image/*）先于 /fortune/:date 注册——gin 静态优先，照 goLucky 原路由。
+	// /divination/sign/:number 是唯一公开端点：handler 内不挂 claims。
+	appGroup.GET("/fortune/today", m.AppCtrl.FortuneToday)
+	appGroup.GET("/fortune/:date", m.AppCtrl.FortuneByDate)
+	appGroup.GET("/fortune/my/today", m.AppCtrl.FortuneMyToday)
+	appGroup.GET("/fortune/my/:date", m.AppCtrl.FortuneMyByDate)
+	appGroup.GET("/fortune/image/:constellation/:date", m.AppCtrl.FortuneImage)
+	appGroup.POST("/bazi/calculate", m.AppCtrl.BaziCalculate)
+	appGroup.GET("/bazi/my", m.AppCtrl.BaziMy)
+	appGroup.PUT("/bazi/my", m.AppCtrl.BaziUpdateMy)
+	appGroup.GET("/divination/sign/:number", m.AppCtrl.DivinationSign)
+	appGroup.POST("/divination/draw", m.AppCtrl.DivinationDraw)
+	appGroup.GET("/divination/history", m.AppCtrl.DivinationHistory)
+	appGroup.GET("/profile", m.AppCtrl.ProfileGet)
+	appGroup.PUT("/profile", m.AppCtrl.ProfilePut)
 	// 跨模块接口映射（如 token.Issuer）归入口 main.go，模块内不重复 Provide——
 	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
 }
