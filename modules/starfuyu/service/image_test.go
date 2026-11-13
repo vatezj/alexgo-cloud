@@ -75,7 +75,7 @@ func TestEnsure_WritesJPEGAndSecondCallSkips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ensure err = %v, want nil", err)
 	}
-	if want := "fortune/2026-11-12/白羊座.jpg"; key != want {
+	if want := "fortune/v2/2026-11-12/白羊座.jpg"; key != want {
 		t.Fatalf("key = %q, want %q", key, want)
 	}
 	if f.drv.saves != 1 {

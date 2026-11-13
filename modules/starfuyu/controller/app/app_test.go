@@ -137,7 +137,7 @@ func (s *stubImage) Ensure(ctx context.Context, date, constellation string) (str
 	if s.ensure != nil {
 		return s.ensure(ctx, date, constellation)
 	}
-	return "fortune/" + date + "/" + constellation + ".jpg", nil
+	return "fortune/v2/" + date + "/" + constellation + ".jpg", nil
 }
 
 func (s *stubImage) GenerateAll(context.Context, string) (int, error) { return 0, nil }
@@ -359,7 +359,7 @@ func TestFortuneImage_URLComposition(t *testing.T) {
 	if err := json.Unmarshal(decode(t, w).Data, &data); err != nil {
 		t.Fatalf("unmarshal data: %v", err)
 	}
-	const want = "/api/public/starfuyu/image/fortune/2026-11-12/aries.jpg"
+	const want = "/api/public/starfuyu/image/fortune/v2/2026-11-12/aries.jpg"
 	if data.URL != want {
 		t.Fatalf("url=%q want %q", data.URL, want)
 	}
