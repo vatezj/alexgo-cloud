@@ -112,6 +112,7 @@ func (s *imageService) GenerateAll(ctx context.Context, date string) (int, error
 }
 
 // findFontPath 扫 AssetsDir/fonts 取字典序第一个 ttf/otf/ttc；无命中 → 30502（决定 19）。
+// 字典序 NotoSansSC-Bold.ttf 先于 NotoSansSC-VF.ttf → 当前激活粗体（VF 仅留作再实例化源）。
 func (s *imageService) findFontPath() (string, error) {
 	matches, err := filepath.Glob(filepath.Join(s.assetsDir, "fonts", "*"))
 	if err != nil {
