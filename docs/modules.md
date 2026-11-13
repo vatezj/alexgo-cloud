@@ -1148,7 +1148,7 @@ luckyU 小程序前端**不在本期**（原样保留于 `modules/starfuyu/lucky
 - **Service**：Fortune（一次 DeepSeek 拉 12 星座、补缺语义）、Image（gg + 内置中文字体 + storage 落盘）、Article（公众号文章 + 草稿箱上传）、Bazi、Divination（含 `sign_cache`）、Limit（沪时区日限流）、Task（cron 编排）
 - **Controller**：`controller/app`（13 条业务端点，Bearer member 自鉴权，scorecard 同构，**不走 casbin**）与 `controller/admin`（8 端点，casbin 放行后不取 claims）
 - **定时任务**：fx OnStart/OnStop 起停 robfig/cron 两任务（§13.7）
-- **图片**：不落业务表——storage 盘 + 确定性 key `fortune/{date}/{constellation}.jpg`（幂等覆盖），公开读走 §13.5
+- **图片**：不落业务表——storage 盘 + 确定性 key `fortune/v2/{date}/{constellation}.jpg`（v2=分享卡模板，v1 旧图留 storage 过期；幂等覆盖），公开读走 §13.5；新模板底图 1728×2397、分享卡 10 字段，cron 顺序 fetch→generate 不变
 - 用户体系**复用 member**：不建用户表、不做登录，身份 = member token claims（goLucky 自有 `users` 表 + JWT 不迁移）
 
 ### 13.2 权限与菜单
@@ -1231,6 +1231,7 @@ JSON 列（`lucky_color`/`bazi_info`）照 goLucky 的 `driver.Valuer/Scanner` �
 - 表达式读 `cfg.Starfuyu.Cron.*`（缺省 `"10 0 * * *"` / `"20 0 * * *"`），**恒加 `CRON_TZ=Asia/Shanghai` 前缀**；5 段标准 parser（不用 WithSeconds），进程嵌入 `time/tzdata`——`TZ=UTC` 容器下日期串仍按沪时区翻转（限流 `date`、运势 `date`、文章日期统一走模块内 `nowSH()`）。
 - DeepSeek 空 api_key **无条件跳过**并记 warn（空配可启动联调）；cron 任务 panic 由外壳 recover 成 warn 不崩进程。
 - 启动不补跑（错过等次日，与 goLucky 一致）；补跑走 admin `POST /tasks/*`。OnStop 等在跑任务收尾。
+- **上线注记**：上线当天需 admin force 重抓（默认补缺不带新字段）并先删 storage `fortune/v2/{当日}/` 再 execute-all。
 
 ### 13.8 错误码（30501–30507）
 

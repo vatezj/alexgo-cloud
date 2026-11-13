@@ -126,7 +126,7 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 		}
 	}
 	// 公开读（免鉴权，spec §4.3）：入参是 /api group → /api/public/starfuyu/image/*key。
-	// *key 通配：storage key（fortune/{date}/{c}.jpg）含斜杠，:key 单段截不住。
+	// *key 通配：storage key（fortune/v2/{date}/{c}.jpg）含斜杠，:key 单段截不住。
 	r.GET("/public/starfuyu/image/*key", m.PublicCtrl.Image)
 
 	// admin 段（spec §4.2）：统一信封 + casbin 按 permissionRoutes 前缀鉴权
