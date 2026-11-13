@@ -5,7 +5,7 @@
  * - 迷你身份牌行 → ProfileGate edit（未登录先去登录，与首页点头像同语义）
  * - 常规分组：使用手册 / 客服（wd-button open-type=contact，同房间页筹码轨）/
  *   获取头像昵称（MP 官方 chooseAvatar/nickname 快捷通道 = ProfileGate 的 MP 分支，H5 隐藏）
- * - 「更多趣味小工具」折叠分组：工资到账计算器 / 日期计算器（占位）；方位算卜已下线（fun-compass-off）
+ * - 「更多趣味小工具」折叠分组：工资到账计算器 / 星座运势（登录门，starfuyu 分包）/ 日期计算器（占位）；方位算卜已下线（fun-compass-off）
  * - 自绘 nav 沿用 manual 页模式；色值全走 token，无硬编码
  * - 语义类 mine-* 前缀（scoped 样式，避 UnoCSS 全局工具类撞名清单）
  */
@@ -94,6 +94,15 @@ function goManual() {
 function goSalary() {
   router.push({ path: '/pages/fun/salary/index' })
 }
+
+/** 星座运势（luckyu-into-scorecard）→ starfuyu 分包运势首页；未登录先去登录 */
+function goStarfuyu() {
+  if (!isLoggedIn.value) {
+    router.push({ path: '/pages/login/index' })
+    return
+  }
+  uni.navigateTo({ url: '/pages/starfuyu/index/index' })
+}
 </script>
 
 <template>
@@ -116,7 +125,7 @@ function goSalary() {
       <view class="ntitle">
         我的
         <text class="nsub">
-          打牌记账 · 设置
+          记账局叙 · 设置
         </text>
       </view>
       <view class="side right">
@@ -253,6 +262,30 @@ function goSalary() {
         />
       </view>
 
+      <view
+        class="g-row fun-row"
+        @click="goStarfuyu"
+      >
+        <view class="fc-tile i">
+          <text class="fc-tile-t">
+            星
+          </text>
+        </view>
+        <view class="r-main">
+          <text class="r-t">
+            星座运势
+          </text>
+          <text class="r-s">
+            今日运势 · 查八字
+          </text>
+        </view>
+        <wd-icon
+          css-icon
+          class="chev"
+          name="i-carbon-chevron-right"
+        />
+      </view>
+
       <view class="g-row dim-row">
         <view class="r-main">
           <text class="r-t">
@@ -270,7 +303,7 @@ function goSalary() {
     </view>
 
     <text class="mine-ver">
-      打牌记账 · v{{ version }}
+      记账局叙 · v{{ version }}
     </text>
 
     <!-- 修改资料（与首页点头像同一弹框） -->
@@ -549,6 +582,11 @@ function goSalary() {
 /* 工资行：¥ 黄铜（区别于方位行的漆红東） */
 .fc-tile.y .fc-tile-t {
   color: var(--brass);
+}
+
+/* 星座行：星 靛蓝（区别于工资行的黄铜 ¥） */
+.fc-tile.i .fc-tile-t {
+  color: var(--indigo-hi);
 }
 
 .badge-new {

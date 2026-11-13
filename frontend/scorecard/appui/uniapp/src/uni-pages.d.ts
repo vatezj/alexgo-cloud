@@ -13,7 +13,9 @@ type _LocationUrl =
   "/pages/records/index" |
   "/pages/room/index" |
   "/pages/settle/index" |
-  "/pages/fun/salary/index";
+  "/pages/fun/salary/index" |
+  "/pages/starfuyu/bazi/index" |
+  "/pages/starfuyu/index/index";
 
 interface NavigateToOptions {
   url: _LocationUrl;
