@@ -1140,7 +1140,7 @@ API 封装 `src/api/fishgame.ts`（requestClient → `/api/admin/fishgame/**`）
 
 星座运势 / 生辰八字 / 求签解读的 C 端内容服务（goLucky 独立后端融入）：每日 12 星座运势抓取与运势图生成、公众号文章 HTML 生成与草稿箱上传、我的星座偏好 / 八字 / 求签（日限流 + 签文按号缓存）。设计见
 [`superpowers/specs/2026-11-12-starfuyu-module-design.md`](superpowers/specs/2026-11-12-starfuyu-module-design.md)；
-luckyU 小程序前端**不在本期**（原样保留于 `modules/starfuyu/luckyU/`，接入为后续票，见 §13.10）。
+luckyU 小程序前端**不在后端本期**——后端交付时原样保留，后已并入 scorecard appui 分包 `src/pages/starfuyu/` 并删除源目录（见 §13.10）。
 
 装配要点（`modules/starfuyu/module.go`；`alexgo-server/configs/config.yaml` 的 `modules.starfuyu: false` 时三段路由全不注册）：
 
@@ -1259,11 +1259,11 @@ JSON 列（`lucky_color`/`bazi_info`）照 goLucky 的 `driver.Valuer/Scanner` �
 
 goLucky 源码目录（含自带 `.git` 与构建产物）已随本模块收口从工作区整目录移除——该目录
 从未纳入本仓库 git（嵌套独立仓库），移除后仅剩本节与 spec/迁移提交中的对照记录；
-`luckyU/` 小程序前端原样保留在 `modules/starfuyu/luckyU/`。
+`luckyU/` 小程序前端已并入 scorecard appui 分包（`src/pages/starfuyu/`，2026-11-13），源目录 `modules/starfuyu/luckyU/` 已删除。
 
 ### 13.10 后续票（本期明确切出）
 
-1. luckyU 小程序切换 member/social 登录 + 对接新 API 契约（前端原样保留，见 §13.9）。
+1. ~~luckyU 小程序切换 member/social 登录 + 对接新 API 契约~~——2026-11-13 已并入 scorecard appui 分包 `frontend/scorecard/appui/uniapp/src/pages/starfuyu/`（index+bazi 两页，走 member 登录态与新 API 契约），源目录 `modules/starfuyu/luckyU/` 已删除。
 2. admin vben 页面（运势列表/任务中心/限流概览）+ 菜单种子 + `permission_routes` 联调——本期无菜单无页面。
 3. （可选）签文模板库表化、运势内容租户化运营、公众号定时自动上传（现为手动触发）。
 
