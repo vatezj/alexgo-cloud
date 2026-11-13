@@ -41,7 +41,8 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// twelveRows 12 星座行（白羊→双鱼），summary 可区分。
+// twelveRows 12 星座行（白羊→双鱼），summary 可区分；分享卡字段用 mark 拼值
+// （match_constellation 取下一星座保证是合法枚举且≠自身），Task 2/5 测试复用。
 func twelveRows(date, mark string) []*model.Fortune {
 	consts := []string{"白羊座", "金牛座", "双子座", "巨蟹座", "狮子座", "处女座", "天秤座", "天蝎座", "射手座", "摩羯座", "水瓶座", "双鱼座"}
 	rows := make([]*model.Fortune, 0, 12)
@@ -49,8 +50,18 @@ func twelveRows(date, mark string) []*model.Fortune {
 		rows = append(rows, &model.Fortune{
 			TenantID: 0, Date: date, Constellation: c,
 			DailyOverview: mark + "概述", OverallScore: 60 + i, LuckyNumber: i + 1,
-			LuckyColor: model.LuckyColor{Chinese: "红色", English: "Red", Hex: "#ff0000"},
-			Summary:    mark + "总评",
+			LuckyColor:         model.LuckyColor{Chinese: "红色", English: "Red", Hex: "#ff0000"},
+			Summary:            mark + "总评",
+			MatchConstellation: consts[(i+1)%12],
+			Advice:             mark + "建议",
+			Avoid:              mark + "避免",
+			ReunionTip:         mark + "复合",
+			SingleTip:          mark + "脱单",
+			JobTip:             mark + "求职",
+			ReunionScore:       66,
+			SingleScore:        77,
+			JobScore:           88,
+			DailyTodos:         model.DailyTodos{mark + "必做一", mark + "必做二", mark + "必做三"},
 		})
 	}
 	return rows
