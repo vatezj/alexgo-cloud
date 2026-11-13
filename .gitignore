@@ -81,3 +81,6 @@ datalog
 
 # Redis 本地落盘
 dump.rdb
+
+# 普惠体全家桶源包（333MB，仅留作换字重来源；活动字体是顶层单字重 ttf）
+modules/starfuyu/assets/fonts/AlibabaPuHuiTi-3/

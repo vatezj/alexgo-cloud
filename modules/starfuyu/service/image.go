@@ -112,7 +112,8 @@ func (s *imageService) GenerateAll(ctx context.Context, date string) (int, error
 }
 
 // findFontPath 扫 AssetsDir/fonts 取字典序第一个 ttf/otf/ttc；无命中 → 30502（决定 19）。
-// 字典序 NotoSansSC-Bold.ttf 先于 NotoSansSC-VF.ttf → 当前激活粗体（VF 仅留作再实例化源）。
+// 活动字体 = fonts/ 顶层 ttf：AlibabaPuHuiTi-3-85-Bold.ttf（阿里妈妈普惠体 3 Bold）；
+// AlibabaPuHuiTi-3/ 源包子目录不参与 glob（目录被 IsDir 过滤），仅留作换字重来源。
 func (s *imageService) findFontPath() (string, error) {
 	matches, err := filepath.Glob(filepath.Join(s.assetsDir, "fonts", "*"))
 	if err != nil {
