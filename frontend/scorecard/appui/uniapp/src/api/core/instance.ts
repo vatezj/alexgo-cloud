@@ -2,6 +2,7 @@ import AdapterUniapp from '@alova/adapter-uniapp'
 import { createAlova } from 'alova'
 import vueHook from 'alova/vue'
 import { useScorecardAuthStore } from '@/store/scorecard/auth'
+import mockAdapter from '../mock/mockAdapter'
 import { handleAlovaError, handleAlovaResponse } from './handlers'
 
 /** API 根地址：alova baseURL 与手写 uploadFile（scoreUpload）共用同一取值，避免两处漂移。 */
@@ -9,7 +10,9 @@ export const apiBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1
 
 export const alovaInstance = createAlova({
   baseURL: apiBaseURL,
-  ...AdapterUniapp(),
+  // mock 适配器挂 requestAdapter：命中 /api/app/starfuyu 前缀走 mock，
+  // 其余（scorecard 记账局叙等）经其 httpAdapter fallback 到 uniappRequestAdapter 真请求
+  ...AdapterUniapp({ mockRequest: mockAdapter }),
   statesHook: vueHook,
   beforeRequest: (method) => {
     // 注入登录态 Bearer token（无 token 的公开接口不带 Authorization）
