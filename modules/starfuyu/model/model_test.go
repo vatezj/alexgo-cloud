@@ -1,7 +1,9 @@
 package model
 
 import (
+	"database/sql/driver"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -28,6 +30,53 @@ func TestLuckyColorRoundtrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(in, out) {
 		t.Fatalf("Scan(nil) 后被改动 = %+v, want %+v", out, in)
+	}
+}
+
+// TestDailyTodosRoundtrip DailyTodos 的 Valuer/Scan JSON 往返 + nil 不动已有值。
+func TestDailyTodosRoundtrip(t *testing.T) {
+	in := []string{"喝八杯水", "给前任点赞前先想想", "19点后别做决定"}
+	// in 的持有者：named type 才能挂 driver.Valuer / sql.Scanner。
+	var _ driver.Valuer = DailyTodos(in)
+	v, err := DailyTodos(in).Value()
+	if err != nil {
+		t.Fatalf("Value() err = %v, want nil", err)
+	}
+	b, ok := v.([]byte)
+	if !ok {
+		t.Fatalf("Value() type = %T, want []byte", v)
+	}
+	if !strings.Contains(string(b), "喝八杯水") {
+		t.Fatalf("Value() = %s, want 含 %q", b, "喝八杯水")
+	}
+
+	var out DailyTodos
+	if err := out.Scan(v); err != nil {
+		t.Fatalf("Scan(%T) err = %v, want nil", v, err)
+	}
+	if !reflect.DeepEqual(DailyTodos(in), out) {
+		t.Fatalf("roundtrip = %v, want %v", out, in)
+	}
+	// []byte 分支（MySQL json 列取回路径）。
+	if err := out.Scan([]byte(`["a","b"]`)); err != nil {
+		t.Fatalf("Scan([]byte) err = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(DailyTodos{"a", "b"}, out) {
+		t.Fatalf("Scan([]byte) = %v, want [a b]", out)
+	}
+	// string 分支（sqlite 部分路径）。
+	if err := out.Scan(string(`["x"]`)); err != nil {
+		t.Fatalf("Scan(string) err = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(DailyTodos{"x"}, out) {
+		t.Fatalf("Scan(string) = %v, want [x]", out)
+	}
+	// 空列/未赋值路径：Scan(nil) 不报错且不动已有值。
+	if err := out.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil) err = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(DailyTodos{"x"}, out) {
+		t.Fatalf("Scan(nil) 后被改动 = %v, want [x]", out)
 	}
 }
 
@@ -123,7 +172,7 @@ func TestAutoMigrateColumns(t *testing.T) {
 		cols  []string
 	}{
 		{Profile{}, []string{"id", "tenant_id", "member_user_id", "constellation", "created_at", "updated_at"}},
-		{Fortune{}, []string{"id", "tenant_id", "date", "constellation", "daily_overview", "overall_score", "love_score", "career_score", "wealth_score", "health_score", "lucky_number", "lucky_color", "summary", "love_tip", "career_tip", "wealth_tip", "health_tip", "created_at", "updated_at"}},
+		{Fortune{}, []string{"id", "tenant_id", "date", "constellation", "daily_overview", "overall_score", "love_score", "career_score", "wealth_score", "health_score", "lucky_number", "lucky_color", "summary", "love_tip", "career_tip", "wealth_tip", "health_tip", "match_constellation", "advice", "avoid", "reunion_tip", "single_tip", "job_tip", "reunion_score", "single_score", "job_score", "daily_todos", "created_at", "updated_at"}},
 		{Bazi{}, []string{"id", "tenant_id", "member_user_id", "birth_date", "birth_time", "birth_place", "bazi_info", "created_at", "updated_at"}},
 		{Divination{}, []string{"id", "tenant_id", "member_user_id", "bazi_id", "question", "sign_number", "sign_content", "interpretation", "category", "lucky_direction", "lucky_color", "advice", "created_at", "updated_at"}},
 		{RequestLimit{}, []string{"id", "tenant_id", "member_user_id", "date", "type", "count", "created_at", "updated_at"}},
