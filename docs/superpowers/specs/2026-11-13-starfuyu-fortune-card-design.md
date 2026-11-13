@@ -53,8 +53,8 @@ down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN
 在 JSON 对象结构里追加：
 
 ```json
-"advice": "今日建议，≤24字",
-"avoid": "今日避免，≤24字",
+"advice": "今日建议，≤12字",
+"avoid": "今日避免，≤9字",
 "match_constellation": "合拍星座中文名（12星座之一）",
 "reunion_tip": "复合运一句，≤14字",
 "single_tip": "脱单运一句，≤14字",
@@ -69,10 +69,11 @@ down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN
 - advice/avoid 与四个 tip 风格一致、每日不同；match_constellation 不得等于本星座自身。
 - daily_todos 恰好 3 条、每条 ≤14 字、可执行的行动建议。
 - **字数上限全部为初值**：出图后按视觉效果微调 prompt（这是迭代项，不是一次定死的合同）。
+- advice/avoid/summary（建议/避免/简述）字数 12/9/24 为 2026-11-13 视觉迭代回灌后的终值；再放宽需同步加高 Advice/Avoid 槽（share_cardLayout）。
 
 解析容错：DeepSeek 偶发漏字段 → 缺失字段落零值/空串（Go json 解析天然如此），**不判失败**；`daily_todos` 缺失解析为空数组，图上画 0 行。`match_constellation` 非法值（不在 12 枚举）→ 存空串（入库前校验，复用 `IsValidConstellation`）。
 
-`summary`（今日简述）复用现有列，prompt 微调为 ≤30 字的单句总评（现有 prompt 本就要求一句话风格，只需补字数约束）。
+`summary`（今日简述）复用现有列，prompt 微调为 ≤24 字的单句总评（现有 prompt 本就要求一句话风格，只需补字数约束）。
 
 ### 3.3 兼容与重抓
 

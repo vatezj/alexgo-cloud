@@ -69,7 +69,8 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 	prompt := req.Messages[0].Content
 	for _, key := range []string{
 		"match_constellation", "advice", "avoid", "reunion_tip",
-		"single_tip", "job_tip", "reunion_score", "daily_todos",
+		"single_tip", "job_tip", "reunion_score", "single_score",
+		"job_score", "daily_todos",
 	} {
 		if !strings.Contains(prompt, key) {
 			t.Errorf("prompt 缺字段名 %q", key)
