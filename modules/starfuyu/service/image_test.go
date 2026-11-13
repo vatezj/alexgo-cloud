@@ -3,11 +3,15 @@ package service
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/jpeg"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fogleman/gg"
 
 	"alexGo-cloud/modules/starfuyu/model"
 	"alexGo-cloud/modules/starfuyu/repository"
@@ -180,4 +184,210 @@ func TestEnsure_FontMissing30502(t *testing.T) {
 	if f.drv.saves != 0 {
 		t.Fatalf("失败不得落盘, saves = %d", f.drv.saves)
 	}
+}
+
+// decodeRendered 从 fixture 盘上读出 key 对应 JPEG 并解码（像素断言用）。
+func decodeRendered(t *testing.T, f *imageFixture, ctx context.Context, key string) image.Image {
+	t.Helper()
+	rc, err := f.drv.Open(ctx, key)
+	if err != nil {
+		t.Fatalf("打开盘上 %q err = %v", key, err)
+	}
+	data, err := io.ReadAll(rc)
+	_ = rc.Close()
+	if err != nil {
+		t.Fatalf("读盘上 %q err = %v", key, err)
+	}
+	im, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("解码 %q JPEG err = %v", key, err)
+	}
+	return im
+}
+
+// loadShareBG 底图原图（像素比较基准）。
+func loadShareBG(t *testing.T) image.Image {
+	t.Helper()
+	bg, err := gg.LoadImage(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	if err != nil {
+		t.Fatalf("加载底图 err = %v", err)
+	}
+	return bg
+}
+
+// absF 浮点绝对值。
+func absF(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// regionMeanDiff 两图同 rect 逐通道差的均值（JPEG q90 噪声容差断言用）。
+func regionMeanDiff(a, b image.Image, r slot) float64 {
+	var sum, n float64
+	for y := int(r.y); y < int(r.y+r.h); y++ {
+		for x := int(r.x); x < int(r.x+r.w); x++ {
+			r1, g1, b1, _ := a.At(x, y).RGBA()
+			r2, g2, b2, _ := b.At(x, y).RGBA()
+			sum += absF(float64(r1>>8)-float64(r2>>8)) + absF(float64(g1>>8)-float64(g2>>8)) + absF(float64(b1>>8)-float64(b2>>8))
+			n += 3
+		}
+	}
+	return sum / n
+}
+
+// regionMaxDiff 两图同 rect 逐通道差的最大值（有值必画断言用）。
+func regionMaxDiff(a, b image.Image, r slot) float64 {
+	m := 0.0
+	for y := int(r.y); y < int(r.y+r.h); y++ {
+		for x := int(r.x); x < int(r.x+r.w); x++ {
+			r1, g1, b1, _ := a.At(x, y).RGBA()
+			r2, g2, b2, _ := b.At(x, y).RGBA()
+			for _, d := range [...]float64{
+				absF(float64(r1>>8) - float64(r2>>8)),
+				absF(float64(g1>>8) - float64(g2>>8)),
+				absF(float64(b1>>8) - float64(b2>>8)),
+			} {
+				if d > m {
+					m = d
+				}
+			}
+		}
+	}
+	return m
+}
+
+// TestRender_EmptyShareFields 空值槽位：留白不崩，且槽位区域像素≈底图（未画残留符号）；
+// 有值对照行同区域必须有绘制（像素差 > 20）。
+func TestRender_EmptyShareFields(t *testing.T) {
+	const date = "2026-11-12"
+	ctx := context.Background()
+
+	// 空值行：逐行清空分享卡新字段，Summary 也置空（twelveRows 默认满值，须显式清）。
+	f := newImageFixture(t, "")
+	rows := twelveRows(date, "空")
+	for _, row := range rows {
+		row.Summary = ""
+		row.MatchConstellation = ""
+		row.Advice = ""
+		row.Avoid = ""
+		row.ReunionTip, row.SingleTip, row.JobTip = "", "", ""
+		row.ReunionScore, row.SingleScore, row.JobScore = 0, 0, 0
+		row.DailyTodos = nil
+	}
+	f.seed(t, rows)
+
+	key, err := f.svc.Ensure(ctx, date, "白羊座")
+	if err != nil {
+		t.Fatalf("Ensure(空值) err = %v, want nil（空字段不崩）", err)
+	}
+	empty := decodeRendered(t, f, ctx, key)
+	bg := loadShareBG(t)
+
+	if d := regionMeanDiff(empty, bg, shareCardLayout.Summary); d >= 6 {
+		t.Fatalf("空 Summary 槽区域平均像素差 = %.2f, want < 6（留白不画）", d)
+	}
+
+	// 对照行：Summary 非空，同区域必须有绘制。
+	f2 := newImageFixture(t, "")
+	f2.seed(t, twelveRows(date, "有")) // Summary = "有总评"
+	key2, err := f2.svc.Ensure(ctx, date, "白羊座")
+	if err != nil {
+		t.Fatalf("Ensure(有值) err = %v, want nil", err)
+	}
+	full := decodeRendered(t, f2, ctx, key2)
+	if d := regionMaxDiff(full, bg, shareCardLayout.Summary); d <= 20 {
+		t.Fatalf("有值 Summary 槽区域最大像素差 = %.2f, want > 20（有值必画）", d)
+	}
+}
+
+// TestRender_FullShareFields 满值出图不崩 + 关键槽区域确有绘制 + 进度条填充段覆盖中点。
+func TestRender_FullShareFields(t *testing.T) {
+	const date = "2026-11-12"
+	ctx := context.Background()
+	f := newImageFixture(t, "")
+	f.seed(t, twelveRows(date, "满"))
+
+	ok, err := f.svc.GenerateAll(ctx, date)
+	if err != nil {
+		t.Fatalf("GenerateAll err = %v, want nil", err)
+	}
+	if ok != 12 {
+		t.Fatalf("GenerateAll ok = %d, want 12", ok)
+	}
+
+	img := decodeRendered(t, f, ctx, "fortune/v2/"+date+"/白羊座.jpg")
+	bg := loadShareBG(t)
+
+	if d := regionMaxDiff(img, bg, shareCardLayout.Advice); d <= 20 {
+		t.Fatalf("Advice 槽区域最大像素差 = %.2f, want > 20（满值必画）", d)
+	}
+
+	// BarReunion 中点须被填充段覆盖（ReunionScore=66 > 50）：颜色与底图不同。
+	b := shareCardLayout.BarReunion
+	cx, cy := int(b.x+b.w/2), int(b.y+b.h/2)
+	r1, g1, b1, _ := img.At(cx, cy).RGBA()
+	r2, g2, b2, _ := bg.At(cx, cy).RGBA()
+	diff := (absF(float64(r1>>8)-float64(r2>>8)) + absF(float64(g1>>8)-float64(g2>>8)) + absF(float64(b1>>8)-float64(b2>>8))) / 3
+	if diff <= 20 {
+		t.Fatalf("BarReunion 中点(%d,%d) 与底图平均色差 = %.0f, want > 20（填充段覆盖中点）", cx, cy, diff)
+	}
+}
+
+// TestRenderSampleForVisual 视觉验收采样：满值白羊座出样图到 /tmp，供人工对照底图检查。
+// 分享卡字段用顶格字数内容（对照 prompt 上限），以暴露换行/截断 … 效果。
+// go test -short 跳过（CI 不落盘）；本地 -run 显式跑。
+func TestRenderSampleForVisual(t *testing.T) {
+	if testing.Short() {
+		t.Skip("视觉采样：-short 跳过")
+	}
+	const date = "2026-11-12"
+	ctx := context.Background()
+	f := newImageFixture(t, "")
+	rows := twelveRows(date, "样")
+	// 白羊座行换成 prompt 上限长度的真实内容（summary 24 字、advice 12 字、avoid 9 字、
+	// tip 14 字、必做 14 字），验证满槽不溢出；超限截断 … 行为由纯函数测试覆盖。
+	r0 := rows[0]
+	r0.OverallScore = 78
+	r0.LoveScore, r0.CareerScore, r0.WealthScore, r0.HealthScore = 78, 85, 72, 66
+	r0.LoveTip = "多与伴侣进行深度交流"
+	r0.CareerTip = "项目推进顺利，注意细节"
+	r0.WealthTip = "偏财小有惊喜，见好就收"
+	r0.HealthTip = "注意规律作息补充水分"
+	r0.Summary = "整体节奏轻快，工作上有贵人点拨，感情宜主动表达"
+	r0.MatchConstellation = "狮子座"
+	r0.Advice = "上午适合签约谈判与整理"
+	r0.Avoid = "避免冲动消费与投资"
+	r0.ReunionTip = "旧缘或有回音，宜冷静观察再定"
+	r0.SingleTip = "桃花在朋友聚会中出现，多留意"
+	r0.JobTip = "面试表现稳，薪资可再谈谈看"
+	r0.ReunionScore = 66
+	r0.SingleScore = 82
+	r0.JobScore = 45
+	r0.DailyTodos = model.DailyTodos{
+		"给久未联系的朋友发条问候消息",
+		"整理桌面和待办清单半小时",
+		"睡前拉伸十分钟放松肩颈",
+	}
+	f.seed(t, rows)
+
+	key, err := f.svc.Ensure(ctx, date, "白羊座")
+	if err != nil {
+		t.Fatalf("Ensure err = %v, want nil", err)
+	}
+	rc, err := f.drv.Open(ctx, key)
+	if err != nil {
+		t.Fatalf("打开盘上 %q err = %v", key, err)
+	}
+	data, err := io.ReadAll(rc)
+	_ = rc.Close()
+	if err != nil {
+		t.Fatalf("读盘上 %q err = %v", key, err)
+	}
+	const out = "/tmp/starfuyu-card-sample.jpg"
+	if err := os.WriteFile(out, data, 0o644); err != nil {
+		t.Fatalf("写样图 err = %v", err)
+	}
+	t.Logf("样图已落盘: %s (%d bytes)", out, len(data))
 }

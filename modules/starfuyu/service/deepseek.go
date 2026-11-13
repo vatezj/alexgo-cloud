@@ -160,8 +160,8 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
   "wealth_tip": "避免进行高风险的投资。",
   "health_tip": "注意规律作息，补充水分。",
   "match_constellation": "合拍星座中文名（12星座之一，不得等于本星座自身）",
-  "advice": "今日建议（≤24字）",
-  "avoid": "今日避免（≤24字）",
+  "advice": "今日建议（≤12字）",
+  "avoid": "今日避免（≤9字）",
   "reunion_tip": "复合运简述（≤14字）",
   "single_tip": "脱单运简述（≤14字）",
   "job_tip": "求职运简述（≤14字）",
@@ -178,7 +178,7 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
 4. 在生成 daily_overview 时，需要根据当前星座的运势趋势，确定该星座的爱情、事业、财务、健康运势的星级（1-5星），然后为每个运势生成一句简短的说明。
 5. match_constellation 不得等于本星座自身（必须是12星座之一）。
 6. advice/avoid 每日不同。
-7. summary ≤30字。
+7. summary ≤24字。
 
 请严格遵循以上规则。现在，请根据日期 %s 生成包含12个星座详细数据的运势信息。`, date, date)
 

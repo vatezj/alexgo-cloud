@@ -21,7 +21,7 @@ import (
 	"alexGo-cloud/pkg/storage"
 )
 
-// ImageService 运势图片：gg 绘制（布局照 goLucky service/image.go）+ 内置 OFL 字体 + storage 落盘。
+// ImageService 运势图片：gg 按分享卡模板布局绘制（share_card.go 常量表）+ 内置 OFL 字体 + storage 落盘。
 // 决定 19：字体缺失/加载失败 → 30502，不做静默 ASCII 回退。
 type ImageService interface {
 	// Ensure 生成（或已存在则跳过）当日星座图，返回 storage rel key：fortune/v2/{date}/{constellation}.jpg
@@ -139,7 +139,10 @@ func fontFail(path string, err error) error {
 	return errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("加载字体 %q: %w", path, err))
 }
 
-// render 照 goLucky service/image.go 布局绘制：背景 + 标题/幸运行 + 四段分数与 tips。
+// render 分享卡模板（bg.png 1728×2397）逐槽绘制：上卡五槽 + 四运程条 + 三小卡文案
+// + 三条进度条 + 今日必做三行。模板没印的不画（无标题/幸运色/星级）；
+// 空字段留白不画 -/—；进度条先铺底再画填充段；输出 JPEG q90。
+// 槽位坐标与字号集中在 shareCardLayout/shareFont* 常量表（share_card.go）。
 func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	fontPath, err := s.findFontPath()
 	if err != nil {
@@ -151,58 +154,94 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	if err != nil {
 		return nil, errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("加载背景图 %q: %w", bgPath, err))
 	}
-	imgWidth, imgHeight := bg.Bounds().Dx(), bg.Bounds().Dy()
-	dc := gg.NewContext(imgWidth, imgHeight)
+	dc := gg.NewContext(bg.Bounds().Dx(), bg.Bounds().Dy())
 	dc.DrawImage(bg, 0, 0)
 
-	const (
-		titleFontSize = 72.0
-		labelFontSize = 48.0
-		textFontSize  = 56.0
-		textColor     = "#ffffff"
-		shadowColor   = "#000000"
-	)
-	if err := dc.LoadFontFace(fontPath, titleFontSize); err != nil {
-		return nil, fontFail(fontPath, err)
-	}
-
-	offsetDown := 700.0
-	titleY := 80.0 + offsetDown
-	centerX := float64(imgWidth) / 2
-
-	// 标题：星座名称 + 中文日期
-	titleText := fmt.Sprintf("%s（%s）", f.Constellation, formatDate(f.Date))
-	dc.SetHexColor(shadowColor)
-	dc.DrawStringAnchored(titleText, centerX+2, titleY+2, 0.5, 0.5)
-	dc.DrawStringAnchored(titleText, centerX+1, titleY+1, 0.5, 0.5)
-	dc.SetHexColor(textColor)
-	dc.DrawStringAnchored(titleText, centerX, titleY, 0.5, 0.5)
-
-	// 幸运颜色 / 幸运数字
-	luckyY := 180.0 + offsetDown
-	luckyText := fmt.Sprintf("幸运颜色：%s | 幸运数字：%d", f.LuckyColor.Chinese, f.LuckyNumber)
-	dc.SetHexColor(shadowColor)
-	dc.DrawStringAnchored(luckyText, centerX+2, luckyY+2, 0.5, 0.5)
-	dc.SetHexColor(textColor)
-	dc.DrawStringAnchored(luckyText, centerX, luckyY, 0.5, 0.5)
-
-	// 四段运势：整体/爱情/财富/健康（照 goLucky，每段间隔 300px）
-	startY := 300.0 + offsetDown
-	lineHeight := 300.0
-	sections := []struct {
-		label string
-		tip   string
-		score int
+	// 上卡五槽：标签已印底图，只画冒号后的值。
+	upper := []struct {
+		text string
+		r    slot
+		n    int // 最大行数
 	}{
-		{"整体运势", f.Summary, f.OverallScore},
-		{"爱情运势", f.LoveTip, f.LoveScore},
-		{"财富运势", f.WealthTip, f.WealthScore},
-		{"健康运势", f.HealthTip, f.HealthScore},
+		{f.Summary, shareCardLayout.Summary, 2},
+		{fmt.Sprintf("%d分", clampScore(f.OverallScore)), shareCardLayout.Score, 1},
+		{f.MatchConstellation, shareCardLayout.Match, 1},
+		{f.Advice, shareCardLayout.Advice, 1},
+		{f.Avoid, shareCardLayout.Avoid, 1},
 	}
-	for i, sec := range sections {
-		y := startY + lineHeight*float64(i)
-		if err := drawFortuneLine(dc, fontPath, imgWidth, y, sec.label,
-			scoreToStars(sec.score), sec.tip, textColor, shadowColor, labelFontSize, textFontSize); err != nil {
+	for _, u := range upper {
+		if err := drawShareText(dc, fontPath, shareFontUpper, u.text, u.r, u.n, false); err != nil {
+			return nil, err
+		}
+	}
+
+	// 四条运程：「N分 · tip」单行，胶囊内垂直居中。
+	lanes := []struct {
+		score int
+		tip   string
+		r     slot
+	}{
+		{f.WealthScore, f.WealthTip, shareCardLayout.LaneWealth},
+		{f.CareerScore, f.CareerTip, shareCardLayout.LaneCareer},
+		{f.LoveScore, f.LoveTip, shareCardLayout.LaneLove},
+		{f.HealthScore, f.HealthTip, shareCardLayout.LaneHealth},
+	}
+	for _, l := range lanes {
+		text := fmt.Sprintf("%d分", clampScore(l.score))
+		if l.tip != "" {
+			text += " · " + l.tip
+		}
+		if err := drawShareText(dc, fontPath, shareFontLane, text, l.r, 1, true); err != nil {
+			return nil, err
+		}
+	}
+
+	// 三小卡文案（tip，最多 2 行）。
+	cards := []struct {
+		tip string
+		r   slot
+	}{
+		{f.ReunionTip, shareCardLayout.Reunion},
+		{f.SingleTip, shareCardLayout.Single},
+		{f.JobTip, shareCardLayout.Job},
+	}
+	for _, c := range cards {
+		if err := drawShareText(dc, fontPath, shareFontCard, c.tip, c.r, 2, false); err != nil {
+			return nil, err
+		}
+	}
+
+	// 三小卡进度条：先铺底（浅色同色矩形）再画深色圆角填充段；心形端点在槽外。
+	bars := []struct {
+		score int
+		fill  string
+		r     struct{ x, y, w, h float64 }
+	}{
+		{f.ReunionScore, shareBarReunion, shareCardLayout.BarReunion},
+		{f.SingleScore, shareBarSingle, shareCardLayout.BarSingle},
+		{f.JobScore, shareBarJob, shareCardLayout.BarJob},
+	}
+	for _, b := range bars {
+		dc.SetHexColor(shareTrackColor)
+		dc.DrawRectangle(b.r.x, b.r.y, b.r.w, b.r.h)
+		dc.Fill()
+		if fw := progressFillWidth(b.r.w, b.score); fw > 0 {
+			r := b.r.h / 2
+			if fw/2 < r {
+				r = fw / 2
+			}
+			dc.SetHexColor(b.fill)
+			dc.DrawRoundedRectangle(b.r.x, b.r.y, fw, b.r.h, r)
+			dc.Fill()
+		}
+	}
+
+	// 今日必做：最多 3 条逐行画；不足留空行（底图勾选框保留）。
+	for i, todo := range f.DailyTodos {
+		if i >= len(shareCardLayout.Todos) {
+			break
+		}
+		if err := drawShareText(dc, fontPath, shareFontTodo, todo, shareCardLayout.Todos[i], 1, true); err != nil {
 			return nil, err
 		}
 	}
@@ -214,52 +253,48 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// drawFortuneLine 绘制运势行（标签 + 星级 + 换行 tips），布局照 goLucky。
-func drawFortuneLine(dc *gg.Context, fontPath string, width int, y float64,
-	label string, stars int, text, textColor, shadowColor string,
-	labelFontSize, textFontSize float64) error {
-	// 标签
-	labelX, labelY := 180.0, y
-	if err := dc.LoadFontFace(fontPath, labelFontSize); err != nil {
+// drawShareText 槽内绘制：wrapByWidth 按槽宽断行 → truncateLines 截断（末行补 …）→
+// 逐行 DrawString。vCenter 且单行时槽内垂直居中（运程条/必做）；空文本留白。
+// 截断末行含 … 时逐字回退到槽宽内，保证不溢出 rect。
+func drawShareText(dc *gg.Context, fontPath string, size float64, text string, r slot, maxLines int, vCenter bool) error {
+	if text == "" {
+		return nil
+	}
+	if err := dc.LoadFontFace(fontPath, size); err != nil {
 		return fontFail(fontPath, err)
 	}
-	dc.SetHexColor(shadowColor)
-	dc.DrawStringAnchored(label, labelX+2, labelY+2, 0, 0.5)
-	dc.SetHexColor(textColor)
-	dc.DrawStringAnchored(label, labelX, labelY, 0, 0.5)
+	measure := func(s string) float64 {
+		w, _ := dc.MeasureString(s)
+		return w
+	}
+	lines := truncateLines(wrapByWidth(text, r.w, measure), maxLines)
+	if len(lines) == 0 {
+		return nil
+	}
+	// 末行带 … 的截断串可能略超宽（truncateLines 只拼 … 不测宽），回退到槽宽内。
+	last := lines[len(lines)-1]
+	for measure(last) > r.w && len([]rune(last)) > 1 {
+		last = string([]rune(last)[:len([]rune(last))-2]) + "…"
+	}
+	lines[len(lines)-1] = last
 
-	// 星级（0-100 → 1-5 星）
-	starX, starSpacing := 420.0, 40.0
-	for i := 0; i < 5; i++ {
-		symbol := "☆"
-		if i < stars {
-			symbol = "★"
+	dc.SetHexColor(shareTextColor)
+	if vCenter && len(lines) == 1 {
+		dc.DrawString(lines[0], r.x, r.y+r.h/2+size*0.36)
+		return nil
+	}
+	// 顶对齐：首行基线 = 槽顶 + 上伸距（NotoSansSC 实测 ink top→baseline ≈ 0.84em）。
+	lineH := size * 1.2
+	for i, line := range lines {
+		if line == "" {
+			continue
 		}
-		x := starX + float64(i)*starSpacing
-		dc.SetHexColor(shadowColor)
-		dc.DrawStringAnchored(symbol, x+1, labelY+1, 0.5, 0.5)
-		dc.SetHexColor(textColor)
-		dc.DrawStringAnchored(symbol, x, labelY, 0.5, 0.5)
+		dc.DrawString(line, r.x, r.y+size*0.84+lineH*float64(i))
 	}
-
-	// 说明文字：星星下方换行显示
-	textX := 180.0
-	maxWidth := float64(width) - textX - 50
-	if err := dc.LoadFontFace(fontPath, textFontSize); err != nil {
-		return fontFail(fontPath, err)
-	}
-	text = wrapText(text, maxWidth, dc)
-	textY := labelY + 60.0
-	dc.SetHexColor(shadowColor)
-	dc.DrawStringWrapped(text, textX+3, textY+3, 0, 0, maxWidth, 1.8, gg.AlignLeft)
-	dc.DrawStringWrapped(text, textX+2, textY+2, 0, 0, maxWidth, 1.8, gg.AlignLeft)
-	dc.DrawStringWrapped(text, textX+1, textY+1, 0, 0, maxWidth, 1.8, gg.AlignLeft)
-	dc.SetHexColor(textColor)
-	dc.DrawStringWrapped(text, textX, textY, 0, 0, maxWidth, 1.8, gg.AlignLeft)
 	return nil
 }
 
-// scoreToStars 分数（0-100）→ 星级（1-5），照 goLucky。
+// scoreToStars 分数（0-100）→ 星级（1-5），article.go 公众号文案引用，保留。
 func scoreToStars(score int) int {
 	switch {
 	case score >= 80:
@@ -274,34 +309,7 @@ func scoreToStars(score int) int {
 	return 1
 }
 
-// wrapText 每 20 字强制换行（照 goLucky），随后交给 DrawStringWrapped 按宽度收尾。
-func wrapText(text string, maxWidth float64, dc *gg.Context) string {
-	if len(text) == 0 {
-		return text
-	}
-	var lines []string
-	var current []rune
-	for _, r := range text {
-		if r == '\n' {
-			if len(current) > 0 {
-				lines = append(lines, string(current))
-				current = nil
-			}
-			continue
-		}
-		current = append(current, r)
-		if len(current) >= 20 {
-			lines = append(lines, string(current))
-			current = nil
-		}
-	}
-	if len(current) > 0 {
-		lines = append(lines, string(current))
-	}
-	return strings.Join(lines, "\n")
-}
-
-// formatDate YYYY-MM-DD → YYYY年MM月DD日（照 goLucky）。
+// formatDate YYYY-MM-DD → YYYY年MM月DD日（article.go 引用，保留）。
 func formatDate(dateStr string) string {
 	parts := strings.Split(dateStr, "-")
 	if len(parts) == 3 {
