@@ -172,7 +172,7 @@ func TestAutoMigrateColumns(t *testing.T) {
 		cols  []string
 	}{
 		{Profile{}, []string{"id", "tenant_id", "member_user_id", "constellation", "created_at", "updated_at"}},
-		{Fortune{}, []string{"id", "tenant_id", "date", "constellation", "daily_overview", "overall_score", "love_score", "career_score", "wealth_score", "health_score", "lucky_number", "lucky_color", "summary", "love_tip", "career_tip", "wealth_tip", "health_tip", "match_constellation", "advice", "avoid", "reunion_tip", "single_tip", "job_tip", "reunion_score", "single_score", "job_score", "daily_todos", "created_at", "updated_at"}},
+		{Fortune{}, []string{"id", "tenant_id", "date", "constellation", "daily_overview", "overall_score", "love_score", "career_score", "wealth_score", "health_score", "lucky_number", "lucky_color", "summary", "love_tip", "career_tip", "wealth_tip", "health_tip", "match_constellation", "advice", "avoid", "reunion_tip", "single_tip", "job_tip", "reunion_score", "single_score", "job_score", "daily_todos", "slogan", "created_at", "updated_at"}},
 		{Bazi{}, []string{"id", "tenant_id", "member_user_id", "birth_date", "birth_time", "birth_place", "bazi_info", "created_at", "updated_at"}},
 		{Divination{}, []string{"id", "tenant_id", "member_user_id", "bazi_id", "question", "sign_number", "sign_content", "interpretation", "category", "lucky_direction", "lucky_color", "advice", "created_at", "updated_at"}},
 		{RequestLimit{}, []string{"id", "tenant_id", "member_user_id", "date", "type", "count", "created_at", "updated_at"}},

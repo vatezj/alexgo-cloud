@@ -62,6 +62,7 @@ func twelveRows(date, mark string) []*model.Fortune {
 			SingleScore:        77,
 			JobScore:           88,
 			DailyTodos:         model.DailyTodos{mark + "必做一", mark + "必做二", mark + "必做三"},
+			Slogan:             mark + "口号",
 		})
 	}
 	return rows

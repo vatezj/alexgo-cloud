@@ -84,6 +84,7 @@ type Fortune struct {
 	SingleScore        int        `gorm:"column:single_score" json:"single_score"`                       // 脱单运分数 0-100
 	JobScore           int        `gorm:"column:job_score" json:"job_score"`                             // 求职运分数 0-100
 	DailyTodos         DailyTodos `gorm:"column:daily_todos;type:json" json:"daily_todos"`               // 今日必做 3条 JSON数组
+	Slogan             string     `gorm:"column:slogan;type:text" json:"slogan"`                         // 今日口号（底部粉条居中）
 	CreatedAt          time.Time  `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at" json:"updated_at"`
 }

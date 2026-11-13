@@ -43,6 +43,7 @@ starfuyu 已有一条完整流水线：DeepSeek 定时抓 12 星座运势 → `s
 | `single_score` | int NOT NULL DEFAULT 0 | 脱单运卡进度条 | 0-100 |
 | `job_score` | int NOT NULL DEFAULT 0 | 求职运卡进度条 | 0-100 |
 | `daily_todos` | json | 今日必做 ×3 | 字符串数组（3 条） |
+| `slogan` | text | 底部粉条口号 | 一句 ≤16 字（2026-11-13 增补，白字粉条内水平居中） |
 
 down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN，与模块既有迁移风格一致——列不存在时报错可接受，见既有 down 文件风格）。
 
@@ -62,7 +63,8 @@ down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN
 "reunion_score": 70,
 "single_score": 65,
 "job_score": 80,
-"daily_todos": ["行动1", "行动2", "行动3"]
+"daily_todos": ["行动1", "行动2", "行动3"],
+"slogan": "今日口号，≤16字（2026-11-13 增补）"
 ```
 
 生成要求追加：

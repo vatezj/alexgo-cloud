@@ -70,7 +70,7 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 	for _, key := range []string{
 		"match_constellation", "advice", "avoid", "reunion_tip",
 		"single_tip", "job_tip", "reunion_score", "single_score",
-		"job_score", "daily_todos",
+		"job_score", "daily_todos", "slogan",
 	} {
 		if !strings.Contains(prompt, key) {
 			t.Errorf("prompt 缺字段名 %q", key)
@@ -102,7 +102,7 @@ func TestFetchFortunes_MissingShareFieldsTolerated(t *testing.T) {
 	}
 	newKeys := []string{
 		"match_constellation", "advice", "avoid", "reunion_tip", "single_tip",
-		"job_tip", "reunion_score", "single_score", "job_score", "daily_todos",
+		"job_tip", "reunion_score", "single_score", "job_score", "daily_todos", "slogan",
 	}
 	for i := range arr {
 		for _, k := range newKeys {
@@ -128,6 +128,9 @@ func TestFetchFortunes_MissingShareFieldsTolerated(t *testing.T) {
 		}
 		if row.DailyTodos != nil {
 			t.Errorf("rows[%d].DailyTodos = %v, want nil", i, row.DailyTodos)
+		}
+		if row.Slogan != "" {
+			t.Errorf("rows[%d].Slogan = %q, want 空", i, row.Slogan)
 		}
 		if row.ReunionScore != 0 {
 			t.Errorf("rows[%d].ReunionScore = %d, want 0", i, row.ReunionScore)

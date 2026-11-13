@@ -275,6 +275,7 @@ func TestRender_EmptyShareFields(t *testing.T) {
 		row.ReunionTip, row.SingleTip, row.JobTip = "", "", ""
 		row.ReunionScore, row.SingleScore, row.JobScore = 0, 0, 0
 		row.DailyTodos = nil
+		row.Slogan = ""
 	}
 	f.seed(t, rows)
 
@@ -322,6 +323,11 @@ func TestRender_FullShareFields(t *testing.T) {
 
 	if d := regionMaxDiff(img, bg, shareCardLayout.Advice); d <= 20 {
 		t.Fatalf("Advice 槽区域最大像素差 = %.2f, want > 20（满值必画）", d)
+	}
+
+	// 底部粉条口号（白字）：Slogan 槽区域必须有绘制。
+	if d := regionMaxDiff(img, bg, shareCardLayout.Slogan); d <= 20 {
+		t.Fatalf("Slogan 槽区域最大像素差 = %.2f, want > 20（满值必画）", d)
 	}
 
 	// BarReunion 中点须被填充段覆盖（ReunionScore=66 > 50）：颜色与底图不同。

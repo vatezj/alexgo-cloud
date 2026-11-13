@@ -248,6 +248,11 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 		}
 	}
 
+	// 底部粉条口号：白字、槽内水平居中；空值留白（粉条原样）。
+	if err := drawShareSlogan(dc, fontPath, f.Slogan, shareCardLayout.Slogan); err != nil {
+		return nil, err
+	}
+
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, dc.Image(), &jpeg.Options{Quality: 90}); err != nil {
 		return nil, errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("JPEG 编码: %w", err))
@@ -293,6 +298,33 @@ func drawShareText(dc *gg.Context, fontPath string, size float64, text string, r
 		}
 		dc.DrawString(line, r.x, r.y+size*0.84+lineH*float64(i))
 	}
+	return nil
+}
+
+// drawShareSlogan 底部粉条口号：白字、槽内水平+垂直居中；wrap 按槽宽、单行截断 …。
+// 独立于 drawShareText（颜色白、水平居中两个差异点，不值得给主函数加参）。
+func drawShareSlogan(dc *gg.Context, fontPath, text string, r slot) error {
+	if text == "" {
+		return nil
+	}
+	if err := dc.LoadFontFace(fontPath, shareFontSlogan); err != nil {
+		return fontFail(fontPath, err)
+	}
+	measure := func(s string) float64 {
+		w, _ := dc.MeasureString(s)
+		return w
+	}
+	lines := truncateLines(wrapByWidth(text, r.w, measure), 1)
+	if len(lines) == 0 {
+		return nil
+	}
+	line := lines[0]
+	for measure(line) > r.w && len([]rune(line)) > 1 {
+		line = string([]rune(line)[:len([]rune(line))-2]) + "…"
+	}
+	w, _ := dc.MeasureString(line)
+	dc.SetHexColor("#FFFFFF")
+	dc.DrawString(line, r.x+(r.w-w)/2, r.y+r.h/2+shareFontSlogan*0.36)
 	return nil
 }
 
