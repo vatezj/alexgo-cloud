@@ -29,6 +29,10 @@ func TestLoadGlobalConfig_StarfuyuSection(t *testing.T) {
 	if got := cfg.Starfuyu.AssetsDir; got != "modules/starfuyu/assets" {
 		t.Errorf("starfuyu.assets_dir = %q, want %q", got, "modules/starfuyu/assets")
 	}
+	// 字体走配置、不放源码树：font_file 指向 data/fonts（运行时资源目录）。
+	if got := cfg.Starfuyu.FontFile; got != "./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf" {
+		t.Errorf("starfuyu.font_file = %q, want %q", got, "./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf")
+	}
 	// 密钥必须空串：仓库不落 goLucky 明文，由运维另填。
 	if got := cfg.Starfuyu.Deepseek.APIKey; got != "" {
 		t.Errorf("starfuyu.deepseek.api_key = %q, want empty", got)

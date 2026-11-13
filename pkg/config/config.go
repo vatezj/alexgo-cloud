@@ -163,6 +163,9 @@ type Config struct {
 			GenerateImages string `mapstructure:"generate_images"` // 缺省 "20 0 * * *"
 		} `mapstructure:"cron"`
 		AssetsDir string `mapstructure:"assets_dir"` // 缺省 "modules/starfuyu/assets"
+		// FontFile 运势图字体文件路径（源码树外，如 ./data/fonts/*.ttf）。
+		// 非空时优先直用；空串回退 AssetsDir/fonts 字典序首个（测试/旧部署兼容）。
+		FontFile string `mapstructure:"font_file"`
 	} `mapstructure:"starfuyu"`
 
 	// Scorecard：scorecard《打牌记账》模块配置。

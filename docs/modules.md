@@ -1145,7 +1145,7 @@ luckyU 小程序前端**不在本期**（原样保留于 `modules/starfuyu/lucky
 装配要点（`modules/starfuyu/module.go`；`alexgo-server/configs/config.yaml` 的 `modules.starfuyu: false` 时三段路由全不注册）：
 
 - **Repository**：Profile / Fortune / Bazi / Divination / RequestLimit / SignCache 六类；内容表读写显式 `tid=0`，用户表走租户插件
-- **Service**：Fortune（一次 DeepSeek 拉 12 星座、补缺语义）、Image（gg + 内置中文字体 + storage 落盘）、Article（公众号文章 + 草稿箱上传）、Bazi、Divination（含 `sign_cache`）、Limit（沪时区日限流）、Task（cron 编排）
+- **Service**：Fortune（一次 DeepSeek 拉 12 星座、补缺语义）、Image（gg + 中文字体走 `starfuyu.font_file` 配置于 `data/fonts/`（源码树外，空回退 assets/fonts）+ storage 落盘）、Article（公众号文章 + 草稿箱上传）、Bazi、Divination（含 `sign_cache`）、Limit（沪时区日限流）、Task（cron 编排）
 - **Controller**：`controller/app`（13 条业务端点，Bearer member 自鉴权，scorecard 同构，**不走 casbin**）与 `controller/admin`（8 端点，casbin 放行后不取 claims）
 - **定时任务**：fx OnStart/OnStop 起停 robfig/cron 两任务（§13.7）
 - **图片**：不落业务表——storage 盘 + 确定性 key `fortune/v2/{date}/{constellation}.jpg`（v2=分享卡模板，v1 旧图留 storage 过期；幂等覆盖），公开读走 §13.5；新模板底图 1728×2397、分享卡 11 字段（含底部粉条口号 slogan 居中），cron 顺序 fetch→generate 不变

@@ -35,15 +35,20 @@ type imageService struct {
 	fortunes  FortuneService
 	driver    storage.Driver
 	assetsDir string
+	fontFile  string // starfuyu.font_file：字体文件路径（源码树外）；空回退 assets/fonts glob
 }
 
-// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致。
+// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致；fontFile 直取 cfg。
 func NewImageService(fortunes FortuneService, driver storage.Driver, cfg *config.Config) ImageService {
 	dir := "modules/starfuyu/assets"
-	if cfg != nil && cfg.Starfuyu.AssetsDir != "" {
-		dir = cfg.Starfuyu.AssetsDir
+	var fontFile string
+	if cfg != nil {
+		if cfg.Starfuyu.AssetsDir != "" {
+			dir = cfg.Starfuyu.AssetsDir
+		}
+		fontFile = cfg.Starfuyu.FontFile
 	}
-	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir}
+	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir, fontFile: fontFile}
 }
 
 // fortuneImageKey 校验入参后生成 rel key：fortune/v2/{date}/{constellation}.jpg。
@@ -111,10 +116,18 @@ func (s *imageService) GenerateAll(ctx context.Context, date string) (int, error
 		fmt.Errorf("运势图 %d/%d 张失败，首错: %w", failed, len(ConstellationList), firstErr))
 }
 
-// findFontPath 扫 AssetsDir/fonts 取字典序第一个 ttf/otf/ttc；无命中 → 30502（决定 19）。
-// 活动字体 = fonts/ 顶层 ttf：AlibabaPuHuiTi-3-85-Bold.ttf（阿里妈妈普惠体 3 Bold）；
-// AlibabaPuHuiTi-3/ 源包子目录不参与 glob（目录被 IsDir 过滤），仅留作换字重来源。
+// findFontPath 字体定位：font_file 配置非空 → 直用（文件缺失 30502 指明 font_file，
+// 不静默回退——配置错了必须炸）；空串 → 回退扫 AssetsDir/fonts 取字典序首个 ttf/otf/ttc。
+// 两路无命中 → 30502（决定 19，不回退 ASCII）。字体放运行时目录（data/fonts），不放源码树。
 func (s *imageService) findFontPath() (string, error) {
+	if s.fontFile != "" {
+		fi, err := os.Stat(s.fontFile)
+		if err != nil || fi.IsDir() {
+			return "", errs.New(errs.CodeStarfuyuImageFailed,
+				fmt.Errorf("font_file 配置指向的字体不存在: %s", s.fontFile))
+		}
+		return s.fontFile, nil
+	}
 	matches, err := filepath.Glob(filepath.Join(s.assetsDir, "fonts", "*"))
 	if err != nil {
 		return "", errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("扫描字体目录失败: %w", err))

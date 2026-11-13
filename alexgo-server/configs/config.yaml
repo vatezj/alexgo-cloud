@@ -81,4 +81,5 @@ starfuyu:
   cron:
     fetch_fortune: "10 0 * * *"       # 模块内恒加 CRON_TZ=Asia/Shanghai 前缀
     generate_images: "20 0 * * *"
-  assets_dir: "modules/starfuyu/assets"   # bgimage/bg.png + fonts/*.ttf
+  assets_dir: "modules/starfuyu/assets"   # bgimage/bg.png（字体不放源码树，走 font_file）
+  font_file: "./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"   # 运势图字体（运行时目录，源码树外）；空串=回退 assets/fonts 字典序首个

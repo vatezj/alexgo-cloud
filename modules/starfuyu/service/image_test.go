@@ -41,17 +41,27 @@ type imageFixture struct {
 
 func newImageFixture(t *testing.T, assetsDir string) *imageFixture {
 	t.Helper()
+	fontFile := ""
+	if assetsDir == "" {
+		assetsDir = "../assets" // service 包 cwd → modules/starfuyu/assets
+		// 字体在源码树外（font_file 配置；相对 service 包 cwd → 仓库根 data/fonts）。
+		fontFile = "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"
+	}
+	return newImageFixtureCfg(t, assetsDir, fontFile)
+}
+
+// newImageFixtureCfg 显式指定 assetsDir 与 fontFile 的底层夹具（FontFile 来源测试用）。
+func newImageFixtureCfg(t *testing.T, assetsDir, fontFile string) *imageFixture {
+	t.Helper()
 	db := newTestDB(t)
 	raw, err := storage.NewLocalDriver(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewLocalDriver: %v", err)
 	}
 	drv := &countingDriver{Driver: raw}
-	if assetsDir == "" {
-		assetsDir = "../assets" // service 包 cwd → modules/starfuyu/assets
-	}
 	cfg := &config.Config{}
 	cfg.Starfuyu.AssetsDir = assetsDir
+	cfg.Starfuyu.FontFile = fontFile
 	repo := repository.NewFortuneRepository(db)
 	return &imageFixture{
 		svc:  NewImageService(NewFortuneService(repo, &stubFetcher{}), drv, cfg),
@@ -149,6 +159,66 @@ func TestGenerateAll_PartialFailureContinues(t *testing.T) {
 	}
 	if f.drv.saves != 11 {
 		t.Fatalf("落盘张数 = %d, want 11（失败不中断）", f.drv.saves)
+	}
+}
+
+// TestEnsure_FontFileConfigured assets 无字体、font_file 指向源码树外真字体 → 出图：
+// 字体来源=font_file 配置（不走 assets/fonts glob）。
+func TestEnsure_FontFileConfigured(t *testing.T) {
+	const date = "2026-11-12"
+	// 临时 assets：只放背景图、不放字体。
+	tmp := t.TempDir()
+	bg, err := os.ReadFile(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	if err != nil {
+		t.Fatalf("读真实背景图 err = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmp, "bgimage"), 0o755); err != nil {
+		t.Fatalf("Mkdir bgimage err = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "bgimage", "bg.png"), bg, 0o644); err != nil {
+		t.Fatalf("写临时背景图 err = %v", err)
+	}
+
+	f := newImageFixtureCfg(t, tmp, "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf")
+	f.seed(t, twelveRows(date, "字体配置"))
+
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if err != nil {
+		t.Fatalf("FontFile 出图 err = %v, want nil（字体应来自 font_file）", err)
+	}
+	if key == "" || f.drv.saves != 1 {
+		t.Fatalf("key = %q, saves = %d, want 非空且落盘 1", key, f.drv.saves)
+	}
+}
+
+// TestEnsure_FontFilePathMissing30502 font_file 指向不存在文件 → 30502 指明 font_file，
+// 不静默回退 glob（配置错了必须炸，决定 19 同精神）。
+func TestEnsure_FontFilePathMissing30502(t *testing.T) {
+	const date = "2026-11-12"
+	tmp := t.TempDir()
+	bg, err := os.ReadFile(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	if err != nil {
+		t.Fatalf("读真实背景图 err = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmp, "bgimage"), 0o755); err != nil {
+		t.Fatalf("Mkdir bgimage err = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "bgimage", "bg.png"), bg, 0o644); err != nil {
+		t.Fatalf("写临时背景图 err = %v", err)
+	}
+
+	f := newImageFixtureCfg(t, tmp, filepath.Join(tmp, "nope.ttf"))
+	f.seed(t, twelveRows(date, "缺字体文件"))
+
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if !errs.Is(err, errs.CodeStarfuyuImageFailed) {
+		t.Fatalf("font_file 缺失应为 30502, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "font_file") {
+		t.Fatalf("错误应指明 font_file 配置, got %v", err)
+	}
+	if key != "" || f.drv.saves != 0 {
+		t.Fatalf("失败不得落盘: key = %q, saves = %d", key, f.drv.saves)
 	}
 }
 
