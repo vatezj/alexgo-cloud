@@ -166,6 +166,9 @@ type Config struct {
 		// FontFile 运势图字体文件路径（源码树外，如 ./data/fonts/*.ttf）。
 		// 非空时优先直用；空串回退 AssetsDir/fonts 字典序首个（测试/旧部署兼容）。
 		FontFile string `mapstructure:"font_file"`
+		// BgFile 分享卡底图路径（源码树外，如 ./data/starfuyu/bg.png，1728×2397 可替换模板）。
+		// 非空时优先直用；空串回退 AssetsDir/bgimage/bg.png（测试/旧部署兼容）。
+		BgFile string `mapstructure:"bg_file"`
 	} `mapstructure:"starfuyu"`
 
 	// Scorecard：scorecard《打牌记账》模块配置。

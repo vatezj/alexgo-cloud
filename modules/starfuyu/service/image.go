@@ -35,20 +35,36 @@ type imageService struct {
 	fortunes  FortuneService
 	driver    storage.Driver
 	assetsDir string
-	fontFile  string // starfuyu.font_file：字体文件路径（源码树外）；空回退 assets/fonts glob
+	fontFile  string // starfuyu.font_file：字体路径（源码树外）；空回退 assets/fonts glob
+	bgFile    string // starfuyu.bg_file：底图路径（源码树外）；空回退 assets/bgimage/bg.png
 }
 
-// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致；fontFile 直取 cfg。
+// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致；fontFile/bgFile 直取 cfg。
 func NewImageService(fortunes FortuneService, driver storage.Driver, cfg *config.Config) ImageService {
 	dir := "modules/starfuyu/assets"
-	var fontFile string
+	var fontFile, bgFile string
 	if cfg != nil {
 		if cfg.Starfuyu.AssetsDir != "" {
 			dir = cfg.Starfuyu.AssetsDir
 		}
 		fontFile = cfg.Starfuyu.FontFile
+		bgFile = cfg.Starfuyu.BgFile
 	}
-	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir, fontFile: fontFile}
+	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir, fontFile: fontFile, bgFile: bgFile}
+}
+
+// resolveBgPath 底图定位：bg_file 配置非空 → 直用（文件缺失 30502 指明 bg_file，
+// 不静默回退——配置错了必须炸，与 font_file 同精神）；空串 → 回退 AssetsDir/bgimage/bg.png。
+func (s *imageService) resolveBgPath() (string, error) {
+	if s.bgFile != "" {
+		fi, err := os.Stat(s.bgFile)
+		if err != nil || fi.IsDir() {
+			return "", errs.New(errs.CodeStarfuyuImageFailed,
+				fmt.Errorf("bg_file 配置指向的底图不存在: %s", s.bgFile))
+		}
+		return s.bgFile, nil
+	}
+	return filepath.Join(s.assetsDir, "bgimage", "bg.png"), nil
 }
 
 // fortuneImageKey 校验入参后生成 rel key：fortune/v2/{date}/{constellation}.jpg。
@@ -164,7 +180,10 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 		return nil, err
 	}
 
-	bgPath := filepath.Join(s.assetsDir, "bgimage", "bg.png")
+	bgPath, err := s.resolveBgPath()
+	if err != nil {
+		return nil, err
+	}
 	bg, err := gg.LoadImage(bgPath)
 	if err != nil {
 		return nil, errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("加载背景图 %q: %w", bgPath, err))

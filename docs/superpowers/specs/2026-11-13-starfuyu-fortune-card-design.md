@@ -87,7 +87,7 @@ down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN
 
 ### 4.1 底图与资源
 
-- `frontend/static/start/bg.png` **复制**进 `modules/starfuyu/assets/bgimage/bg.png` 替换旧底图（源文件保留在 frontend/static，不动）。
+- 底图（2026-11-13 迭代终态）：`frontend/static/start/bg.png` 为设计源（保留不动），运行底图在 **`data/starfuyu/bg.png`（源码树外）**，路径走配置 `starfuyu.bg_file`——换模板改配置文件替换即可；配置非空直用、文件缺失 30502 指明 `bg_file` 不静默回退，空串回退 `AssetsDir/bgimage/bg.png`（测试/旧部署兼容）。
 - 字体（2026-11-13 两轮迭代终态）：阿里妈妈普惠体 3 `85-Bold`，路径走配置 `starfuyu.font_file`（默认 `./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf`，**源码树外**）；配置非空直用、文件缺失 30502 不静默回退，空串回退 `AssetsDir/fonts` 字典序首个（测试/旧部署兼容）；加载失败 → 30502（决定 19 不回退，沿用）。
 
 ### 4.2 render 重写
@@ -137,7 +137,7 @@ down 迁移 DROP 这些列（mysql 不支持 DROP IF EXISTS，直接 DROP COLUMN
 ## 5. 流水线与配置
 
 - cron 两个任务、`TaskRunner`、admin 手动触发端点：**全部不动**。
-- 配置 `cfg.Starfuyu`：底图仍是 `AssetsDir/bgimage/bg.png`；**新增 `font_file`**（字体路径，源码树外，2026-11-13 增补）。
+- 配置 `cfg.Starfuyu`：**新增 `font_file` 与 `bg_file`**（字体/底图路径，均源码树外 `data/`，2026-11-13 增补）；两者空串时回退 `AssetsDir` 旧路径（测试/旧部署兼容）。
 - 错误码：沿用 30502（图片）、30501（数据）、30507（公众号），不新增。
 - 模块开关 `modules.starfuyu: false` 时不启动 cron——沿用，无改动。
 

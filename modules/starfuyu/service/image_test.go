@@ -41,17 +41,19 @@ type imageFixture struct {
 
 func newImageFixture(t *testing.T, assetsDir string) *imageFixture {
 	t.Helper()
-	fontFile := ""
+	fontFile, bgFile := "", ""
 	if assetsDir == "" {
-		assetsDir = "../assets" // service 包 cwd → modules/starfuyu/assets
-		// 字体在源码树外（font_file 配置；相对 service 包 cwd → 仓库根 data/fonts）。
+		assetsDir = "../assets" // service 包 cwd → modules/starfuyu/assets（仅 legacy 回退）
+		// 字体/底图在源码树外（配置；相对 service 包 cwd → 仓库根 data/）。
 		fontFile = "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"
+		bgFile = "../../../data/starfuyu/bg.png"
 	}
-	return newImageFixtureCfg(t, assetsDir, fontFile)
+	return newImageFixtureCfg(t, assetsDir, fontFile, bgFile)
 }
 
-// newImageFixtureCfg 显式指定 assetsDir 与 fontFile 的底层夹具（FontFile 来源测试用）。
-func newImageFixtureCfg(t *testing.T, assetsDir, fontFile string) *imageFixture {
+// newImageFixtureCfg 显式指定 assetsDir/fontFile/bgFile 的底层夹具
+// （FontFile/BgFile 来源测试用；显式 assetsDir 且 fontFile/bgFile 为空 → 走 legacy 回退）。
+func newImageFixtureCfg(t *testing.T, assetsDir, fontFile, bgFile string) *imageFixture {
 	t.Helper()
 	db := newTestDB(t)
 	raw, err := storage.NewLocalDriver(t.TempDir())
@@ -62,6 +64,7 @@ func newImageFixtureCfg(t *testing.T, assetsDir, fontFile string) *imageFixture 
 	cfg := &config.Config{}
 	cfg.Starfuyu.AssetsDir = assetsDir
 	cfg.Starfuyu.FontFile = fontFile
+	cfg.Starfuyu.BgFile = bgFile
 	repo := repository.NewFortuneRepository(db)
 	return &imageFixture{
 		svc:  NewImageService(NewFortuneService(repo, &stubFetcher{}), drv, cfg),
@@ -168,7 +171,7 @@ func TestEnsure_FontFileConfigured(t *testing.T) {
 	const date = "2026-11-12"
 	// 临时 assets：只放背景图、不放字体。
 	tmp := t.TempDir()
-	bg, err := os.ReadFile(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	bg, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "starfuyu", "bg.png"))
 	if err != nil {
 		t.Fatalf("读真实背景图 err = %v", err)
 	}
@@ -179,7 +182,7 @@ func TestEnsure_FontFileConfigured(t *testing.T) {
 		t.Fatalf("写临时背景图 err = %v", err)
 	}
 
-	f := newImageFixtureCfg(t, tmp, "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf")
+	f := newImageFixtureCfg(t, tmp, "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf", "")
 	f.seed(t, twelveRows(date, "字体配置"))
 
 	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
@@ -196,7 +199,7 @@ func TestEnsure_FontFileConfigured(t *testing.T) {
 func TestEnsure_FontFilePathMissing30502(t *testing.T) {
 	const date = "2026-11-12"
 	tmp := t.TempDir()
-	bg, err := os.ReadFile(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	bg, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "starfuyu", "bg.png"))
 	if err != nil {
 		t.Fatalf("读真实背景图 err = %v", err)
 	}
@@ -207,7 +210,7 @@ func TestEnsure_FontFilePathMissing30502(t *testing.T) {
 		t.Fatalf("写临时背景图 err = %v", err)
 	}
 
-	f := newImageFixtureCfg(t, tmp, filepath.Join(tmp, "nope.ttf"))
+	f := newImageFixtureCfg(t, tmp, filepath.Join(tmp, "nope.ttf"), "")
 	f.seed(t, twelveRows(date, "缺字体文件"))
 
 	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
@@ -222,12 +225,34 @@ func TestEnsure_FontFilePathMissing30502(t *testing.T) {
 	}
 }
 
+// TestRender_BgFileMissing30502 bg_file 指向不存在底图 → 30502 指明 bg_file，
+// 不静默回退 assetsDir（配置错了必须炸，与 font_file 同精神）。
+func TestRender_BgFileMissing30502(t *testing.T) {
+	const date = "2026-11-12"
+	tmp := t.TempDir() // 空 assets：legacy 回退也无底图，唯一起作用的是 bg_file
+	f := newImageFixtureCfg(t, tmp,
+		"../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf",
+		filepath.Join(tmp, "nope.png"))
+	f.seed(t, twelveRows(date, "缺底图"))
+
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if !errs.Is(err, errs.CodeStarfuyuImageFailed) {
+		t.Fatalf("bg_file 缺失应为 30502, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "bg_file") {
+		t.Fatalf("错误应指明 bg_file 配置, got %v", err)
+	}
+	if key != "" || f.drv.saves != 0 {
+		t.Fatalf("失败不得落盘: key = %q, saves = %d", key, f.drv.saves)
+	}
+}
+
 // TestEnsure_FontMissing30502 assets 有背景图但无字体 → 30502（决定 19：禁静默 ASCII 回退）。
 func TestEnsure_FontMissing30502(t *testing.T) {
 	const date = "2026-11-12"
 	// 临时 assets：复制真实背景图、不放字体。
 	tmp := t.TempDir()
-	bg, err := os.ReadFile(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	bg, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "starfuyu", "bg.png"))
 	if err != nil {
 		t.Fatalf("读真实背景图 err = %v", err)
 	}
@@ -278,7 +303,7 @@ func decodeRendered(t *testing.T, f *imageFixture, ctx context.Context, key stri
 // loadShareBG 底图原图（像素比较基准）。
 func loadShareBG(t *testing.T) image.Image {
 	t.Helper()
-	bg, err := gg.LoadImage(filepath.Join("..", "assets", "bgimage", "bg.png"))
+	bg, err := gg.LoadImage(filepath.Join("..", "..", "..", "data", "starfuyu", "bg.png"))
 	if err != nil {
 		t.Fatalf("加载底图 err = %v", err)
 	}

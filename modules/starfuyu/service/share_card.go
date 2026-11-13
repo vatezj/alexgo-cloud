@@ -26,7 +26,7 @@ const (
 // shareCardLayout 分享卡 19 槽布局常量表：上卡五槽（标签已印底图，值画冒号之后）、
 // 四运程条文字区（胶囊内侧、标签药丸右侧）、三小卡文案区（卡题下方）、
 // 三进度条槽（铺底+填充段）、今日必做三行（勾选框右侧）、底部粉条口号（居中）。
-// 坐标对照 assets/bgimage/bg.png 实测量取（2026-11-13），微调只动本表。
+// 坐标对照 data/starfuyu/bg.png（1728×2397，bg_file 配置）实测量取（2026-11-13），微调只动本表。
 var shareCardLayout = struct {
 	Summary, Score, Match, Advice, Avoid         slot                         // 上卡五槽
 	LaneWealth, LaneCareer, LaneLove, LaneHealth slot                         // 四运程条文字区
