@@ -64,25 +64,28 @@ FRONT_FILES: list[str] = [
     "pkg/tenant/domain.go",
 ]
 
-# 后 30 页候选（≥1500 行；1500 边界前必须已出现 admin 前端）
+# 后 30 页候选（≥1500 行）。
+# 顺序即叙事：system controller+service 代表 → member → order → admin 关键页。
+# spec §6.2 要求 admin 登录/布局/用户管理页、§2 要求 member/order 进册，
+# 故三者必须落在 1500 截断线内；basic.go/rbac.go 等大文件列后作顺位池。
 BACK_FILES: list[str] = [
-    "modules/system/controller/admin/user.go",
-    "modules/system/controller/admin/auth.go",
-    "modules/system/controller/admin/role.go",
-    "modules/system/controller/admin/menu.go",
-    "modules/system/controller/admin/online_controller.go",
-    "modules/system/service/permission_routes.go",
-    "modules/system/service/datascope.go",
+    "modules/system/controller/admin/user.go",        # system controller 代表
+    "modules/system/service/datascope.go",            # system service 代表（数据权限）
+    "modules/member/service/member.go",
+    "modules/member/controller/admin/member_user.go",
+    "modules/order/controller/admin/controller.go",
+    "modules/order/service/order.go",
     "frontend/admin/apps/web-antd/src/views/_core/authentication/login.vue",
     "frontend/admin/apps/web-antd/src/layouts/basic.vue",
     "frontend/admin/apps/web-antd/src/views/system/SystemUsersPage.vue",
     # 顺位池（1500 之后兜底，缺文件时前移补位）
+    "modules/system/controller/admin/auth.go",
+    "modules/system/controller/admin/menu.go",
+    "modules/system/controller/admin/basic.go",
+    "modules/system/service/rbac.go",
+    "modules/system/service/permission_routes.go",
     "frontend/admin/apps/web-antd/src/views/system/SystemRolesPage.vue",
     "frontend/admin/apps/web-antd/src/views/system/SystemOnlineUsersPage.vue",
-    "modules/member/controller/app/member_auth.go",
-    "modules/member/service/member.go",
-    "modules/order/controller/admin/controller.go",
-    "modules/order/service/order.go",
 ]
 
 SEGMENT_TARGET = 1500  # 30 页 × 50 行

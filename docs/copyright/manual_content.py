@@ -91,10 +91,13 @@ CHAPTERS: list[dict] = [
                 "title": "4.2 界面布局",
                 "paragraphs": [
                     "左侧为功能导航菜单，顶部为标签页与快捷工具区，中部为内容区。"
-                    "工作台首页展示待办、项目与快捷导航。",
+                    "工作台首页展示待办、项目与快捷导航；分析看板提供运营数据图表。",
                 ],
                 "steps": [],
-                "figures": [{"file": "02-dashboard.png", "caption": "工作台与整体布局"}],
+                "figures": [
+                    {"file": "02-dashboard.png", "caption": "工作台与整体布局"},
+                    {"file": "24-analytics.png", "caption": "分析看板"},
+                ],
             },
             {
                 "title": "4.3 全局搜索",
@@ -232,7 +235,6 @@ CHAPTERS: list[dict] = [
                 "figures": [
                     {"file": "10-notices.png", "caption": "公告列表"},
                     {"file": "11-notice-upload.png", "caption": "公告编辑器与附件上传"},
-                    {"file": "24-notice-detail.png", "caption": "公告内容编辑"},
                 ],
             },
             {

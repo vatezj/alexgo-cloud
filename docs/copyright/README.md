@@ -14,6 +14,7 @@ docs/copyright/
 ├── gen_source_doc.py      # 源代码文档生成器（60 页 × 50 行）
 ├── menu_tools.sh          # 业务菜单停用/恢复（截图前后）
 ├── shot_list.tsv          # 截图清单（文件名/入口/描述）
+├── mask_pii.py            # 截图 PII 打码（登录日志/会员昵称列）
 ├── manual_content.py      # 操作手册章节数据
 ├── gen_manual.py          # 操作手册生成器
 ├── screenshots/           # 实拍截图 PNG（24 张）
@@ -52,7 +53,8 @@ export MYSQL_CMD="mysql -h<host> -P<port> -u<user> -p<pass> <db>"
 #    按 shot_list.tsv 逐张实拍到 screenshots/（1440×900，admin/admin123 登录）
 ./menu_tools.sh restore && ./menu_tools.sh verify-restored  # 拍后恢复并校验
 
-# 4. 操作手册（截图更新后）
+# 4. 操作手册（截图更新后；13/16 含 PII 列，重拍后必须重新打码）
+python3 mask_pii.py
 python3 gen_manual.py --shots screenshots \
   --out "output/alexGo-cloud后台管理系统软件V1.0-操作手册.docx"
 
@@ -65,7 +67,7 @@ python3 -m pytest tests/test_final.py -v
 | 文件 | 规格 |
 |---|---|
 | 源代码文档 | 恰 60 页（前 30 + 后 30）× 每页 50 行；页眉：全称+版本号+第 N 页/共 60 页 |
-| 操作手册 | 26 页；目录 + 六章；25 处入图（24 张截图，02 号复用）；图题连续；页眉同款 |
+| 操作手册 | 25 页；目录 + 六章；25 处入图（24 张截图，02 号复用）；图题连续；页眉同款 |
 | 申请表信息单 | 字段底稿，身份信息全部占位符 |
 
 ## 注意事项
