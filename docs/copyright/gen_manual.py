@@ -70,6 +70,20 @@ def render(chapters: Sequence[dict], out: Path,
     figures = 0
     missing = 0
 
+    # 目录页（页码省略——域代码在 Word 中可更新，静态列表保证任何渲染器可读）
+    toc = doc.add_heading("目 录", level=1)
+    toc.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for chapter in chapters:
+        p = doc.add_paragraph()
+        r = p.add_run(chapter["title"])
+        r.bold = True
+        r.font.size = Pt(11)
+        for sec in chapter.get("sections", []):
+            sp = doc.add_paragraph()
+            sr = sp.add_run("    " + sec["title"])
+            sr.font.size = Pt(10)
+    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+
     for ci, chapter in enumerate(chapters):
         if ci > 0:
             doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
