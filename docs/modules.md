@@ -150,7 +150,7 @@ RBAC 与全站权限的中枢：用户管理（含列表导出 xlsx）、角色�
 
 - **Repository**：User/Dept/Post/Dict/Config/Notice/Audit/Role/Menu/UserRole/RoleMenu/Tenant/Online 十三类
 - **Service**：`PermissionService`（RBAC 核心：UserRoles/UserMenus/UserPermCodes/UserRoutes + casbin 策略重建）、`RoleService`（type=1 内置角色禁删）、`MenuService`（删除后全量重建策略）、`TenantService`（账号额度闸门 `AccountLimitChecker`，供 member）、`DataScopeLoader`（供中间件）、`AuditService`（同时映射为操作日志 recorder 与 oauth2 登录 auditor）、`UserAuthenticator`/`JWTGenerator`（供 oauth2 统一登录）、`AuthService`（refresh/logout）、`OnlineService`（在线会话列表/踢人/代登录，见 §3.7）
-- **后台任务**：启动 seeder；token 过期清扫 ticker（每小时 `SweepExpired`）
+- **后台任务**：启动 seeder；token 过期清扫由 `pkg/job` 调度（`system.sweep_tokens`，`@every 1h`，表达式覆盖见 config `jobs:` 段）；任务中心 admin API `GET/POST /api/admin/jobs` 见 §13.7
 - **gRPC**：`TokenServiceImpl`（`IssueToken/RefreshToken/RevokeToken`）进 `group:"grpc_registrars"`，仅 micro 模式监听；独立入口 `modules/system/cmd/grpc_main.go`
 
 ### 3.2 权限
@@ -885,7 +885,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 - **Repository**：Room / RoomUser / RoomLog / Record / Friend / FriendBlack 六类；写路径 `FOR UPDATE` 行锁 + `SaveVersioned`（`WHERE id AND version`）乐观锁
 - **Service**：`RoomService`（开房/进房/快照/改配置/支出/流水/结算/退房/转让 + 监管三方法）、`RecordService`（我的战绩/明细/删除/统计 + 监管列表）、`FriendService`（好友/拉黑/排名开关 + 监管列表）
 - **Controller**：`AppController`（18 接口，Bearer 自鉴权）与 `AdminController`（5 接口，casbin 放行后只做参数与领域校验，**不取 claims、监管动作不落操作者身份**）
-- **后台任务**：超时关房 ticker（每分钟 `SweepExpired`，见 §11.6）
+- **后台任务**：超时关房由 `pkg/job` 调度（`scorecard.sweep_rooms`，`@every 1m`，见 §11.6）
 - 用户体系**复用 member**：不建用户表、不做登录，身份一律 `member_user.id`；`scorecard.FxModule` 装配于 `alexgo-server/cmd/main.go`
 
 ### 11.2 权限与菜单
@@ -962,11 +962,12 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
   scorecard 侧 `RoomService`/`FriendService` 的该注入标 `optional:"true"`——**micro 形态（本进程不装
   member.FxModule）仍可装配**，缺席时快照昵称降级为空、加好友跳过对方存在校验。敏感列不在
   SELECT 面内，不存在/已删的 id 自然缺席。
-- **超时关房 ticker**（`module.go` 的 `fx.Invoke`，照 system token `SweepExpired` 模式）：
-  OnStart 起 goroutine **每分钟**跑 `RoomService.SweepExpired`——跨租户拉
+- **超时关房 job**（`module.go` 的 `fx.Invoke` → `pkg/job` Manager 注册 `scorecard.sweep_rooms`，
+  `@every 1m`）：每分钟跑 `RoomService.SweepExpired`——跨租户拉
   `status=0 AND expire_time < now` 的房 → 逐房事务 `FOR UPDATE` 复验（并发下可能已被结算/关闭/续期）
   → `status=2` + type=8 流水（`extra.timeout_close`）；错误只记 warn 不致命、下轮再扫；
-  OnStop cancel 退出。
+  panic 由 pkg/job safeJob recover。行为变化（2026-11-16 迁移）：受 `modules.scorecard` 开关守卫，
+  关模块连带停清扫。
 - **心跳口径**：`expire_time = now + 2h` 只在**开房/进房/退房/配置变更**与**每笔支出**时刷新；
   **快照读不构成心跳、不续期**。
 
@@ -1147,7 +1148,7 @@ luckyU 小程序前端**不在后端本期**——后端交付时原样保留，
 - **Repository**：Profile / Fortune / Bazi / Divination / RequestLimit / SignCache 六类；内容表读写显式 `tid=0`，用户表走租户插件
 - **Service**：Fortune（一次 DeepSeek 拉 12 星座、补缺语义）、Image（gg + 底图/字体走 `starfuyu.bg_file`/`font_file` 配置于 `data/starfuyu/`、`data/fonts/`（源码树外可替换，空回退 assets/）+ storage 落盘）、Article（公众号文章 + 草稿箱上传）、Bazi、Divination（含 `sign_cache`）、Limit（沪时区日限流）、Task（cron 编排）
 - **Controller**：`controller/app`（13 条业务端点，Bearer member 自鉴权，scorecard 同构，**不走 casbin**）与 `controller/admin`（8 端点，casbin 放行后不取 claims）
-- **定时任务**：fx OnStart/OnStop 起停 robfig/cron 两任务（§13.7）
+- **定时任务**：`pkg/job` Manager 注册两任务（§13.7）
 - **图片**：不落业务表——storage 盘 + 确定性 key `fortune/v3/{date}/{constellation}.jpg`（v3=顶部星座名+角色图，v2=分享卡模板、v1 旧图留 storage 过期；幂等覆盖），公开读走 §13.5；新模板底图 1728×2397（`bg_file`=`data/starfuyu/bg.png`，换模板改配置即可）、分享卡 11 字段（含底部粉条口号 slogan 居中）+ 顶部星座名大字 + 左上角角色抠图（`cute_dir`），cron 顺序 fetch→generate 不变
 - 用户体系**复用 member**：不建用户表、不做登录，身份 = member token claims（goLucky 自有 `users` 表 + JWT 不迁移）
 
@@ -1221,17 +1222,26 @@ luckyU 小程序前端**不在后端本期**——后端交付时原样保留，
 
 JSON 列（`lucky_color`/`bazi_info`）照 goLucky 的 `driver.Valuer/Scanner` 模式迁移。
 
-### 13.7 定时任务（fx OnStart/OnStop + robfig/cron）
+### 13.7 定时任务（pkg/job Manager + robfig/cron）
 
-| 缺省时刻 | 任务 | 行为 |
+| 缺省时刻 | 任务名 | 行为 |
 | --- | --- | --- |
-| 每天 00:10 | 抓今日运势 | DeepSeek 一次拉 12 星座 → upsert `starfuyu_fortune`（tid=0）；已有当日 12 条则跳过（补缺语义，覆盖重抓走 admin `force:true`）；单星座失败记 log 继续 |
-| 每天 00:20 | 生成全部星座图 | 读当日 12 条运势 → gg 绘图 → storage 落盘（确定性 key 覆盖） |
+| 每天 00:10 | `starfuyu.fetch_fortune` | 抓今日运势：DeepSeek 一次拉 12 星座 → upsert `starfuyu_fortune`（tid=0）；已有当日 12 条则跳过（补缺语义，覆盖重抓走 admin `force:true`）；单星座失败记 log 继续 |
+| 每天 00:20 | `starfuyu.generate_images` | 生成全部星座图：读当日 12 条运势 → gg 绘图 → storage 落盘（确定性 key 覆盖） |
 
-- 表达式读 `cfg.Starfuyu.Cron.*`（缺省 `"10 0 * * *"` / `"20 0 * * *"`），**恒加 `CRON_TZ=Asia/Shanghai` 前缀**；5 段标准 parser（不用 WithSeconds），进程嵌入 `time/tzdata`——`TZ=UTC` 容器下日期串仍按沪时区翻转（限流 `date`、运势 `date`、文章日期统一走模块内 `nowSH()`）。
-- DeepSeek 空 api_key **无条件跳过**并记 warn（空配可启动联调）；cron 任务 panic 由外壳 recover 成 warn 不崩进程。
-- 启动不补跑（错过等次日，与 goLucky 一致）；补跑走 admin `POST /tasks/*`。OnStop 等在跑任务收尾。
+- **统一调度（2026-11-16 迁移）**：两任务经 `m.Register(name, 缺省表达式, fn)` 挂 `pkg/job` Manager（`modules/starfuyu/module.go` 的 `registerJobs`）；起停/时区/panic 恢复/开关守卫/手动触发全部收敛到 `pkg/job`，原 `cron.go` 已删。表达式覆盖走 config 顶层 `jobs:` 段（缺键用代码缺省，空串停用）。
+- **任务中心**：admin `GET /api/admin/jobs`（列表+状态+下次执行）、`POST /api/admin/jobs/:name/trigger`（同步触发，停用 30602/未注册 30601），权限键 `system:job`（挂 system 模块 `RegisterRoutes`，seed 按钮 `system:job:{read,trigger}`）；starfuyu 带参补跑 `POST /tasks/*` 保留（date/force 语义不可通用化）。
+- **时区**：非 `@` 表达式恒加 `CRON_TZ=Asia/Shanghai` 前缀；5 段标准 parser（不用 WithSeconds），进程嵌入 `time/tzdata`——`TZ=UTC` 容器下日期串仍按沪时区翻转（限流 `date`、运势 `date`、文章日期统一走模块内 `nowSH()`）。
+- DeepSeek 空 api_key **无条件跳过**并记 warn（空配可启动联调）；任务 panic 由 pkg/job safeJob recover 成 warn 不崩进程。
+- 启动不补跑（错过等次日，与 goLucky 一致）；补跑走 admin trigger 或 `POST /tasks/*`。OnStop 等在跑任务收尾。
 - **上线注记**：上线当天需 admin force 重抓（默认补缺不带新字段）；v3 换版后旧 `fortune/v2/` 图不会被幂等跳过影响（key 已升版自然重生成），无需手删。
+
+### 13.7.1 pkg/job（模块任务公共设施）
+
+- `pkg/job`：`Manager.Register(name, defaultSpec, fn)` 注册（name 必须 `模块.任务名`，重复/启动后注册 panic）；fx `OnStart` 统一解析排程（模块开关守卫**先于**表达式解析——关模块+非法表达式仍能启动）、`OnStop` 等在跑任务收尾；`safeJob` panic recover + 状态跟踪（running/lastStart/lastEnd/lastErr/RunCount/NextRun）。
+- 配置：config 顶层 `jobs:` 段（嵌套 `模块 → 任务名 → 表达式`，viper 按点拆 key 故嵌套存、`cfg.FlatJobs()` 扁平读）；缺键=代码缺省，空串=停用，未注册 key 启动只 warn。
+- 错误码：`30601` 任务不存在、`30602` 任务已停用。
+- 现有注册面：`system.sweep_tokens`（@every 1h）、`scorecard.sweep_rooms`（@every 1m）、`starfuyu.fetch_fortune` / `starfuyu.generate_images`（每天 00:10/00:20）。
 
 ### 13.8 错误码（30501–30507）
 
