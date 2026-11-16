@@ -557,6 +557,8 @@ func TestRenderSampleForVisual(t *testing.T) {
 		"整理桌面和待办清单半小时",
 		"睡前拉伸十分钟放松肩颈",
 	}
+	// 底部粉条口号：与上方运势同题（78 分节奏轻快+上午签约建议），演示 slogan 绑定生发效果。
+	r0.Slogan = "贵人点拨节奏轻快，上午签约趁势办"
 	f.seed(t, rows)
 
 	key, err := f.svc.Ensure(ctx, date, "白羊座")
