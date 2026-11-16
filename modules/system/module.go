@@ -87,6 +87,8 @@ var FxModule = fx.Module("system",
 		repository.NewOnlineRepository,
 		service.NewOnlineService,
 		admin.NewOnlineController,
+		// 任务中心（pkg/job admin 面：列表/触发，权限 system:job）。
+		admin.NewJobController,
 		// T11：TokenService 的 gRPC Registrar（As 版本单条，同时满足组注册）。
 		tokenServiceRegistrar,
 	),
@@ -152,6 +154,7 @@ type systemModule struct {
 	appCtrl    *app.AppController
 	tenantCtrl *admin.TenantController
 	onlineCtrl *admin.OnlineController
+	jobCtrl    *admin.JobController
 	vbenCtrl   *vben.Controller
 }
 
@@ -166,6 +169,7 @@ func NewSystemModule(
 	appCtrl *app.AppController,
 	tenantCtrl *admin.TenantController,
 	onlineCtrl *admin.OnlineController,
+	jobCtrl *admin.JobController,
 	vbenCtrl *vben.Controller,
 ) server.Module {
 	return &systemModule{
@@ -179,11 +183,16 @@ func NewSystemModule(
 		appCtrl:    appCtrl,
 		tenantCtrl: tenantCtrl,
 		onlineCtrl: onlineCtrl,
+		jobCtrl:    jobCtrl,
 		vbenCtrl:   vbenCtrl,
 	}
 }
 
 func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
+	// 任务中心（pkg/job）：路径 /api/admin/jobs 不带 /system 段，直接挂 r。
+	r.GET("/admin/jobs", m.jobCtrl.List)
+	r.POST("/admin/jobs/:name/trigger", m.jobCtrl.Trigger)
+
 	adminGroup := r.Group("/admin/system")
 	adminGroup.GET("/users", m.adminCtrl.ListUsers)
 	adminGroup.GET("/users/export", m.userCtrl.ExportUsers)

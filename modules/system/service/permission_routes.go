@@ -39,6 +39,8 @@ var permissionRoutes = map[string][]string{
 	// 收敛为 2 个，limit 并入 task 页）。entity CRUD 与 admin 路由后续任务重写。
 	"starfuyu:fortune": {"/api/admin/starfuyu/fortunes", "/api/admin/starfuyu/fortunes/*"},
 	"starfuyu:task":    {"/api/admin/starfuyu/tasks", "/api/admin/starfuyu/tasks/*", "/api/admin/starfuyu/limits"},
+	// 任务中心（pkg/job）：列表 + 手动触发，无 /system 段（路径直接 /api/admin/jobs）。
+	"system:job":   {"/api/admin/jobs", "/api/admin/jobs/*"},
 	"system:user":      {"/api/admin/system/users", "/api/admin/system/users/*"},
 	"system:role":      {"/api/admin/system/roles", "/api/admin/system/roles/*"},
 	"system:menu":      {"/api/admin/system/menus", "/api/admin/system/menus/*"},

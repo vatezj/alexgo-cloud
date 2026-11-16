@@ -102,3 +102,30 @@ func TestHasSystemDir(t *testing.T) {
 		t.Error("nil element must be skipped, not panic")
 	}
 }
+
+// TestSeedJobButtons_MatchRouteKeys（Review Focus 5a）任务中心按钮权限前缀必须与
+// permissionRoutes 的 system:job 键同尺度命中——否则按钮种出来了但路由无映射（403 死权限）。
+func TestSeedJobButtons_MatchRouteKeys(t *testing.T) {
+	if _, ok := permissionRoutes["system:job"]; !ok {
+		t.Fatal("permissionRoutes 缺 system:job 键（/api/admin/jobs 无鉴权映射）")
+	}
+	for _, b := range jobButtons {
+		if got := permPrefix(b.perm); got != "system:job" {
+			t.Errorf("jobButton %q → prefix %q, want system:job", b.perm, got)
+		}
+	}
+}
+
+// TestSeedJobButtons_Idempotent（Review Focus 5b）整组幂等判据：菜单集已有任一
+// system:job 前缀按钮则整组跳过（与 seed.go 的 !hasPermPrefix(allMenus, "system:job") 同判据）。
+func TestSeedJobButtons_Idempotent(t *testing.T) {
+	// 已有 read 按钮 → 判据为 true（不重复插，也不漏 trigger——组绑一次）。
+	existing := []*model.Menu{{Permission: "system:job:read", Type: "button"}}
+	if !hasPermPrefix(existing, "system:job") {
+		t.Error("已有 system:job:read 时判据必须命中（否则重复插按钮）")
+	}
+	// 无相关菜单 → 判据 false（需要插）。
+	if hasPermPrefix([]*model.Menu{{Permission: "infra:file:upload", Type: "button"}}, "system:job") {
+		t.Error("无关菜单不得命中 system:job 判据")
+	}
+}

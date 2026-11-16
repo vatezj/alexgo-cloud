@@ -395,6 +395,29 @@ func seed(ctx context.Context, p SeederParams) error {
 			}
 		}
 	}
+	// 任务中心按钮（pkg/job）：两条同属 system:job 前缀，整组绑一次幂等判——
+	// 理由同 fileStorageButtons（逐条判只插首条 = trigger 路由 403）。
+	if rootID != 0 && !hasPermPrefix(allMenus, "system:job") {
+		for _, b := range jobButtons {
+			btn := &model.Menu{
+				ParentID:   rootID,
+				Type:       "button",
+				Name:       b.name,
+				Path:       "",
+				Component:  "",
+				Icon:       b.icon,
+				Permission: b.perm,
+				Sort:       b.sort,
+				Status:     1,
+				TenantID:   tid,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			if err := p.Menus.Create(ctx, btn); err == nil {
+				allMenus = append(allMenus, btn)
+			}
+		}
+	}
 
 	menuIDs := make([]uint64, 0, len(allMenus))
 	for _, m := range allMenus {
@@ -444,6 +467,18 @@ var fileStorageButtons = []struct {
 	{perm: "infra:file:upload", name: "文件上传", icon: "upload", sort: 14},
 	{perm: "infra:file:download", name: "文件下载", icon: "download", sort: 15},
 	{perm: "infra:file:delete", name: "文件删除", icon: "trash-2", sort: 16},
+}
+
+// jobButtons 任务中心两按钮（pkg/job admin API）：同属 system:job 前缀，
+// 整组绑一次 hasPermPrefix 幂等判（照 fileStorageButtons，逐条判会只插首条 → 403）。
+var jobButtons = []struct {
+	perm string
+	name string
+	icon string
+	sort int
+}{
+	{perm: "system:job:read", name: "任务查看", icon: "list", sort: 17},
+	{perm: "system:job:trigger", name: "任务触发", icon: "play", sort: 18},
 }
 
 // hasPermPrefix 判断菜单集中是否已有任一菜单的 permission 前缀命中给定前缀

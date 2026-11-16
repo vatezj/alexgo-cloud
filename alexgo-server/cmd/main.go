@@ -27,6 +27,7 @@ import (
 	"alexGo-cloud/pkg/client"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/database"
+	"alexGo-cloud/pkg/job"
 	"alexGo-cloud/pkg/limiter"
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
@@ -197,6 +198,8 @@ func baseOptions(cfg *config.Config, migrateOnly bool) []fx.Option {
 		fx.Invoke(grpcserver.StartGRPCServer),
 		// 模块装配：每个模块将自身作为 server.Module 注册到 group:"modules"。
 		// B 方案（2026-10-15）：oauth2/infra 已并入 system.FxModule，随 system 整体挂载。
+		// job.Manager 单例 + 生命周期（各模块在 Invoke 阶段 m.Register，先于 OnStart）。
+		job.FxModule,
 		system.FxModule,
 		order.FxModule,
 		scorecard.FxModule,
