@@ -92,7 +92,7 @@ func newModuleTestRouter(t *testing.T, cfg *config.Config, withAuth bool) (*gin.
 	}
 
 	fortuneRepo := repository.NewFortuneRepository(db)
-	fortunes := service.NewFortuneService(fortuneRepo, stubFetcher{})
+	fortunes := service.NewFortuneService(fortuneRepo, repository.NewDailyRepository(db), stubFetcher{})
 	images := service.NewImageService(fortunes, driver, cfg)
 	mp := service.NewWeChatMPClient("", "")
 	articles := service.NewArticleService(fortunes, images, mp, driver, cfg)

@@ -69,7 +69,7 @@ func newImageFixtureCfg(t *testing.T, assetsDir, fontFile, bgFile string) *image
 	cfg.Starfuyu.CuteDir = "../../../data/starfuyu/cute/cutout"
 	repo := repository.NewFortuneRepository(db)
 	return &imageFixture{
-		svc:  NewImageService(NewFortuneService(repo, &stubFetcher{}), drv, cfg),
+		svc:  NewImageService(NewFortuneService(repo, repository.NewDailyRepository(db), &stubFetcher{}), drv, cfg),
 		drv:  drv,
 		repo: repo,
 	}

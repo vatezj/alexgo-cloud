@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"alexGo-cloud/modules/starfuyu/model"
 	"alexGo-cloud/modules/starfuyu/repository"
@@ -26,11 +27,13 @@ type FortuneService interface {
 
 type fortuneService struct {
 	fortunes repository.FortuneRepository
+	daily    repository.DailyRepository
 	fetcher  FortuneFetcher
 }
 
-func NewFortuneService(fortunes repository.FortuneRepository, fetcher FortuneFetcher) FortuneService {
-	return &fortuneService{fortunes: fortunes, fetcher: fetcher}
+func NewFortuneService(fortunes repository.FortuneRepository, daily repository.DailyRepository, fetcher FortuneFetcher) FortuneService {
+	return &fortuneService{fortunes: fortunes, daily: daily,
+		fetcher: fetcher}
 }
 
 // contentCtx 内容表读写钉 tid=0（决定 6：内容不随租户）。
@@ -49,7 +52,7 @@ func (s *fortuneService) Fetch(ctx context.Context, date string, force bool) (bo
 		return true, nil // 已满且非强制：不调抓取器
 	}
 
-	rows, _, err := s.fetcher.FetchFortunes(ctx, date)
+	rows, daily, err := s.fetcher.FetchFortunes(ctx, date)
 	if err != nil {
 		return false, errs.New(errs.CodeStarfuyuFetchFailed, err)
 	}
@@ -80,6 +83,14 @@ func (s *fortuneService) Fetch(ctx context.Context, date string, force bool) (bo
 	}
 	if err := s.fortunes.UpsertBatch(ctx, rows); err != nil {
 		return false, errs.New(errs.CodeStarfuyuFetchFailed, fmt.Errorf("运势整批落库失败: %w", err))
+	}
+	// 日级星象/总述：增强数据——失败仅记日志，不阻断抓取（spec §3.3 裁定，
+	// 文章侧 GetByDate miss 自然降级）。
+	if daily != nil {
+		daily.Date = date // 以入参日期为准
+		if err := s.daily.Upsert(ctx, daily); err != nil {
+			log.Printf("[Fortune] 日级星象落库失败 date=%s err=%v", date, err)
+		}
 	}
 	return false, nil
 }

@@ -13,16 +13,17 @@ import (
 	"alexGo-cloud/pkg/tenant/gormplugin"
 )
 
-// stubFetcher FortuneFetcher 测试替身：记录调用次数、返回预置行/错误。
+// stubFetcher FortuneFetcher 测试替身：记录调用次数、返回预置行/日级数据/错误。
 type stubFetcher struct {
 	calls int
 	rows  []*model.Fortune
+	daily *model.DailyHoroscope
 	err   error
 }
 
 func (s *stubFetcher) FetchFortunes(_ context.Context, _ string) ([]*model.Fortune, *model.DailyHoroscope, error) {
 	s.calls++
-	return s.rows, nil, s.err
+	return s.rows, s.daily, s.err
 }
 
 // newTestDB sqlite 内存库 + Fortune AutoMigrate + gormplugin（照 repository_test 惯例）。
@@ -73,7 +74,7 @@ func TestFortuneFetch_Empty库(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewFortuneRepository(db)
 	stub := &stubFetcher{rows: twelveRows("2026-11-12", "首版")}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	skipped, err := svc.Fetch(ctx, "2026-11-12", false)
@@ -96,7 +97,7 @@ func TestFortuneFetch_Full库Skip(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewFortuneRepository(db)
 	stub := &stubFetcher{rows: twelveRows("2026-11-12", "不该出现")}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	if err := repo.UpsertBatch(ctx, twelveRows("2026-11-12", "已有")); err != nil {
@@ -121,7 +122,7 @@ func TestFortuneFetch_Force覆盖(t *testing.T) {
 	repo := repository.NewFortuneRepository(db)
 	const date = "2026-11-12"
 	stub := &stubFetcher{rows: twelveRows(date, "改版")}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	if err := repo.UpsertBatch(ctx, twelveRows(date, "旧版")); err != nil {
@@ -157,7 +158,7 @@ func TestFortuneFetch_PartialBatchFails(t *testing.T) {
 	const date = "2026-11-12"
 	rows := twelveRows(date, "缺一")[:11]
 	stub := &stubFetcher{rows: rows}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	skipped, err := svc.Fetch(ctx, date, false)
@@ -180,7 +181,7 @@ func TestFortuneFetch_FetcherError(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewFortuneRepository(db)
 	stub := &stubFetcher{err: context.DeadlineExceeded}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 
 	_, err := svc.Fetch(context.Background(), "2026-11-12", false)
 	if !errs.Is(err, errs.CodeStarfuyuFetchFailed) {
@@ -200,7 +201,7 @@ func TestFortuneFetch_NilRow(t *testing.T) {
 	rows := twelveRows(date, "空行")
 	rows[3] = nil // 12 行中夹一个 nil
 	stub := &stubFetcher{rows: rows}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	skipped, err := svc.Fetch(ctx, date, false)
@@ -224,7 +225,7 @@ func TestFortuneFetch_DuplicateConstellation(t *testing.T) {
 	rows := twelveRows(date, "重复")
 	rows[1].Constellation = rows[0].Constellation // 金牛→白羊，白羊出现两次
 	stub := &stubFetcher{rows: rows}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	skipped, err := svc.Fetch(ctx, date, false)
@@ -247,7 +248,7 @@ func TestFortuneFetch_UnknownConstellation(t *testing.T) {
 	rows := twelveRows(date, "未知")
 	rows[0].Constellation = "不存在座"
 	stub := &stubFetcher{rows: rows}
-	svc := NewFortuneService(repo, stub)
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), stub)
 	ctx := context.Background()
 
 	_, err := svc.Fetch(ctx, date, false)
@@ -263,7 +264,7 @@ func TestFortuneFetch_UnknownConstellation(t *testing.T) {
 func TestFortuneGetByDate_Empty库(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewFortuneRepository(db)
-	svc := NewFortuneService(repo, &stubFetcher{})
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), &stubFetcher{})
 
 	got, err := svc.GetByDate(context.Background(), "2026-11-12")
 	if err != nil {
@@ -285,7 +286,7 @@ func TestFortuneGetOne_MissNotFound(t *testing.T) {
 	if err := repo.UpsertBatch(context.Background(), twelveRows(date, "存")); err != nil {
 		t.Fatalf("预置 err = %v", err)
 	}
-	svc := NewFortuneService(repo, &stubFetcher{})
+	svc := NewFortuneService(repo, repository.NewDailyRepository(db), &stubFetcher{})
 
 	hit, err := svc.GetOne(context.Background(), date, "白羊座")
 	if err != nil || hit == nil || hit.Constellation != "白羊座" {
@@ -297,5 +298,49 @@ func TestFortuneGetOne_MissNotFound(t *testing.T) {
 	}
 	if miss != nil {
 		t.Fatalf("GetOne miss 应 nil, got %+v", miss)
+	}
+}
+
+// TestFetch_UpsertsDaily rows 落库后 daily 同步 Upsert，GetByDate 可读回（图片版软文 §3.3）。
+func TestFetch_UpsertsDaily(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	dailyRepo := repository.NewDailyRepository(db)
+	const date = "2026-11-16"
+	stub := &stubFetcher{
+		rows:  twelveRows(date, "日"),
+		daily: &model.DailyHoroscope{Astro: "月水星，月土六合", Intro: "这天有能量。"},
+	}
+	svc := NewFortuneService(repo, dailyRepo, stub)
+
+	if _, err := svc.Fetch(context.Background(), date, false); err != nil {
+		t.Fatalf("Fetch err = %v, want nil", err)
+	}
+	got, ok, err := dailyRepo.GetByDate(context.Background(), date)
+	if err != nil || !ok {
+		t.Fatalf("daily GetByDate = (%+v, %v, %v), want hit", got, ok, err)
+	}
+	if got.Astro != "月水星，月土六合" || got.Intro != "这天有能量。" {
+		t.Fatalf("daily 字段不符: %+v", got)
+	}
+	if got.Date != date {
+		t.Fatalf("daily.Date = %q, want %q", got.Date, date)
+	}
+}
+
+// TestFetch_DailyNilSkips stub 返回 daily=nil（数组回退路径）→ Fetch 正常、无 daily 行。
+func TestFetch_DailyNilSkips(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	dailyRepo := repository.NewDailyRepository(db)
+	const date = "2026-11-16"
+	stub := &stubFetcher{rows: twelveRows(date, "无日")}
+	svc := NewFortuneService(repo, dailyRepo, stub)
+
+	if _, err := svc.Fetch(context.Background(), date, false); err != nil {
+		t.Fatalf("Fetch err = %v, want nil", err)
+	}
+	if _, ok, err := dailyRepo.GetByDate(context.Background(), date); err != nil || ok {
+		t.Fatalf("daily 应 miss: ok=%v err=%v", ok, err)
 	}
 }
