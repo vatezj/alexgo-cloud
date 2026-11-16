@@ -7,13 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"alexGo-cloud/modules/starfuyu/model"
+	"alexGo-cloud/modules/starfuyu/repository"
 	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
+	"alexGo-cloud/pkg/storage"
 )
 
 // stubArticleFortunes ArticleService 测试替身：预置行直出。
@@ -421,4 +424,56 @@ func TestUploadToMP_EmptyCreds30507_NoNetwork(t *testing.T) {
 	if f.drv.opens != 0 {
 		t.Fatalf("空密钥不得读素材, opens = %d, want 0", f.drv.opens)
 	}
+}
+
+// TestArticlePreviewForVisual 图片版软文预览采样：真渲染 12 张 v3 海报到稳定目录，
+// BuildHTML 出整版 HTML（img src 换 file:// 本地路径）→ /tmp/starfuyu-article.html，
+// 供浏览器人工对照参考图验收。go test -short 跳过（CI 不落盘）；本地 -run 显式跑。
+func TestArticlePreviewForVisual(t *testing.T) {
+	if testing.Short() {
+		t.Skip("视觉采样：-short 跳过")
+	}
+	const date = "2026-11-16"
+	ctx := context.Background()
+
+	// 1) 真渲染 12 张海报到稳定目录（t.TempDir 测试结束即删，file:// 会失效）。
+	root := "/tmp/starfuyu-article-preview"
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatalf("清理预览目录 err = %v", err)
+	}
+	imgDrv, err := storage.NewLocalDriver(root)
+	if err != nil {
+		t.Fatalf("NewLocalDriver err = %v", err)
+	}
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	rows := twelveRows(date, "预")
+	if err := repo.UpsertBatch(ctx, rows); err != nil {
+		t.Fatalf("seed rows err = %v", err)
+	}
+	imgCfg := &config.Config{}
+	imgCfg.Starfuyu.FontFile = "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"
+	imgCfg.Starfuyu.BgFile = "../../../data/starfuyu/bg.png"
+	imgCfg.Starfuyu.CuteDir = "../../../data/starfuyu/cute/cutout"
+	imgSvc := NewImageService(
+		NewFortuneService(repo, repository.NewDailyRepository(db), &stubFetcher{rows: rows}),
+		imgDrv, imgCfg)
+	if _, err := imgSvc.GenerateAll(ctx, date); err != nil {
+		t.Fatalf("GenerateAll err = %v", err)
+	}
+
+	// 2) 整版 HTML（stub 文章数据）+ img src 换本地 file:// 路径。
+	f := newArticleFixture(t, 0)
+	html, err := f.svc.BuildHTML(ctx, date, "")
+	if err != nil {
+		t.Fatalf("BuildHTML err = %v", err)
+	}
+	html = strings.ReplaceAll(html,
+		"/api/public/starfuyu/image/fortune/v3/",
+		"file://"+root+"/fortune/v3/")
+	const out = "/tmp/starfuyu-article.html"
+	if err := os.WriteFile(out, []byte(html), 0o644); err != nil {
+		t.Fatalf("写预览 HTML err = %v", err)
+	}
+	t.Logf("软文预览已落盘: %s（海报目录 %s）", out, root)
 }
