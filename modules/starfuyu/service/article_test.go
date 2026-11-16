@@ -18,6 +18,7 @@ import (
 	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/storage"
+	"alexGo-cloud/pkg/tenant"
 )
 
 // stubArticleFortunes ArticleService 测试替身：预置行直出。
@@ -206,6 +207,10 @@ func TestBuildHTML_ContainsAllConstellations(t *testing.T) {
 	if !strings.Contains(html, "星福柚") {
 		t.Errorf("整版 HTML 缺底部关注区「星福柚」")
 	}
+	// 用户反馈：图片版外层不叠微信自带边距（终审修复波：曾误改到单星座分支）。
+	if !strings.Contains(html, "margin: 0 auto; padding: 0") {
+		t.Errorf("图片版外层应 padding:0（收窄左右边距）")
+	}
 }
 
 // TestBuildHTML_ElementGroups 四胶囊顺序火土风水；每组成员顺序钉死；
@@ -304,6 +309,10 @@ func TestBuildHTML_SingleConstellation(t *testing.T) {
 	}
 	if strings.Contains(html, "白羊座") {
 		t.Fatalf("单星座 HTML 不得含其他星座名")
+	}
+	// spec 非目标：单星座文字版版式不动（含外层 padding 20px——终审修复波回滚误改）。
+	if !strings.Contains(html, "padding: 20px") {
+		t.Fatalf("单星座文字版外层应保持 padding:20px（非目标不动）")
 	}
 }
 
@@ -674,5 +683,66 @@ func TestUploadRealDraftManual(t *testing.T) {
 	}
 	if len(up) != 1 {
 		t.Fatalf("篇数 = %d, want 1", len(up))
+	}
+}
+
+// TestBuildHTML_DailyReadPinnedTidZero daily 读取必须钉 tid=0（contentCtx）：
+// 请求 ctx 带非零租户时仍读到日级星象——否则 gormplugin 按 tid 过滤必 miss，
+// 软文静默丢「重点星象/开篇」两块（终审 Important-1）。
+func TestBuildHTML_DailyReadPinnedTidZero(t *testing.T) {
+	const date = "2026-11-16"
+	db := newTestDB(t)
+	dailyRepo := repository.NewDailyRepository(db)
+	if err := dailyRepo.Upsert(context.Background(), &model.DailyHoroscope{
+		Date: date, Astro: "木星入庙顺行", Intro: "总述段落。",
+	}); err != nil {
+		t.Fatalf("seed daily err = %v", err)
+	}
+	f := newArticleFixture(t, 0)
+	svc := NewArticleService(
+		&stubArticleFortunes{rows: twelveRows(date, "租")},
+		&stubArticleImages{key: "x.jpg"},
+		f.mp, f.drv, f.cfg, dailyRepo)
+
+	ctx := tenant.WithTenantID(context.Background(), 7) // 非零租户请求
+	html, err := svc.BuildHTML(ctx, date, "")
+	if err != nil {
+		t.Fatalf("BuildHTML err = %v, want nil", err)
+	}
+	if !strings.Contains(html, "重点星象：木星入庙顺行") {
+		t.Fatalf("非零租户 ctx 下 daily 应仍可读（tid=0 钉死），HTML 缺重点星象块")
+	}
+}
+
+// TestUploadToMP_DailyReadPinnedTidZero 同上，钉 UploadToMP 路径的 daily 读取。
+func TestUploadToMP_DailyReadPinnedTidZero(t *testing.T) {
+	const date = "2026-11-16"
+	db := newTestDB(t)
+	dailyRepo := repository.NewDailyRepository(db)
+	if err := dailyRepo.Upsert(context.Background(), &model.DailyHoroscope{
+		Date: date, Astro: "金星合月", Intro: "上传路径总述。",
+	}); err != nil {
+		t.Fatalf("seed daily err = %v", err)
+	}
+	f := newArticleFixture(t, 0)
+	svc := NewArticleService(
+		&stubArticleFortunes{rows: twelveRows(date, "租")},
+		&stubArticleImages{key: "fortune/v3/" + date + "/白羊座.jpg"},
+		f.mp, f.drv, f.cfg, dailyRepo)
+
+	ctx := tenant.WithTenantID(context.Background(), 7)
+	if _, err := svc.UploadToMP(ctx, date); err != nil {
+		t.Fatalf("UploadToMP err = %v", err)
+	}
+	var body struct {
+		Articles []struct {
+			Content string `json:"content"`
+		} `json:"articles"`
+	}
+	if err := json.Unmarshal(f.st.lastDraftBody, &body); err != nil {
+		t.Fatalf("parse draft body: %v", err)
+	}
+	if !strings.Contains(body.Articles[0].Content, "重点星象：金星合月") {
+		t.Fatalf("UploadToMP 路径非零租户下 daily 应仍可读，content 缺重点星象")
 	}
 }

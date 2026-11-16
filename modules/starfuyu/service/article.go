@@ -73,7 +73,8 @@ func (s *articleService) BuildHTML(ctx context.Context, date, constellation stri
 	// 日级星象：miss → nil，buildImageArticleHTML 内降级少画两块。
 	var daily *model.DailyHoroscope
 	if s.daily != nil {
-		row, _, dErr := s.daily.GetByDate(ctx, date)
+		// daily 行恒 tid=0：读取钉 contentCtx，防请求 ctx 带租户时 gormplugin 误过滤（终审 Important-1）。
+		row, _, dErr := s.daily.GetByDate(contentCtx(ctx), date)
 		if dErr != nil {
 			return "", dErr
 		}
@@ -144,7 +145,8 @@ func (s *articleService) UploadToMP(ctx context.Context, date string) ([]Uploade
 	}
 	var daily *model.DailyHoroscope
 	if s.daily != nil {
-		row, _, dErr := s.daily.GetByDate(ctx, date)
+		// 同 BuildHTML：daily 读取钉 tid=0（contentCtx）。
+		row, _, dErr := s.daily.GetByDate(contentCtx(ctx), date)
 		if dErr != nil {
 			return nil, dErr
 		}
@@ -287,7 +289,7 @@ func generateSingleConstellationArticleHTML(f *model.Fortune, date string) strin
 	weekdayStr := weekdayChinese(t.Weekday())
 
 	var b strings.Builder
-	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 0;">`)
+	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 20px;">`)
 	fmt.Fprintf(&b, `<p style="font-size: 16px; text-indent: 2em; margin: 15px 0; color: #555;">今天是%s %s，来看看你的专属好运吧！✨ 愿你今天充满活力，把握每一个机会！</p>`, dateStr, weekdayStr)
 	b.WriteString(`<hr style="border: none; border-top: 1px solid #e0e0e0; margin: 25px 0;">`)
 	fmt.Fprintf(&b, `<h2 style="font-size: 20px; font-weight: bold; color: #e74c3c; margin: 30px 0 15px 0; padding: 10px 0; border-left: 4px solid #e74c3c; padding-left: 15px;">%s %s</h2>`,
@@ -325,7 +327,7 @@ func buildImageArticleHTML(daily *model.DailyHoroscope, rows []*model.Fortune, d
 	}
 
 	var b strings.Builder
-	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 20px;">`)
+	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 0;">`)
 
 	// 1. 日期徽章（YYYY/MM/DD）。
 	slashDate := strings.ReplaceAll(date, "-", "/")
