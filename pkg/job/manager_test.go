@@ -189,3 +189,44 @@ func TestStart_CronScheduled(t *testing.T) {
 		t.Fatalf("NextRun = %v, want 未来时刻", st.NextRun)
 	}
 }
+
+// TestTrigger_ConcurrentOverlap_RunningStaysTrue（终审 Important 1）spec §4.4：
+// running 布尔反映"至少一个在跑"——两 run 重叠时先结束者不得把标志清零。
+func TestTrigger_ConcurrentOverlap_RunningStaysTrue(t *testing.T) {
+	m := newTestManager(t)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	m.Register("demo.slow", "@every 1h", func(context.Context) error {
+		select {
+		case <-started: // 第二次进入：直接放行（首个已在跑）
+		default:
+			close(started)
+			<-release // 阻塞到测试主动释放
+		}
+		return nil
+	})
+	lc := fxtest.NewLifecycle(t)
+	BindLifecycle(lc, m)
+	lc.RequireStart()
+	defer lc.RequireStop()
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- m.Trigger(context.Background(), "demo.slow") }()
+	<-started // 首个 run 已在跑
+
+	// 第二个 run 完整跑完（并发允许）。
+	if err := m.Trigger(context.Background(), "demo.slow"); err != nil {
+		t.Fatalf("第二实例 err = %v", err)
+	}
+	// 首个仍在阻塞 → running 必须仍为 true（旧实现：第二实例结束时清零 → false）。
+	if st := m.List()[0]; !st.Running {
+		t.Fatalf("首实例未结束时 Running = false，want true（计数语义）")
+	}
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("首实例 err = %v", err)
+	}
+	if st := m.List()[0]; st.Running {
+		t.Fatalf("全部结束后 Running = true, want false")
+	}
+}

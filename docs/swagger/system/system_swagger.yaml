@@ -163,6 +163,44 @@ info:
   title: alexGo-cloud system API
   version: "1.0"
 paths:
+  /admin/jobs:
+    get:
+      description: 权限 system:job:read；返回全部已注册任务（含停用的，带 disabledReason）与下次执行时间。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 任务列表
+      tags:
+      - system-admin
+  /admin/jobs/{name}/trigger:
+    post:
+      description: 权限 system:job:trigger；同步执行一次任务体（停用任务 30602、未注册 30601）。
+      parameters:
+      - description: 任务名（模块.任务名）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 手动触发任务
+      tags:
+      - system-admin
   /admin/system/auth/logout:
     post:
       description: 从 Authorization 头取 Bearer token 后吊销；缺失 → CodeParamMissing。同一 handler

@@ -44,7 +44,7 @@ type entry struct {
 	spec                      string // 生效表达式
 	entryID                   cron.EntryID
 
-	running int32 // atomic：Trigger/cron 并发自增
+	running int32 // atomic 计数：并发自增/自减，Running = counter > 0（spec §4.4 "至少一个在跑"）
 	mu      sync.Mutex
 	// 执行状态由 mu 保护（run 频率低，不需要 lock-free）。
 	lastStart time.Time
@@ -55,7 +55,7 @@ type entry struct {
 
 // run 执行外壳：记状态 + panic recover 转 error（Review Focus 4）。
 func (e *entry) run(ctx context.Context) (err error) {
-	atomic.StoreInt32(&e.running, 1)
+	atomic.AddInt32(&e.running, 1)
 	e.mu.Lock()
 	e.lastStart = time.Now()
 	e.mu.Unlock()
@@ -73,7 +73,7 @@ func (e *entry) run(ctx context.Context) (err error) {
 			e.lastErr = ""
 		}
 		e.mu.Unlock()
-		atomic.StoreInt32(&e.running, 0)
+		atomic.AddInt32(&e.running, -1)
 	}()
 
 	return e.fn(ctx)
@@ -132,7 +132,7 @@ func (m *Manager) List() []Status {
 			Spec:           e.spec,
 			Enabled:        e.enabled,
 			DisabledReason: e.disabledReason,
-			Running:        atomic.LoadInt32(&e.running) == 1,
+			Running:        atomic.LoadInt32(&e.running) > 0,
 			LastStart:      e.lastStart,
 			LastEnd:        e.lastEnd,
 			LastErr:        e.lastErr,

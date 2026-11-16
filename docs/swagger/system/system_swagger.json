@@ -8,6 +8,67 @@
     },
     "basePath": "/api",
     "paths": {
+        "/admin/jobs": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 system:job:read；返回全部已注册任务（含停用的，带 disabledReason）与下次执行时间。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-admin"
+                ],
+                "summary": "任务列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/jobs/{name}/trigger": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "权限 system:job:trigger；同步执行一次任务体（停用任务 30602、未注册 30601）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-admin"
+                ],
+                "summary": "手动触发任务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务名（模块.任务名）",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/admin/system/auth/logout": {
             "post": {
                 "security": [

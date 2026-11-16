@@ -531,6 +531,61 @@ paths:
       summary: 游戏端登录（微信 code 换会话）
       tags:
       - fishgame-app
+  /v1/auth/test_accounts:
+    get:
+      description: → {"list":["alice",...]}；免 X-Session。名单来自后端配置 fishgame.test_accounts。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+      summary: 测试账号名单（编辑器调试面板拉取）
+      tags:
+      - fishgame-app
+  /v1/auth/test_login:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        body {"account":"...","secret":"..."} → {"session":"..."}。名单+密钥双闸，
+        首登自动建号（openid=test_<account>）。任一不过 401 {"error":"login_failed"}。
+      parameters:
+      - description: 测试账号
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 测试账号登录（编辑器联调专用）
+      tags:
+      - fishgame-app
   /v1/basket:
     get:
       description: elapsed = now-since → bait=min(elapsed/2400,12)，elapsed≥8h 时 capped=true；since

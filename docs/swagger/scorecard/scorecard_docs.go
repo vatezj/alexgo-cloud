@@ -1162,7 +1162,7 @@ const docTemplatescorecard = `{
                         "Bearer": []
                     }
                 ],
-                "description": "200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号,inv+请求者UserID（逗号分隔，微信拒 & 场景值），进程内按 scene 缓存 5min（防跨用户串码）。",
+                "description": "200 直出 image/png 字节（非 JSON 信封），错误路径仍走 pkg/resp 五位码信封：30101 房不存在、30102 非成员、50001 渠道未配置/停用、50000 微信侧失败（平台错误只进日志不外泄）。scene=qr+房号,inv+请求者UserID（逗号分隔，微信拒 \u0026 场景值），进程内按 scene 缓存 5min（防跨用户串码）。",
                 "produces": [
                     "image/png"
                 ],
@@ -1236,6 +1236,27 @@ const docTemplatescorecard = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/public/scorecard/share-config": {
+            "get": {
+                "description": "统一 pkg/resp 信封，data = {index,simulator,salary} → {title,imageUrl}。\n值来自系统参数 scorecard.share.*（后台可改）；key 缺失/JSON 非法回退内置默认。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scorecard-app"
+                ],
+                "summary": "三页分享卡配置（免鉴权）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

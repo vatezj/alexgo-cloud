@@ -663,6 +663,87 @@ const docTemplatefishgame = `{
                 }
             }
         },
+        "/v1/auth/test_accounts": {
+            "get": {
+                "description": "→ {\"list\":[\"alice\",...]}；免 X-Session。名单来自后端配置 fishgame.test_accounts。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "测试账号名单（编辑器调试面板拉取）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/test_login": {
+            "post": {
+                "description": "body {\"account\":\"...\",\"secret\":\"...\"} → {\"session\":\"...\"}。名单+密钥双闸，\n首登自动建号（openid=test_\u003caccount\u003e）。任一不过 401 {\"error\":\"login_failed\"}。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fishgame-app"
+                ],
+                "summary": "测试账号登录（编辑器联调专用）",
+                "parameters": [
+                    {
+                        "description": "测试账号",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/basket": {
             "get": {
                 "security": [
@@ -1332,7 +1413,7 @@ const docTemplatefishgame = `{
                 }
             }
         }
-    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}],"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
+    ,"x-tagGroups": [{"name": "后台管理", "tags": ["fishgame-admin"]}, {"name": "App 端", "tags": ["fishgame-app"]}]},
     "securityDefinitions": {
         "Bearer": {
             "description": "admin 侧统一登录令牌，格式 ` + "`" + `Bearer \u003ctoken\u003e` + "`" + `。",
