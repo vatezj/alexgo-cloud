@@ -609,6 +609,10 @@ func TestUploadRealDraftManual(t *testing.T) {
 	if testing.Short() {
 		t.Skip("真实上传：-short 跳过")
 	}
+	// 双闸：全量跑测试也不误发——只有显式 STARFUYU_REAL_UPLOAD=1 才打真微信。
+	if os.Getenv("STARFUYU_REAL_UPLOAD") != "1" {
+		t.Skip("真实上传需 STARFUYU_REAL_UPLOAD=1 显式开启")
+	}
 	// 读仓库根 config（LoadGlobalConfig 固定路径相对 cwd），读完切回 service 包 cwd。
 	wd, err := os.Getwd()
 	if err != nil {
