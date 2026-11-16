@@ -159,3 +159,49 @@ func TestWeChatMPClient_EmptyCredsNoNetwork(t *testing.T) {
 		t.Fatalf("空密钥不得打网络, hits = %d, want 0", n)
 	}
 }
+
+// TestWeChatMPClient_UploadContentImage_Success uploadimg 200 → 回微信 CDN URL。
+func TestWeChatMPClient_UploadContentImage_Success(t *testing.T) {
+	cli := newMPForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cgi-bin/token"):
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":7200}`))
+		case strings.Contains(r.URL.Path, "/cgi-bin/media/uploadimg"):
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("ParseMultipartForm: %v", err)
+			}
+			if _, _, err := r.FormFile("media"); err != nil {
+				t.Errorf("缺 media 文件字段: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"url":"https://mmbiz.qpic.cn/img1"}`))
+		default:
+			t.Errorf("意外路径 %s", r.URL.Path)
+		}
+	})
+
+	u, err := cli.UploadContentImage(context.Background(), []byte{0x89, 0x50})
+	if err != nil {
+		t.Fatalf("UploadContentImage err = %v, want nil", err)
+	}
+	if u != "https://mmbiz.qpic.cn/img1" {
+		t.Fatalf("url = %q, want https://mmbiz.qpic.cn/img1", u)
+	}
+}
+
+// TestWeChatMPClient_UploadContentImage_ErrCode30507 errcode≠0 → 30507；空字节 → 30507。
+func TestWeChatMPClient_UploadContentImage_ErrCode30507(t *testing.T) {
+	cli := newMPForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cgi-bin/token"):
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":7200}`))
+		default:
+			_, _ = w.Write([]byte(`{"errcode":40004,"errmsg":"invalid media type"}`))
+		}
+	})
+	if _, err := cli.UploadContentImage(context.Background(), []byte{0x89}); !errs.Is(err, errs.CodeStarfuyuMpUploadFailed) {
+		t.Fatalf("errcode≠0 应 30507, got %v", err)
+	}
+	if _, err := cli.UploadContentImage(context.Background(), nil); !errs.Is(err, errs.CodeStarfuyuMpUploadFailed) {
+		t.Fatalf("空字节应 30507, got %v", err)
+	}
+}
