@@ -40,6 +40,20 @@ func (s *stubArticleFortunes) ListAdmin(context.Context, string, string, int, in
 	return nil, 0, nil
 }
 
+// stubArticleDaily DailyRepository 替身：row==nil 模拟 miss（降级渲染）。
+type stubArticleDaily struct {
+	row *model.DailyHoroscope
+}
+
+func (s *stubArticleDaily) GetByDate(context.Context, string) (*model.DailyHoroscope, bool, error) {
+	if s.row == nil {
+		return nil, false, nil
+	}
+	return s.row, true, nil
+}
+
+func (s *stubArticleDaily) Upsert(context.Context, *model.DailyHoroscope) error { return nil }
+
 // stubArticleImages ImageService 替身：Ensure 固定返回 key。
 type stubArticleImages struct {
 	key string
@@ -127,11 +141,16 @@ func newArticleFixture(t *testing.T, draftErrCode int) *articleFixture {
 		mp,
 		drv,
 		cfg,
+		&stubArticleDaily{row: &model.DailyHoroscope{
+			Astro: "月水星，月土六合，木火合",
+			Intro: "这天是一个积极热情有能量的日子，办事情能够把握好分寸。",
+		}},
 	)
 	return &articleFixture{svc: svc, mp: mp, drv: drv, cfg: cfg, srv: srv}
 }
 
-// TestBuildHTML_ContainsAllConstellations stub 12 条 → 整版 HTML 含 12 星座名与分数 stars 字样。
+// TestBuildHTML_ContainsAllConstellations 图片版整版：12 星座名 + 12 张 v3 海报
+// 相对公开读路径 + 日期徽章 + 底部星福柚（旧文字版断言随版式替换）。
 func TestBuildHTML_ContainsAllConstellations(t *testing.T) {
 	const date = "2026-11-12"
 	f := newArticleFixture(t, 0)
@@ -147,13 +166,99 @@ func TestBuildHTML_ContainsAllConstellations(t *testing.T) {
 		if !strings.Contains(html, c) {
 			t.Errorf("整版 HTML 缺星座名 %q", c)
 		}
+		want := `/api/public/starfuyu/image/fortune/v3/` + date + `/` + c + `.jpg`
+		if !strings.Contains(html, want) {
+			t.Errorf("整版 HTML 缺海报 img src %q", want)
+		}
 	}
-	// 分数 stars 字样：goLucky starsToString 渲染为「N分」。
-	if !strings.Contains(html, "分") {
-		t.Errorf("整版 HTML 缺分数 stars 字样（N分）")
+	if !strings.Contains(html, "2026/11/12") {
+		t.Errorf("整版 HTML 缺日期徽章 2026/11/12")
 	}
-	if !strings.Contains(html, "整体运势") {
-		t.Errorf("整版 HTML 缺整体运势段")
+	if !strings.Contains(html, "星福柚") {
+		t.Errorf("整版 HTML 缺底部关注区「星福柚」")
+	}
+}
+
+// TestBuildHTML_ElementGroups 四胶囊顺序火土风水；每组成员顺序钉死；
+// 星座名旁带 constellationMonth 日期范围。
+func TestBuildHTML_ElementGroups(t *testing.T) {
+	const date = "2026-11-12"
+	f := newArticleFixture(t, 0)
+	html, err := f.svc.BuildHTML(context.Background(), date, "")
+	if err != nil {
+		t.Fatalf("BuildHTML err = %v, want nil", err)
+	}
+
+	// 四象胶囊顺序。
+	last := -1
+	for _, pill := range []string{"火象星座", "土象星座", "风象星座", "水象星座"} {
+		idx := strings.Index(html, pill)
+		if idx < 0 {
+			t.Fatalf("缺四象胶囊 %q", pill)
+		}
+		if idx <= last {
+			t.Fatalf("四象胶囊顺序错：%q 出现在前一个之前", pill)
+		}
+		last = idx
+	}
+
+	// 每组成员 img 顺序（火：白羊→狮子→射手；其余同理）。
+	groups := [][]string{
+		{"白羊座", "狮子座", "射手座"},
+		{"金牛座", "处女座", "摩羯座"},
+		{"双子座", "天秤座", "水瓶座"},
+		{"巨蟹座", "天蝎座", "双鱼座"},
+	}
+	for _, g := range groups {
+		prev := -1
+		for _, c := range g {
+			idx := strings.Index(html, `/fortune/v3/`+date+`/`+c+`.jpg`)
+			if idx < 0 {
+				t.Fatalf("缺 %s 海报 img", c)
+			}
+			if idx <= prev {
+				t.Fatalf("组内顺序错：%s 应在前一成员之后", c)
+			}
+			prev = idx
+		}
+	}
+
+	// 每格名字带日期范围（示例：白羊座）。
+	if !strings.Contains(html, "白羊座（3月21日-4月19日）") {
+		t.Errorf("缺星座名+日期范围小标（白羊座）")
+	}
+}
+
+// TestBuildHTML_MissingDailyDegrades daily miss → 无「重点星象」块，
+// 但日期徽章、四胶囊、12 img 齐（降级不失败）。
+func TestBuildHTML_MissingDailyDegrades(t *testing.T) {
+	const date = "2026-11-12"
+	f := newArticleFixture(t, 0)
+	f.svc = NewArticleService(
+		&stubArticleFortunes{rows: twelveRows(date, "文")},
+		&stubArticleImages{key: "x.jpg"},
+		f.mp, f.drv, f.cfg,
+		&stubArticleDaily{row: nil},
+	)
+
+	html, err := f.svc.BuildHTML(context.Background(), date, "")
+	if err != nil {
+		t.Fatalf("BuildHTML err = %v, want nil", err)
+	}
+	if strings.Contains(html, "重点星象") {
+		t.Errorf("daily miss 不应画重点星象块")
+	}
+	if !strings.Contains(html, date[:4]+"/"+date[5:7]+"/"+date[8:]) {
+		t.Errorf("缺日期徽章")
+	}
+	for _, pill := range []string{"火象星座", "土象星座", "风象星座", "水象星座"} {
+		if !strings.Contains(html, pill) {
+			t.Errorf("缺胶囊 %q", pill)
+		}
+	}
+	n := strings.Count(html, `/fortune/v3/`+date+`/`)
+	if n != 12 {
+		t.Errorf("img 数 = %d, want 12", n)
 	}
 }
 
@@ -221,6 +326,7 @@ func TestUploadToMP_EmptyCreds30507_NoNetwork(t *testing.T) {
 		f.mp,
 		f.drv,
 		f.cfg,
+		&stubArticleDaily{},
 	)
 
 	got, err := svc.UploadToMP(context.Background(), "2026-11-12")

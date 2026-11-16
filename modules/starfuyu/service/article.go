@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"alexGo-cloud/modules/starfuyu/model"
+	"alexGo-cloud/modules/starfuyu/repository"
 	"alexGo-cloud/pkg/config"
 	errs "alexGo-cloud/pkg/errors"
 	"alexGo-cloud/pkg/storage"
@@ -34,13 +35,14 @@ type articleService struct {
 	mp       MPClient
 	driver   storage.Driver
 	cfg      *config.Config
+	daily    repository.DailyRepository
 }
 
 // NewArticleService 组装文章服务。
 // driver 供 UploadToMP 经 storage.Driver.Open(key) 读封面字节（preflight 裁定 7→8）。
 func NewArticleService(fortunes FortuneService, images ImageService, mp MPClient,
-	driver storage.Driver, cfg *config.Config) ArticleService {
-	return &articleService{fortunes: fortunes, images: images, mp: mp, driver: driver, cfg: cfg}
+	driver storage.Driver, cfg *config.Config, daily repository.DailyRepository) ArticleService {
+	return &articleService{fortunes: fortunes, images: images, mp: mp, driver: driver, cfg: cfg, daily: daily}
 }
 
 // mpConfigured 密钥非空（验收 §11.4 前置）。
@@ -68,7 +70,22 @@ func (s *articleService) BuildHTML(ctx context.Context, date, constellation stri
 	if err != nil {
 		return "", err
 	}
-	return generateFortuneArticleHTML(rows, date), nil
+	// 日级星象：miss → nil，buildImageArticleHTML 内降级少画两块。
+	var daily *model.DailyHoroscope
+	if s.daily != nil {
+		row, _, dErr := s.daily.GetByDate(ctx, date)
+		if dErr != nil {
+			return "", dErr
+		}
+		daily = row
+	}
+	return buildImageArticleHTML(daily, rows, date, func(c string) string {
+		key, kErr := fortuneImageKey(date, c)
+		if kErr != nil {
+			return "" // key 校验过（rows 来自库）；理论不可达
+		}
+		return "/api/public/starfuyu/image/" + key
+	}), nil
 }
 
 // UploadToMP 默认整版 1 篇：Ensure 封面 → Open 字节 → AddDraft。
@@ -252,7 +269,77 @@ func generateSingleConstellationArticleHTML(f *model.Fortune, date string) strin
 	return b.String()
 }
 
+// elementGroups 四象分组（顺序火→土→风→水，成员钉死——图片版软文 Global Constraints）。
+var elementGroups = []struct {
+	Name    string
+	Members []string
+}{
+	{"火象星座", []string{"白羊座", "狮子座", "射手座"}},
+	{"土象星座", []string{"金牛座", "处女座", "摩羯座"}},
+	{"风象星座", []string{"双子座", "天秤座", "水瓶座"}},
+	{"水象星座", []string{"巨蟹座", "天蝎座", "双鱼座"}},
+}
+
+// buildImageArticleHTML 图片版整版软文（spec 2026-11-16 §4.1）：日期徽章 → 重点星象/总述
+// （daily 缺失降级跳过）→ 四象分组三张一行海报网格 → 星福柚关注区 → 免责小字。
+// 全部 inline style + table（微信编辑器安全子集）；imgURL 由调用方定
+// （预览=公开读相对路径，上传=微信 CDN URL）。纯函数，缺行整格跳过。
+func buildImageArticleHTML(daily *model.DailyHoroscope, rows []*model.Fortune, date string, imgURL func(constellation string) string) string {
+	fmap := make(map[string]*model.Fortune, len(rows))
+	for _, f := range rows {
+		if f != nil {
+			fmap[f.Constellation] = f
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 20px;">`)
+
+	// 1. 日期徽章（YYYY/MM/DD）。
+	slashDate := strings.ReplaceAll(date, "-", "/")
+	fmt.Fprintf(&b, `<div style="display: inline-block; border: 1.5px solid #F2A8A8; border-radius: 8px; padding: 6px 16px; color: #E86A6A; font-size: 16px; font-weight: bold; margin-bottom: 16px;">%s</div>`, slashDate)
+
+	// 2. 重点星象（非空才画）。
+	if daily != nil && daily.Astro != "" {
+		fmt.Fprintf(&b, `<p style="font-size: 17px; font-weight: bold; color: #333; margin: 12px 0;">重点星象：%s</p>`, daily.Astro)
+	}
+	// 3. 开篇总述（非空才画）。
+	if daily != nil && daily.Intro != "" {
+		fmt.Fprintf(&b, `<p style="font-size: 16px; color: #555; margin: 12px 0; line-height: 1.9;">%s</p>`, daily.Intro)
+	}
+
+	// 4. 四象分组：粉底胶囊 + 一行三格海报。
+	for _, g := range elementGroups {
+		b.WriteString(`<div style="text-align: center; margin: 28px 0 14px 0;">`)
+		fmt.Fprintf(&b, `<span style="background: #FDEEF0; color: #E86A6A; border-radius: 999px; padding: 8px 28px; font-size: 18px; font-weight: bold;">%s</span>`, g.Name)
+		b.WriteString(`</div>`)
+		b.WriteString(`<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr>`)
+		for _, c := range g.Members {
+			if _, ok := fmap[c]; !ok {
+				continue // 缺行整格跳过（微信表格自然塌缩）
+			}
+			b.WriteString(`<td width="33%" style="padding: 4px; vertical-align: top; text-align: center;">`)
+			fmt.Fprintf(&b, `<div style="color: #E86A6A; font-size: 14px; font-weight: bold; margin: 6px 0 4px 0;">%s%s</div>`, c, constellationMonth(c))
+			fmt.Fprintf(&b, `<img src="%s" style="width: 100%%; border-radius: 8px; display: block;" alt="%s">`, imgURL(c), c)
+			b.WriteString(`</td>`)
+		}
+		b.WriteString(`</tr></table>`)
+	}
+
+	// 5. 底部关注区（星福柚）。
+	b.WriteString(`<div style="border: 1.5px solid #F2A8A8; border-radius: 12px; padding: 20px; margin: 32px 0 16px 0; text-align: center;">`)
+	b.WriteString(`<p style="font-size: 16px; color: #333; font-weight: bold; margin: 6px 0;">运势早知道，好运跑不了。</p>`)
+	b.WriteString(`<p style="font-size: 16px; color: #E86A6A; font-weight: bold; margin: 6px 0;">关注星福柚，每天解锁今日好运~</p>`)
+	b.WriteString(`</div>`)
+
+	// 6. 免责小字（沿用旧版语气）。
+	b.WriteString(`<p style="text-align: center; color: #999; font-size: 12px; margin: 12px 0;"><em>以上运势仅供参考，祝您拥有美好的一天！</em></p>`)
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
 // generateFortuneArticleHTML 整版 12 星座文章（照 goLucky _generateFortuneArticleHTML）。
+// 保留仅作历史对照——BuildHTML 整版已切 buildImageArticleHTML（2026-11-16 图片版）。
 func generateFortuneArticleHTML(fortunes []*model.Fortune, date string) string {
 	t := mustParseDate(date)
 	dateStr := formatDate(date)

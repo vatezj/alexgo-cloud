@@ -273,7 +273,7 @@ func TestUploadMP_EmptyCreds30507(t *testing.T) {
 		t.Fatal(err)
 	}
 	realArticle := service.NewArticleService(
-		&stubFortune{}, stubImage{}, service.NewWeChatMPClient("", ""), driver, &config.Config{})
+		&stubFortune{}, stubImage{}, service.NewWeChatMPClient("", ""), driver, &config.Config{}, nil)
 	r := newRouter(t, NewAdminController(&stubFortune{}, &stubTasks{}, realArticle, &stubLimits{}))
 
 	w, env := doJSON(t, r, http.MethodPost, "/admin/starfuyu/fortunes/2026-11-12/upload-mp", "")
