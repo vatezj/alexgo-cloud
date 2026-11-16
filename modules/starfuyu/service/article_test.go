@@ -426,9 +426,123 @@ func TestUploadToMP_EmptyCreds30507_NoNetwork(t *testing.T) {
 	}
 }
 
+// realisticRows 预览采样专用：12 星座真实感文案（DeepSeek 密钥空、库无数据时的
+// 视觉验收入口；仅 TestArticlePreviewForVisual 使用，不参与任何断言）。
+func realisticRows(date string) []*model.Fortune {
+	consts := ConstellationList
+	summaries := [12]string{
+		"整体节奏轻快，工作上有贵人点拨，感情宜主动表达",
+		"财运稳步上扬，适合处理账务，感情需要耐心经营",
+		"思维活跃灵感多，社交场合如鱼得水，忌三心二意",
+		"家庭氛围温馨，情绪宜收放有度，健康留意肠胃",
+		"气场全开的一天，展现领导力同时别忘了倾听",
+		"细节决定成败，适合复盘整理，感情别太较真",
+		"人际和谐的一天，合作谈判顺利，注意权衡取舍",
+		"洞察力在线，适合深度沟通，防小人远离是非",
+		"行动力满满，短途出行有惊喜，理财见好就收",
+		"事业稳步推进，加班也别忘吃饭，感情宜主动",
+		"创意点子频出，适合头脑风暴，别忽略身边人",
+		"直觉敏锐感受细腻，艺术灵感佳，防情绪内耗",
+	}
+	advices := [6]string{
+		"上午适合签约谈判与整理", "下午适合推进搁置的计划", "重要决定放在头脑清醒时",
+		"多倾听少表态，三思后行", "适合整理房间断舍离", "主动联系老朋友会带来好运",
+	}
+	avoids := [6]string{
+		"避免冲动消费与投资", "别在背后议论他人", "忌熬夜与暴饮暴食",
+		"不要轻易许下承诺", "避免情绪化做决定", "忌与人争一时长短",
+	}
+	loveTips := [6]string{
+		"多与伴侣进行深度交流", "单身者可留意身边人", "制造一点小惊喜加分",
+		"给彼此留一点空间", "坦诚说出内心感受", "一起做顿饭增进感情",
+	}
+	careerTips := [6]string{
+		"项目推进顺利，注意细节", "适合汇报展示阶段成果", "同事协作是今日关键",
+		"把大任务拆成小步骤", "新技能学习事半功倍", "会议发言提前打腹稿",
+	}
+	wealthTips := [6]string{
+		"偏财小有惊喜，见好就收", "正财稳定，适合做预算", "避免大额非必要支出",
+		"留意账单防止漏缴", "投资宜稳不宜急", "理性消费拒绝冲动种草",
+	}
+	healthTips := [6]string{
+		"注意规律作息补充水分", "久坐记得起身拉伸", "留意肩颈放松眼睛",
+		"饮食清淡肠胃无负担", "傍晚适合散步解压", "保证七小时睡眠",
+	}
+	reunionTips := [6]string{
+		"旧缘或有回音，宜冷静观察再定", "先把自己的生活理顺再谈缘分", "回忆美好时也别忘现实",
+		"复合需双方都愿意改变", "给过去一个温柔的句号", "联系前先想清楚想要什么",
+	}
+	singleTips := [6]string{
+		"桃花在朋友聚会中出现，多留意", "放慢节奏舒服自在最吸引人", "提升自己比急着脱单重要",
+		"兴趣社群里有同频的人", "别为了寂寞将就", "展现真实笑容最加分",
+	}
+	jobTips := [6]string{
+		"面试表现稳，薪资可再谈谈看", "突出自身心态放平稳", "更新简历留意新机会",
+		"内推比海投更有效", "试用期多问多学", "把项目经历量化成成果",
+	}
+	slogans := [12]string{
+		"贵人点拨节奏轻快，上午签约趁势办",
+		"稳步向前好运自来，把计划落到实处",
+		"灵感在线表达流畅，重要的话今天说",
+		"家庭是你的充电站，早点回家吃饭",
+		"气场全开自带光芒，记得照顾他人感受",
+		"细节里藏着好运，慢慢来比较快",
+		"左右逢源合作顺利，平衡就是赢",
+		"洞察先机静水流深，远离是非之地",
+		"说走就走好运开路，见好就收是智慧",
+		"稳扎稳打步步为营，身体是本钱",
+		"脑洞大开打破常规，别忽略身边温柔",
+		"直觉是你的指南针，别让情绪跑了偏",
+	}
+	colors := [6]model.LuckyColor{
+		{Chinese: "红色", English: "Red", Hex: "#E74C3C"},
+		{Chinese: "蓝色", English: "Blue", Hex: "#3498DB"},
+		{Chinese: "金色", English: "Gold", Hex: "#F1C40F"},
+		{Chinese: "绿色", English: "Green", Hex: "#2ECC71"},
+		{Chinese: "紫色", English: "Purple", Hex: "#9B59B6"},
+		{Chinese: "橙色", English: "Orange", Hex: "#E67E22"},
+	}
+	todosSets := [3]model.DailyTodos{
+		{"给久未联系的朋友发条问候消息", "整理桌面和待办清单半小时", "睡前拉伸十分钟放松肩颈"},
+		{"记账复盘本周开销", "给绿植浇浇水晒晒太阳", "读十页书再睡"},
+		{"把拖着的邮件回掉", "午休散步十五分钟", "对家人说一句感谢"},
+	}
+	rows := make([]*model.Fortune, 0, 12)
+	for i, c := range consts {
+		rows = append(rows, &model.Fortune{
+			TenantID: 0, Date: date, Constellation: c,
+			OverallScore:       68 + (i*5)%25,
+			LoveScore:          60 + (i*7)%35,
+			CareerScore:        62 + (i*3)%33,
+			WealthScore:        58 + (i*11)%37,
+			HealthScore:        65 + (i*4)%30,
+			LuckyNumber:        i + 1,
+			LuckyColor:         colors[i%6],
+			Summary:            summaries[i],
+			MatchConstellation: consts[(i+1)%12],
+			Advice:             advices[i%6],
+			Avoid:              avoids[i%6],
+			LoveTip:            loveTips[i%6],
+			CareerTip:          careerTips[i%6],
+			WealthTip:          wealthTips[i%6],
+			HealthTip:          healthTips[i%6],
+			ReunionTip:         reunionTips[i%6],
+			SingleTip:          singleTips[i%6],
+			JobTip:             jobTips[i%6],
+			ReunionScore:       60 + (i*9)%35,
+			SingleScore:        62 + (i*5)%33,
+			JobScore:           64 + (i*7)%31,
+			DailyTodos:         todosSets[i%3],
+			Slogan:             slogans[i],
+		})
+	}
+	return rows
+}
+
 // TestArticlePreviewForVisual 图片版软文预览采样：真渲染 12 张 v3 海报到稳定目录，
 // BuildHTML 出整版 HTML（img src 换 file:// 本地路径）→ /tmp/starfuyu-article.html，
-// 供浏览器人工对照参考图验收。go test -short 跳过（CI 不落盘）；本地 -run 显式跑。
+// 供浏览器人工对照参考图验收。文案用 realisticRows（真实感，非占位）。
+// go test -short 跳过（CI 不落盘）；本地 -run 显式跑。
 func TestArticlePreviewForVisual(t *testing.T) {
 	if testing.Short() {
 		t.Skip("视觉采样：-short 跳过")
@@ -447,7 +561,7 @@ func TestArticlePreviewForVisual(t *testing.T) {
 	}
 	db := newTestDB(t)
 	repo := repository.NewFortuneRepository(db)
-	rows := twelveRows(date, "预")
+	rows := realisticRows(date)
 	if err := repo.UpsertBatch(ctx, rows); err != nil {
 		t.Fatalf("seed rows err = %v", err)
 	}
@@ -462,9 +576,18 @@ func TestArticlePreviewForVisual(t *testing.T) {
 		t.Fatalf("GenerateAll err = %v", err)
 	}
 
-	// 2) 整版 HTML（stub 文章数据）+ img src 换本地 file:// 路径。
+	// 2) 整版 HTML：真实感行 + 参考图同款开篇（重点星象/总述），img src 换 file://。
 	f := newArticleFixture(t, 0)
-	html, err := f.svc.BuildHTML(ctx, date, "")
+	svc := NewArticleService(
+		&stubArticleFortunes{rows: rows},
+		&stubArticleImages{key: "x.jpg"},
+		f.mp, f.drv, f.cfg,
+		&stubArticleDaily{row: &model.DailyHoroscope{
+			Astro: "月水星，月土六合，木火合",
+			Intro: "这天是一个积极热情有能量的日子，办事情能够把握好分寸与人情之间的关系，在金钱和感情方面都有好消息。",
+		}},
+	)
+	html, err := svc.BuildHTML(ctx, date, "")
 	if err != nil {
 		t.Fatalf("BuildHTML err = %v", err)
 	}
