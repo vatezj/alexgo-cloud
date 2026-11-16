@@ -22,6 +22,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.Profile{}, &model.Fortune{}, &model.Bazi{},
 		&model.Divination{}, &model.RequestLimit{}, &model.SignCache{},
+		&model.DailyHoroscope{},
 	); err != nil {
 		t.Fatal(err)
 	}

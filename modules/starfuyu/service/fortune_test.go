@@ -32,7 +32,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Fortune{}); err != nil {
+	if err := db.AutoMigrate(&model.Fortune{}, &model.DailyHoroscope{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := gormplugin.Register(db, gormplugin.Options{ExemptTables: []string{"tenants", "casbin_rule"}}); err != nil {
