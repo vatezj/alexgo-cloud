@@ -48,6 +48,15 @@ modules:
   fishgame: true
   starfuyu: true
 
+jobs:                          # job 覆盖表（pkg/job）：嵌套 模块→任务名→表达式；缺键=代码缺省，空串=停用
+  system:
+    sweep_tokens: "@every 1h"
+  scorecard:
+    sweep_rooms: "@every 1m"
+  starfuyu:
+    fetch_fortune: "10 0 * * *"
+    generate_images: "20 0 * * *"
+
 fishgame:
   wechat:
     appid: ""             # 小游戏 appid（联调时填）

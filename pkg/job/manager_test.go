@@ -72,7 +72,7 @@ func TestStart_InvalidExprFails(t *testing.T) {
 // TestStart_ConfigOverride cfg.Jobs 有值覆盖 defaultSpec。
 func TestStart_ConfigOverride(t *testing.T) {
 	cfg := &config.Config{Modules: map[string]bool{"demo": true}}
-	cfg.Jobs = map[string]string{"demo.a": "5 4 * * *"}
+	cfg.Jobs = map[string]map[string]string{"demo": {"a": "5 4 * * *"}}
 	m := NewManager(cfg)
 	m.Register("demo.a", "10 0 * * *", func(context.Context) error { return nil })
 	lc := fxtest.NewLifecycle(t)
@@ -87,7 +87,7 @@ func TestStart_ConfigOverride(t *testing.T) {
 // TestStart_ConfigEmptyDisables（Review Focus 2）空串 = 停用，不得进解析。
 func TestStart_ConfigEmptyDisables(t *testing.T) {
 	cfg := &config.Config{Modules: map[string]bool{"demo": true}}
-	cfg.Jobs = map[string]string{"demo.a": ""}
+	cfg.Jobs = map[string]map[string]string{"demo": {"a": ""}}
 	m := NewManager(cfg)
 	m.Register("demo.a", "not-a-cron", func(context.Context) error { return nil }) // 若误解析会红
 	lc := fxtest.NewLifecycle(t)
@@ -102,7 +102,7 @@ func TestStart_ConfigEmptyDisables(t *testing.T) {
 // TestStart_UnknownConfigKeyWarnsOnly 配置写错名只 warn 不炸启动。
 func TestStart_UnknownConfigKeyWarnsOnly(t *testing.T) {
 	cfg := &config.Config{Modules: map[string]bool{"demo": true}}
-	cfg.Jobs = map[string]string{"demo.typo": "10 0 * * *"}
+	cfg.Jobs = map[string]map[string]string{"demo": {"typo": "10 0 * * *"}}
 	m := NewManager(cfg)
 	m.Register("demo.a", "@every 1m", func(context.Context) error { return nil })
 	lc := fxtest.NewLifecycle(t)

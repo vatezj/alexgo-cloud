@@ -210,6 +210,7 @@ func (m *Manager) start() error {
 
 	c := cron.New(cron.WithParser(parser))
 	registered := map[string]bool{}
+	jobs := m.cfg.FlatJobs() // 嵌套配置摊平成 "模块.任务名"（viper 按点拆 key，见 config.Jobs）
 
 	for _, name := range m.order {
 		e := m.byName[name]
@@ -225,14 +226,12 @@ func (m *Manager) start() error {
 
 		// 2) 配置覆盖：键存在空串 = 停用；键存在非空 = 覆盖；缺键 = defaultSpec。
 		spec := e.defaultSpec
-		if m.cfg.Jobs != nil {
-			if v, ok := m.cfg.Jobs[name]; ok {
-				if v == "" {
-					e.enabled, e.disabledReason = false, "spec_empty"
-					continue
-				}
-				spec = v
+		if v, ok := jobs[name]; ok {
+			if v == "" {
+				e.enabled, e.disabledReason = false, "spec_empty"
+				continue
 			}
+			spec = v
 		}
 
 		// 3) 解析（TZSpec 包时区前缀），失败拒启。
@@ -251,7 +250,7 @@ func (m *Manager) start() error {
 	}
 
 	// 4) 配置里未注册的 key：只 warn（写错名可见，不炸启动）。
-	for k := range m.cfg.Jobs {
+	for k := range jobs {
 		if !registered[k] && logger.Log != nil {
 			logger.Log.Warn("job config key not registered", zap.String("key", k))
 		}

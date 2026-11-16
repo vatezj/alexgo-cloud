@@ -37,9 +37,10 @@ type Config struct {
 
 	// Modules：模块开关。单体模式下“引入即启动”，这里用开关决定是否注册模块路由。
 	Modules map[string]bool `mapstructure:"modules"`
-	// Jobs：job 表达式覆盖表，key = "模块.任务名"（pkg/job Manager 消费）。
+	// Jobs：job 表达式覆盖表，嵌套 模块 → 任务名 → 表达式（viper 按 "." 拆 key，
+	// 扁平 "模块.任务名" 无法解码，故嵌套存储、FlatJobs() 扁平读出）。
 	// 缺键 → 用代码 Register 的 defaultSpec；显式空串 → 停用该任务；未知 key 启动只 warn。
-	Jobs map[string]string `mapstructure:"jobs"`
+	Jobs map[string]map[string]string `mapstructure:"jobs"`
 
 	// Migrate：是否在启动时自动执行数据库迁移。
 	Migrate struct {
@@ -195,4 +196,19 @@ type Config struct {
 		// AllowedExts：扩展名白名单（小写、无点）；空则用 service 内置白名单。
 		AllowedExts []string `mapstructure:"allowed_exts"`
 	} `mapstructure:"storage"`
+}
+
+// FlatJobs 把嵌套 Jobs（模块 → 任务名 → 表达式）摊平成 "模块.任务名" → 表达式，
+// 供 pkg/job Manager 消费。nil 安全；空串值原样保留（= 停用语义）。
+func (c *Config) FlatJobs() map[string]string {
+	if c == nil || c.Jobs == nil {
+		return nil
+	}
+	out := make(map[string]string, len(c.Jobs))
+	for mod, tasks := range c.Jobs {
+		for name, spec := range tasks {
+			out[mod+"."+name] = spec
+		}
+	}
+	return out
 }
