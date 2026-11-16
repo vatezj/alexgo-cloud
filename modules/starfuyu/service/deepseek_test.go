@@ -76,6 +76,11 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 			t.Errorf("prompt 缺字段名 %q", key)
 		}
 	}
+	// slogan 必须与当日运势绑定生成（用户需求 2026-11-16：口号由运势生发，
+	// 不是通用鸡汤）——钉住 prompt 里的绑定措辞，改文案需同步改此断言。
+	if !strings.Contains(prompt, "由当日运势生发") {
+		t.Errorf("prompt 缺 slogan 运势绑定措辞 %q", "由当日运势生发")
+	}
 
 	row := rows[0]
 	if row.Advice == "" {

@@ -169,7 +169,7 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
   "single_score": 75,
   "job_score": 65,
   "daily_todos": ["必做一（≤14字）", "必做二（≤14字）", "必做三（≤14字）"],
-  "slogan": "今日口号，积极向上的一句，≤16字"
+  "slogan": "由当日运势生发的口号（呼应 overall_score 高低与 summary/advice 主题），≤16字"
 }
 
 ### **生成要求**
@@ -180,7 +180,7 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
 5. match_constellation 不得等于本星座自身（必须是12星座之一）。
 6. advice/avoid 每日不同。
 7. summary ≤24字。
-8. slogan 为卡片底部横幅口号：积极向上、与当日运势呼应、每日不同、≤16字。
+8. slogan 为卡片底部横幅口号：必须由当日运势生发——先看该星座 overall_score 高低与 summary/advice 的主题，高分写乘势/庆祝、低分写蓄力/从容，落到与 summary 同一件事上；积极向上、每日不同、≤16字。
 
 请严格遵循以上规则。现在，请根据日期 %s 生成包含12个星座详细数据的运势信息。`, date, date)
 
