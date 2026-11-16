@@ -114,6 +114,12 @@ const (
 	// CodeStarfuyuMpUploadFailed starfuyu：公众号上传失败（access_token / 草稿箱 API 错误）。
 	CodeStarfuyuMpUploadFailed Code = 30507
 
+	// ---- 306xx job ----
+	// CodeJobNotFound pkg/job：手动触发的任务名未注册。
+	CodeJobNotFound Code = 30601
+	// CodeJobDisabled pkg/job：任务已停用（模块开关关 / 配置空串），拒绝手动触发。
+	CodeJobDisabled Code = 30602
+
 	// 5xxxx 系统
 	CodeInternal Code = 50000
 	// CodeWxacodeNotConfigured scorecard 小程序码：租户未配置（或已停用）微信小程序渠道，
@@ -183,6 +189,9 @@ var registry = map[Code]string{
 	CodeStarfuyuConstellationMissing: "尚未设置星座",
 	CodeStarfuyuFetchFailed:          "运势抓取失败",
 	CodeStarfuyuMpUploadFailed:       "公众号上传失败",
+
+	CodeJobNotFound: "任务不存在",
+	CodeJobDisabled: "任务已停用",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 

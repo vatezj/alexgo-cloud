@@ -37,6 +37,9 @@ type Config struct {
 
 	// Modules：模块开关。单体模式下“引入即启动”，这里用开关决定是否注册模块路由。
 	Modules map[string]bool `mapstructure:"modules"`
+	// Jobs：job 表达式覆盖表，key = "模块.任务名"（pkg/job Manager 消费）。
+	// 缺键 → 用代码 Register 的 defaultSpec；显式空串 → 停用该任务；未知 key 启动只 warn。
+	Jobs map[string]string `mapstructure:"jobs"`
 
 	// Migrate：是否在启动时自动执行数据库迁移。
 	Migrate struct {
@@ -169,6 +172,9 @@ type Config struct {
 		// BgFile 分享卡底图路径（源码树外，如 ./data/starfuyu/bg.png，1728×2397 可替换模板）。
 		// 非空时优先直用；空串回退 AssetsDir/bgimage/bg.png（测试/旧部署兼容）。
 		BgFile string `mapstructure:"bg_file"`
+		// CuteDir 角色抠图目录（源码树外，如 ./data/starfuyu/cute/cutout，12 张透明 PNG，
+		// scripts/starfuyu_cutout.py 产出）。空串不回退——渲染时 30502（配置错了必须炸）。
+		CuteDir string `mapstructure:"cute_dir"`
 	} `mapstructure:"starfuyu"`
 
 	// Scorecard：scorecard《打牌记账》模块配置。
