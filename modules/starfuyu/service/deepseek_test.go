@@ -51,7 +51,7 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 	var captured []byte
 	f := newTestDeepSeek(t, string(payload), &captured)
 
-	rows, err := f.FetchFortunes(context.Background(), date)
+	rows, _, err := f.FetchFortunes(context.Background(), date)
 	if err != nil {
 		t.Fatalf("FetchFortunes err = %v, want nil", err)
 	}
@@ -80,6 +80,13 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 	// 不是通用鸡汤）——钉住 prompt 里的绑定措辞，改文案需同步改此断言。
 	if !strings.Contains(prompt, "由当日运势生发") {
 		t.Errorf("prompt 缺 slogan 运势绑定措辞 %q", "由当日运势生发")
+	}
+	// 对象包裹输出格式 + 日级两字段（图片版软文 §3.2）。
+	if !strings.Contains(prompt, "daily_astro") || !strings.Contains(prompt, "daily_intro") {
+		t.Errorf("prompt 缺日级字段名 daily_astro/daily_intro")
+	}
+	if !strings.Contains(prompt, "对象包裹") {
+		t.Errorf("prompt 缺对象包裹措辞")
 	}
 
 	row := rows[0]
@@ -120,7 +127,7 @@ func TestFetchFortunes_MissingShareFieldsTolerated(t *testing.T) {
 	}
 
 	f := newTestDeepSeek(t, string(stripped), nil)
-	rows, err := f.FetchFortunes(context.Background(), date)
+	rows, _, err := f.FetchFortunes(context.Background(), date)
 	if err != nil {
 		t.Fatalf("漏字段应容错, err = %v, want nil", err)
 	}
@@ -144,6 +151,57 @@ func TestFetchFortunes_MissingShareFieldsTolerated(t *testing.T) {
 }
 
 // TestFetchFortunes_InvalidMatchConstellationToEmpty 非法合拍星座 → 存空串，其余行不动。
+// TestFetchFortunes_ObjectWithDaily 对象包裹 payload → 12 行 + daily 两字段齐。
+func TestFetchFortunes_ObjectWithDaily(t *testing.T) {
+	const date = "2026-11-16"
+	rowsJSON, err := json.Marshal(twelveRows(date, "象"))
+	if err != nil {
+		t.Fatalf("marshal 十二行失败: %v", err)
+	}
+	payload := `{"daily_astro":"月水星，月土六合，木火合",` +
+		`"daily_intro":"这天是一个积极热情有能量的日子，办事情能够把握好分寸。",` +
+		`"fortunes":` + string(rowsJSON) + `}`
+
+	f := newTestDeepSeek(t, payload, nil)
+	rows, daily, err := f.FetchFortunes(context.Background(), date)
+	if err != nil {
+		t.Fatalf("FetchFortunes err = %v, want nil", err)
+	}
+	if len(rows) != 12 {
+		t.Fatalf("rows len = %d, want 12", len(rows))
+	}
+	if daily == nil {
+		t.Fatalf("daily = nil, want 对象包裹中的日级数据")
+	}
+	if daily.Astro != "月水星，月土六合，木火合" {
+		t.Errorf("daily.Astro = %q, want %q", daily.Astro, "月水星，月土六合，木火合")
+	}
+	if daily.Intro == "" {
+		t.Errorf("daily.Intro 空，want 总述段")
+	}
+}
+
+// TestFetchFortunes_ArrayFallbackNoDaily 纯数组 payload（模型旧格式）→ 12 行、
+// daily==nil、err==nil（回退容错：不判失败，文章降级少两块）。
+func TestFetchFortunes_ArrayFallbackNoDaily(t *testing.T) {
+	const date = "2026-11-16"
+	payload, err := json.Marshal(twelveRows(date, "回"))
+	if err != nil {
+		t.Fatalf("marshal 十二行失败: %v", err)
+	}
+	f := newTestDeepSeek(t, string(payload), nil)
+	rows, daily, err := f.FetchFortunes(context.Background(), date)
+	if err != nil {
+		t.Fatalf("数组回退不应失败: %v", err)
+	}
+	if len(rows) != 12 {
+		t.Fatalf("rows len = %d, want 12", len(rows))
+	}
+	if daily != nil {
+		t.Fatalf("数组 payload daily = %+v, want nil", daily)
+	}
+}
+
 func TestFetchFortunes_InvalidMatchConstellationToEmpty(t *testing.T) {
 	const date = "2026-11-13"
 	payload, err := json.Marshal(twelveRows(date, "枚"))
@@ -162,7 +220,7 @@ func TestFetchFortunes_InvalidMatchConstellationToEmpty(t *testing.T) {
 	wantOther := twelveRows(date, "枚")[1].MatchConstellation // 其余行期望值快照
 
 	f := newTestDeepSeek(t, string(mutated), nil)
-	rows, err := f.FetchFortunes(context.Background(), date)
+	rows, _, err := f.FetchFortunes(context.Background(), date)
 	if err != nil {
 		t.Fatalf("FetchFortunes err = %v, want nil", err)
 	}

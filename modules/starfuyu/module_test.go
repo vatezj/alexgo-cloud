@@ -31,8 +31,8 @@ import (
 // stubFetcher service.FortuneFetcher 替身（抓取不在整模块路由用例内触发）。
 type stubFetcher struct{}
 
-func (stubFetcher) FetchFortunes(context.Context, string) ([]*model.Fortune, error) {
-	return nil, errors.New("stub: fetcher 不应在路由用例中被调用")
+func (stubFetcher) FetchFortunes(context.Context, string) ([]*model.Fortune, *model.DailyHoroscope, error) {
+	return nil, nil, errors.New("stub: fetcher 不应在路由用例中被调用")
 }
 
 // stubCalc service.BaziCalculator 替身。

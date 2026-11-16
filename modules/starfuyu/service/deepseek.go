@@ -18,7 +18,7 @@ import (
 // FortuneFetcher 每日运势抓取器：一次调用必须恰好返回 12 星座，否则 error（无部分落库）。
 // 抽接口便于测试替换（stub）。
 type FortuneFetcher interface {
-	FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, error)
+	FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, *model.DailyHoroscope, error)
 }
 
 // deepSeekFetcher 真实现：POST cfg.Starfuyu.Deepseek.BaseURL，prompt 照 goLucky service/deepseek.go。
@@ -82,12 +82,12 @@ type deepSeekResponse struct {
 
 // FetchFortunes 一次 HTTP 调用拉 12 星座；网络类错误按 cfg 重试，其余错误不重试
 // （分类照 goLucky service/deepseek.go）。
-func (f *deepSeekFetcher) FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, error) {
+func (f *deepSeekFetcher) FetchFortunes(ctx context.Context, date string) ([]*model.Fortune, *model.DailyHoroscope, error) {
 	if f.apiKey == "" {
-		return nil, fmt.Errorf("starfuyu: deepseek api_key 未配置")
+		return nil, nil, fmt.Errorf("starfuyu: deepseek api_key 未配置")
 	}
 	if f.baseURL == "" {
-		return nil, fmt.Errorf("starfuyu: deepseek base_url 未配置")
+		return nil, nil, fmt.Errorf("starfuyu: deepseek base_url 未配置")
 	}
 
 	var lastErr error
@@ -96,22 +96,22 @@ func (f *deepSeekFetcher) FetchFortunes(ctx context.Context, date string) ([]*mo
 			log.Printf("[DeepSeek] 第 %d 次重试获取运势数据 (日期: %s)", attempt, date)
 			select {
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, nil, ctx.Err()
 			case <-time.After(f.retryDelay):
 			}
 		}
 
-		fortunes, err := f.callAPI(ctx, date)
+		fortunes, daily, err := f.callAPI(ctx, date)
 		if err == nil {
-			log.Printf("[DeepSeek] 成功获取运势数据 (日期: %s, 星座数量: %d)", date, len(fortunes))
-			return fortunes, nil
+			log.Printf("[DeepSeek] 成功获取运势数据 (日期: %s, 星座数量: %d, daily: %v)", date, len(fortunes), daily != nil)
+			return fortunes, daily, nil
 		}
 		lastErr = err
 		if !isRetryable(err) {
 			break
 		}
 	}
-	return nil, fmt.Errorf("获取运势数据失败 (日期: %s): %w", date, lastErr)
+	return nil, nil, fmt.Errorf("获取运势数据失败 (日期: %s): %w", date, lastErr)
 }
 
 // isRetryable 仅网络/超时类错误重试（照 goLucky）。
@@ -125,20 +125,28 @@ func isRetryable(err error) bool {
 	return false
 }
 
-func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fortune, error) {
-	prompt := fmt.Sprintf(`您是一个专业的星座运势API服务。请根据我提供的日期，为所有12个星座生成对应的运势数据，并返回一个格式严格的JSON数组。
+func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fortune, *model.DailyHoroscope, error) {
+	prompt := fmt.Sprintf(`您是一个专业的星座运势API服务。请根据我提供的日期，为所有12个星座生成对应的运势数据，并返回一个格式严格的JSON对象（对象包裹）。
 
 ### **角色与输入**
 - **角色**：专业的星座运势数据生成器。
 - **输入**：一个名为 date 的参数，其值为格式为 YYYY-MM-DD 的日期字符串（例如：%s）。这是生成运势的唯一依据。
 
 ### **输出规范**
-1. **格式**：一个纯JSON数组，包含12个对象，每个对象对应一个星座的运势数据。
-2. **纯净性**：响应必须只包含这个JSON数组，没有任何额外的解释、问候语、代码标记或上下文文本。
-3. **顺序**：数组中的对象顺序必须固定为：白羊座、金牛座、双子座、巨蟹座、狮子座、处女座、天秤座、天蝎座、射手座、摩羯座、水瓶座、双鱼座。
+1. **格式**：一个纯JSON对象（对象包裹），含 daily_astro、daily_intro 与 fortunes 数组；fortunes 含12个对象，每个对象对应一个星座的运势数据。
+2. **纯净性**：响应必须只包含这个JSON对象，没有任何额外的解释、问候语、代码标记或上下文文本。
+3. **顺序**：fortunes 数组中的对象顺序必须固定为：白羊座、金牛座、双子座、巨蟹座、狮子座、处女座、天秤座、天蝎座、射手座、摩羯座、水瓶座、双鱼座。
 
-### **JSON对象结构**
-每个星座对象必须严格遵循以下字段定义：
+### **JSON结构**
+顶层为一个对象（对象包裹）：
+{
+  "daily_astro": "当日重点星象一句，≤20字（如：月水星，月土六合，木火合）",
+  "daily_intro": "开篇总述一段，≤60字（积极热情、覆盖金钱与感情好消息的基调）",
+  "fortunes": [ /* 下方12个星座对象 */ ]
+}
+daily_astro/daily_intro 与星座无关、全篇同一条。
+
+每个星座对象（fortunes 数组元素）必须严格遵循以下字段定义：
 {
   "constellation": "星座中文名",
   "date": "YYYY-MM-DD",
@@ -181,66 +189,78 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
 6. advice/avoid 每日不同。
 7. summary ≤24字。
 8. slogan 为卡片底部横幅口号：必须由当日运势生发——先看该星座 overall_score 高低与 summary/advice 的主题，高分写乘势/庆祝、低分写蓄力/从容，落到与 summary 同一件事上；积极向上、每日不同、≤16字。
+9. daily_astro/daily_intro 是当日全局一条：与12星座无关、全篇同一条，不随星座变化。
 
-请严格遵循以上规则。现在，请根据日期 %s 生成包含12个星座详细数据的运势信息。`, date, date)
+请严格遵循以上规则。现在，请根据日期 %s 生成对象包裹（daily_astro、daily_intro + fortunes 内12个星座详细数据）的运势信息。`, date, date)
 
 	body, err := json.Marshal(deepSeekRequest{
 		Model:    f.model,
 		Messages: []deepSeekMessage{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
+		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.baseURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+		return nil, nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+f.apiKey)
 
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP请求失败: %w", err)
+		return nil, nil, fmt.Errorf("HTTP请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("读取响应体失败 (状态码: %d): %w", resp.StatusCode, err)
+		return nil, nil, fmt.Errorf("读取响应体失败 (状态码: %d): %w", resp.StatusCode, err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		var errorResp deepSeekResponse
 		if json.Unmarshal(respBody, &errorResp) == nil && errorResp.Error.Message != "" {
-			return nil, fmt.Errorf("API错误 (状态码: %d, 类型: %s): %s", resp.StatusCode, errorResp.Error.Type, errorResp.Error.Message)
+			return nil, nil, fmt.Errorf("API错误 (状态码: %d, 类型: %s): %s", resp.StatusCode, errorResp.Error.Type, errorResp.Error.Message)
 		}
-		return nil, fmt.Errorf("API返回错误 (状态码: %d): %s", resp.StatusCode, truncate(string(respBody), 200))
+		return nil, nil, fmt.Errorf("API返回错误 (状态码: %d): %s", resp.StatusCode, truncate(string(respBody), 200))
 	}
 
 	var dsResp deepSeekResponse
 	if err := json.Unmarshal(respBody, &dsResp); err != nil {
-		return nil, fmt.Errorf("解析响应JSON失败: %w", err)
+		return nil, nil, fmt.Errorf("解析响应JSON失败: %w", err)
 	}
 	if len(dsResp.Choices) == 0 {
-		return nil, fmt.Errorf("API返回空数据")
+		return nil, nil, fmt.Errorf("API返回空数据")
 	}
 	content := strings.TrimSpace(dsResp.Choices[0].Message.Content)
 	if content == "" {
-		return nil, fmt.Errorf("API返回内容为空")
+		return nil, nil, fmt.Errorf("API返回内容为空")
 	}
 
+	// 对象包裹优先（daily_astro/daily_intro + fortunes）；失败回退纯数组（模型旧格式，
+	// daily=nil 不判失败——文章降级少两块，spec §3.2 容错）。
+	var wrap struct {
+		DailyAstro string           `json:"daily_astro"`
+		DailyIntro string           `json:"daily_intro"`
+		Fortunes   []*model.Fortune `json:"fortunes"`
+	}
 	var fortunes []*model.Fortune
-	if err := json.Unmarshal([]byte(content), &fortunes); err != nil {
-		return nil, fmt.Errorf("解析运势数据JSON失败: %w, 内容预览: %s", err, truncate(content, 200))
+	var daily *model.DailyHoroscope
+	if err := json.Unmarshal([]byte(content), &wrap); err == nil && len(wrap.Fortunes) > 0 {
+		fortunes = wrap.Fortunes
+		daily = &model.DailyHoroscope{Astro: wrap.DailyAstro, Intro: wrap.DailyIntro}
+	} else if err := json.Unmarshal([]byte(content), &fortunes); err != nil {
+		return nil, nil, fmt.Errorf("解析运势数据JSON失败: %w, 内容预览: %s", err, truncate(content, 200))
 	}
 	if len(fortunes) != 12 {
-		return nil, fmt.Errorf("运势数据不完整，期望12个，实际%d个", len(fortunes))
+		return nil, nil, fmt.Errorf("运势数据不完整，期望12个，实际%d个", len(fortunes))
 	}
 	// 日期/租户由 service 侧钉死（内容表 tid=0），这里同样置位保证直接可用。
 	// JSON `[null, {...}×11]` 能过 len==12，nil 行必须先挡（否则 row.TenantID panic）。
 	for _, row := range fortunes {
 		if row == nil {
-			return nil, fmt.Errorf("运势数据含空行")
+			return nil, nil, fmt.Errorf("运势数据含空行")
 		}
 		row.TenantID = 0
 		row.Date = date
@@ -249,7 +269,7 @@ func (f *deepSeekFetcher) callAPI(ctx context.Context, date string) ([]*model.Fo
 			row.MatchConstellation = ""
 		}
 	}
-	return fortunes, nil
+	return fortunes, daily, nil
 }
 
 func truncate(s string, n int) string {

@@ -49,7 +49,7 @@ func (s *fortuneService) Fetch(ctx context.Context, date string, force bool) (bo
 		return true, nil // 已满且非强制：不调抓取器
 	}
 
-	rows, err := s.fetcher.FetchFortunes(ctx, date)
+	rows, _, err := s.fetcher.FetchFortunes(ctx, date)
 	if err != nil {
 		return false, errs.New(errs.CodeStarfuyuFetchFailed, err)
 	}

@@ -20,9 +20,9 @@ type stubFetcher struct {
 	err   error
 }
 
-func (s *stubFetcher) FetchFortunes(_ context.Context, _ string) ([]*model.Fortune, error) {
+func (s *stubFetcher) FetchFortunes(_ context.Context, _ string) ([]*model.Fortune, *model.DailyHoroscope, error) {
 	s.calls++
-	return s.rows, s.err
+	return s.rows, nil, s.err
 }
 
 // newTestDB sqlite 内存库 + Fortune AutoMigrate + gormplugin（照 repository_test 惯例）。
