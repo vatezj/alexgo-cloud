@@ -327,6 +327,7 @@ func buildImageArticleHTML(daily *model.DailyHoroscope, rows []*model.Fortune, d
 	}
 
 	var b strings.Builder
+	b.WriteString(`<meta charset="utf-8">`)
 	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 0;">`)
 
 	// 1. 日期徽章（YYYY/MM/DD）。
@@ -347,15 +348,16 @@ func buildImageArticleHTML(daily *model.DailyHoroscope, rows []*model.Fortune, d
 		b.WriteString(`<div style="text-align: center; margin: 28px 0 14px 0;">`)
 		fmt.Fprintf(&b, `<span style="background: #FDEEF0; color: #E86A6A; border-radius: 999px; padding: 8px 28px; font-size: 18px; font-weight: bold;">%s</span>`, g.Name)
 		b.WriteString(`</div>`)
-		b.WriteString(`<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;"><tr>`)
+		// border="0" + border:0：微信会给缺省属性的表格补默认单元格框线（用户反馈「图片有边框」）。
+		b.WriteString(`<table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none;"><tr>`)
 		for _, c := range g.Members {
 			if _, ok := fmap[c]; !ok {
 				continue // 缺行整格跳过（微信表格自然塌缩）
 			}
 			// 2026-11-16 用户反馈：格上不再画星座名/日期范围小标（海报自带大星座名），
 			// 且收窄格距——海报图直接铺满 td。
-			b.WriteString(`<td width="33%" style="padding: 2px; vertical-align: top; text-align: center;">`)
-			fmt.Fprintf(&b, `<img src="%s" style="width: 100%%; border-radius: 8px; display: block;" alt="%s">`, imgURL(c), c)
+			b.WriteString(`<td width="33%" style="border: 0; padding: 2px; vertical-align: top; text-align: center;">`)
+			fmt.Fprintf(&b, `<img src="%s" style="width: 100%%; border: 0; border-radius: 8px; display: block;" alt="%s">`, imgURL(c), c)
 			b.WriteString(`</td>`)
 		}
 		b.WriteString(`</tr></table>`)

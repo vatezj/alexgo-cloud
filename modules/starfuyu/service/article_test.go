@@ -211,6 +211,17 @@ func TestBuildHTML_ContainsAllConstellations(t *testing.T) {
 	if !strings.Contains(html, "margin: 0 auto; padding: 0") {
 		t.Errorf("图片版外层应 padding:0（收窄左右边距）")
 	}
+	// 用户反馈：微信会给缺省表格画单元格边框——table/td/img 三处必须显式 border:0。
+	if !strings.Contains(html, `border="0"`) {
+		t.Errorf("table 缺 border=\"0\"（微信会画默认单元格框）")
+	}
+	if strings.Count(html, "border: 0") < 13 { // td×12 + img×12 合并样式里至少 12 处
+		t.Errorf("td/img 显式 border:0 不足 12 处")
+	}
+	// 预览文件本地打开：无 meta charset 会乱码（实测 Playwright 瞎猜编码）。
+	if !strings.Contains(html, `<meta charset="utf-8">`) {
+		t.Errorf("HTML 缺 meta charset utf-8")
+	}
 }
 
 // TestBuildHTML_ElementGroups 四胶囊顺序火土风水；每组成员顺序钉死；
