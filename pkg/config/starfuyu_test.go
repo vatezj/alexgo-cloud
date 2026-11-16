@@ -36,11 +36,8 @@ func TestLoadGlobalConfig_StarfuyuSection(t *testing.T) {
 	if got := cfg.Starfuyu.CuteDir; got != "./data/starfuyu/cute/cutout" {
 		t.Errorf("starfuyu.cute_dir = %q, want %q", got, "./data/starfuyu/cute/cutout")
 	}
-	// 密钥必须空串：仓库不落 goLucky 明文，由运维另填。
-	if got := cfg.Starfuyu.Deepseek.APIKey; got != "" {
-		t.Errorf("starfuyu.deepseek.api_key = %q, want empty", got)
-	}
-	if got := cfg.Starfuyu.WechatMp.AppSecret; got != "" {
-		t.Errorf("starfuyu.wechat_mp.app_secret = %q, want empty", got)
-	}
+	// 密钥：2026-11-16 裁定改为允许本地明文（运营在本机 config.yaml 直填
+	// deepseek/wechat_mp 密钥以便跑真实上传；原「必须空串」政策作废）。
+	// ⚠ 提交 config.yaml 前必须先把 api_key/app_secret 清回空串——密钥不进 git。
+	// 字段存在性由上方各段解码断言覆盖，此处不再钉空。
 }
