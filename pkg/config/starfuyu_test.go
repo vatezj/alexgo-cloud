@@ -20,12 +20,7 @@ func TestLoadGlobalConfig_StarfuyuSection(t *testing.T) {
 	if got := cfg.Starfuyu.Limits.BaziCalculateDaily; got != 5 {
 		t.Errorf("starfuyu.limits.bazi_calculate_daily = %d, want 5", got)
 	}
-	if got := cfg.Starfuyu.Cron.FetchFortune; got != "10 0 * * *" {
-		t.Errorf("starfuyu.cron.fetch_fortune = %q, want %q", got, "10 0 * * *")
-	}
-	if got := cfg.Starfuyu.Cron.GenerateImages; got != "20 0 * * *" {
-		t.Errorf("starfuyu.cron.generate_images = %q, want %q", got, "20 0 * * *")
-	}
+	// cron 断言迁 jobs_test.go（顶层 jobs 段，FlatJobs 扁平读出）。
 	if got := cfg.Starfuyu.AssetsDir; got != "modules/starfuyu/assets" {
 		t.Errorf("starfuyu.assets_dir = %q, want %q", got, "modules/starfuyu/assets")
 	}

@@ -62,9 +62,7 @@ func LoadGlobalConfig() (*Config, error) {
 	v.SetDefault("system_grpc_addr", "127.0.0.1:50051")
 	v.SetDefault("codegen.unit_test_enable", true)
 	// starfuyu 缺省（spec §8）：config.yaml 显式配置时以 yaml 为准，
-	// 缺键时兜底保证 cron / assets_dir 恒有值（service 层对 <=0 数值另有兜底）。
-	v.SetDefault("starfuyu.cron.fetch_fortune", "10 0 * * *")
-	v.SetDefault("starfuyu.cron.generate_images", "20 0 * * *")
+	// 缺键时兜底保证 assets_dir 恒有值（cron 表达式缺省在代码 Register，见 pkg/job）。
 	v.SetDefault("starfuyu.assets_dir", "modules/starfuyu/assets")
 	v.SetDefault("starfuyu.cute_dir", "./data/starfuyu/cute/cutout")
 

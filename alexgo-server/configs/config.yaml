@@ -59,11 +59,11 @@ jobs:                          # job 覆盖表（pkg/job）：嵌套 模块→�
 
 fishgame:
   wechat:
-    appid: ""             # 小游戏 appid（联调时填）
-    secret: ""            # 小游戏 secret
+    appid: "wx585e3bf6bd2c5b46"             # 小游戏 appid（联调时填）
+    secret: "cc3059053aa3d49594e50fd3ee73e20d"            # 小游戏 secret
   public_base_url: ""     # 空 = 由请求 Host + https 拼接（share/image 的 url）
   test_accounts: [alice, bob]   # 编辑器测试账号名单（名单即账号，test_login 首登自动建号）
-  test_login_secret: ""   # test_login 共享密钥（客户端 fishgame/test_secret 对齐）
+  test_login_secret: "fg-test-2026"   # test_login 共享密钥（客户端 fishgame/test_secret 对齐）
 
 scorecard:
   wxacode_env_version: "release"  # 小程序码 env_version：trial=体验版（默认）/ release=正式版 / develop=开发版；正式发版改 release
@@ -87,9 +87,6 @@ starfuyu:
   limits:
     bazi_calculate_daily: 5   # <=0 取 5
     divination_draw_daily: 10 # <=0 取 10
-  cron:
-    fetch_fortune: "10 0 * * *"       # 模块内恒加 CRON_TZ=Asia/Shanghai 前缀
-    generate_images: "20 0 * * *"
   assets_dir: "modules/starfuyu/assets"   # legacy 回退根（底图/字体均走独立配置，不放源码树）
   font_file: "./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"   # 运势图字体（运行时目录，源码树外）；空串=回退 assets/fonts 字典序首个
   bg_file: "./data/starfuyu/bg.png"       # 分享卡底图 1728×2397（可替换模板，源码树外）；空串=回退 assets/bgimage/bg.png

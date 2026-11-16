@@ -274,7 +274,7 @@ func (c *AdminController) Limits(ctx *gin.Context) {
 // ---- 公开读（spec §4.3；与 AdminController 同文件：brief 文件清单只列 admin.go）----
 
 // PublicController 免鉴权公开读端点（/api/public/starfuyu/image/*key）。
-// storage key 形如 fortune/v2/{date}/{constellation}.jpg 含斜杠，必须用 *key 通配。
+// storage key 形如 fortune/v3/{date}/{constellation}.jpg 含斜杠，必须用 *key 通配。
 type PublicController struct {
 	driver storage.Driver
 }
@@ -289,7 +289,7 @@ func NewPublicController(driver storage.Driver) *PublicController {
 //	@Description	storage key → inline 图片；穿越/前缀不符/不存在统一 30010（不泄露存在性，spec §4.3）。
 //	@Tags			starfuyu-public
 //	@Produce		json
-//	@Param			key	path	string	true	"storage key（fortune/v2/{date}/{constellation}.jpg）"
+//	@Param			key	path	string	true	"storage key（fortune/v3/{date}/{constellation}.jpg）"
 //	@Success		200	{file}	string
 //	@Failure		400	{object}	map[string]interface{}
 //	@Router			/public/starfuyu/image/{key} [get]

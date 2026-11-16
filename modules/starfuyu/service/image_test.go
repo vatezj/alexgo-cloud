@@ -94,7 +94,7 @@ func TestEnsure_WritesJPEGAndSecondCallSkips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ensure err = %v, want nil", err)
 	}
-	if want := "fortune/v2/2026-11-12/白羊座.jpg"; key != want {
+	if want := "fortune/v3/2026-11-12/白羊座.jpg"; key != want {
 		t.Fatalf("key = %q, want %q", key, want)
 	}
 	if f.drv.saves != 1 {
@@ -415,7 +415,7 @@ func TestRender_FullShareFields(t *testing.T) {
 		t.Fatalf("GenerateAll ok = %d, want 12", ok)
 	}
 
-	img := decodeRendered(t, f, ctx, "fortune/v2/"+date+"/白羊座.jpg")
+	img := decodeRendered(t, f, ctx, "fortune/v3/"+date+"/白羊座.jpg")
 	bg := loadShareBG(t)
 
 	if d := regionMaxDiff(img, bg, shareCardLayout.Advice); d <= 20 {

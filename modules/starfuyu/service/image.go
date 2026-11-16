@@ -26,7 +26,7 @@ import (
 // ImageService 运势图片：gg 按分享卡模板布局绘制（share_card.go 常量表）+ 内置 OFL 字体 + storage 落盘。
 // 决定 19：字体缺失/加载失败 → 30502，不做静默 ASCII 回退。
 type ImageService interface {
-	// Ensure 生成（或已存在则跳过）当日星座图，返回 storage rel key：fortune/v2/{date}/{constellation}.jpg
+	// Ensure 生成（或已存在则跳过）当日星座图，返回 storage rel key：fortune/v3/{date}/{constellation}.jpg
 	Ensure(ctx context.Context, date, constellation string) (key string, err error)
 	// GenerateAll 遍历 12 星座 Ensure；单张失败记日志继续，返回成功数。
 	// 全部成功 err=nil；有失败 err 为 30502 聚合错误（首错包在链上）。
@@ -92,8 +92,8 @@ func (s *imageService) resolveBgPath() (string, error) {
 	return filepath.Join(s.assetsDir, "bgimage", "bg.png"), nil
 }
 
-// fortuneImageKey 校验入参后生成 rel key：fortune/v2/{date}/{constellation}.jpg。
-// v1=旧布局，v2=分享卡模板——换模板升版 key，防旧图被 Ensure 幂等跳过。
+// fortuneImageKey 校验入参后生成 rel key：fortune/v3/{date}/{constellation}.jpg。
+// v1=旧布局，v2=分享卡模板，v3=顶部星座名+角色图——换模板升版 key，防旧图被 Ensure 幂等跳过。
 // storage 合同要求 rel 由 service 生成、
 // 不得混入未校验用户输入——date 钉死 YYYY-MM-DD、星座钉死 12 枚举，杜绝路径穿越。
 func fortuneImageKey(date, constellation string) (string, error) {
@@ -103,7 +103,7 @@ func fortuneImageKey(date, constellation string) (string, error) {
 	if !IsValidConstellation(constellation) {
 		return "", errs.New(errs.CodeParamInvalid, fmt.Errorf("非法星座: %q", constellation))
 	}
-	return fmt.Sprintf("fortune/v2/%s/%s.jpg", date, constellation), nil
+	return fmt.Sprintf("fortune/v3/%s/%s.jpg", date, constellation), nil
 }
 
 func (s *imageService) Ensure(ctx context.Context, date, constellation string) (string, error) {

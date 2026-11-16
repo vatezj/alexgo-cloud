@@ -72,15 +72,6 @@ func TestExecuteAll_CallsFetchThenImages(t *testing.T) {
 	}
 }
 
-// TestCronSpec_PrefixedWithShanghai cronSpec 表达式钉 CRON_TZ=Asia/Shanghai 前缀（spec 决定）。
-func TestCronSpec_PrefixedWithShanghai(t *testing.T) {
-	got := CronSpec("10 0 * * *")
-	want := "CRON_TZ=Asia/Shanghai 10 0 * * *"
-	if got != want {
-		t.Fatalf("CronSpec = %q, want %q", got, want)
-	}
-}
-
 // TestFetchToday_UsesTodaySH FetchToday 传给 Fetch 的 date 必须是 TodaySH()（钉上海日历日，
 // 不跟随进程 TZ——容器生产是 UTC）。
 func TestFetchToday_UsesTodaySH(t *testing.T) {

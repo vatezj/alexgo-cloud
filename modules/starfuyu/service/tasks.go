@@ -63,9 +63,3 @@ func (r *taskRunner) ExecuteAllDate(ctx context.Context, date string, force bool
 func (r *taskRunner) ExecuteAll(ctx context.Context, force bool) error {
 	return r.ExecuteAllDate(ctx, TodaySH(), force)
 }
-
-// CronSpec 给 cron 表达式钉 CRON_TZ=Asia/Shanghai 前缀（spec 决定 10：
-// 5 段标准表达式 + 时区前缀，不用 WithSeconds）。
-func CronSpec(expr string) string {
-	return "CRON_TZ=Asia/Shanghai " + expr
-}

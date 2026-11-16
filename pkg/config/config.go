@@ -162,10 +162,7 @@ type Config struct {
 			BaziCalculateDaily  int `mapstructure:"bazi_calculate_daily"`  // <=0 取 5
 			DivinationDrawDaily int `mapstructure:"divination_draw_daily"` // <=0 取 10
 		} `mapstructure:"limits"`
-		Cron struct {
-			FetchFortune   string `mapstructure:"fetch_fortune"`   // 缺省 "10 0 * * *"
-			GenerateImages string `mapstructure:"generate_images"` // 缺省 "20 0 * * *"
-		} `mapstructure:"cron"`
+		// cron 表达式已迁顶层 jobs 段（pkg/job，见 Config.Jobs / FlatJobs）。
 		AssetsDir string `mapstructure:"assets_dir"` // 缺省 "modules/starfuyu/assets"
 		// FontFile 运势图字体文件路径（源码树外，如 ./data/fonts/*.ttf）。
 		// 非空时优先直用；空串回退 AssetsDir/fonts 字典序首个（测试/旧部署兼容）。

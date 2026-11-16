@@ -1,6 +1,8 @@
 package starfuyu
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 
@@ -10,6 +12,8 @@ import (
 	"alexGo-cloud/modules/starfuyu/repository"
 	"alexGo-cloud/modules/starfuyu/service"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/job"
+	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
 )
 
@@ -68,9 +72,11 @@ var FxModule = fx.Module("starfuyu",
 			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
-	// 定时任务（Task 9）：OnStart 起 robfig/cron（5 段标准 spec + CRON_TZ=Asia/Shanghai），
-	// OnStop c.Stop() 等在跑任务收尾——细节见 cron.go。
-	fx.Invoke(cronLifecycle),
+	// 定时任务迁 pkg/job（原 cron.go）：缺省表达式在此注册，运维覆盖走 config jobs 段；
+	// 起停/时区/panic 恢复/开关守卫由 job.Manager 统一负责。
+	fx.Invoke(func(m *job.Manager, runner service.TaskRunner, cfg *config.Config) {
+		registerJobs(m, runner, cfg)
+	}),
 )
 
 // ModuleParams 聚合依赖（fx.In）。
@@ -126,7 +132,7 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 		}
 	}
 	// 公开读（免鉴权，spec §4.3）：入参是 /api group → /api/public/starfuyu/image/*key。
-	// *key 通配：storage key（fortune/v2/{date}/{c}.jpg）含斜杠，:key 单段截不住。
+	// *key 通配：storage key（fortune/v3/{date}/{c}.jpg）含斜杠，:key 单段截不住。
 	r.GET("/public/starfuyu/image/*key", m.PublicCtrl.Image)
 
 	// admin 段（spec §4.2）：统一信封 + casbin 按 permissionRoutes 前缀鉴权
@@ -165,4 +171,31 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 	appGroup.PUT("/profile", m.AppCtrl.ProfilePut)
 	// 跨模块接口映射（如 token.Issuer）归入口 main.go，模块内不重复 Provide——
 	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
+}
+
+// registerJobs 注册 starfuyu 两个定时任务（原 cron.go 的 cronLifecycle）。
+// runner 类型用接口而非具体 nopRunner——测试传桩即可。
+func registerJobs(m *job.Manager, runner service.TaskRunner, cfg *config.Config) {
+	m.Register("starfuyu.fetch_fortune", "10 0 * * *", func(ctx context.Context) error {
+		if skipFetch(cfg.Starfuyu.Deepseek.APIKey) {
+			return nil
+		}
+		return runner.FetchToday(ctx, false)
+	})
+	m.Register("starfuyu.generate_images", "20 0 * * *", func(ctx context.Context) error {
+		return runner.GenerateImagesToday(ctx)
+	})
+}
+
+// skipFetch 空 DeepSeek APIKey 跳过抓取：return 无条件（logger.Log 为 nil 时
+// 也必须跳过——旧写法 `key=="" && logger.Log != nil` 在 logger 为 nil 时不跳过，
+// 注定失败的空 key 请求照跑），仅日志行受 logger.Log 门控。
+func skipFetch(apiKey string) bool {
+	if apiKey == "" {
+		if logger.Log != nil {
+			logger.Log.Warn("starfuyu fetch_fortune skipped: deepseek api_key empty")
+		}
+		return true
+	}
+	return false
 }
