@@ -252,9 +252,9 @@ func TestBuildHTML_ElementGroups(t *testing.T) {
 		}
 	}
 
-	// 每格名字带日期范围（示例：白羊座）。
-	if !strings.Contains(html, "白羊座（3月21日-4月19日）") {
-		t.Errorf("缺星座名+日期范围小标（白羊座）")
+	// 用户反馈 2026-11-16：格上不再画「星座名（日期范围）」小标——海报自带大星座名。
+	if strings.Contains(html, "（3月21日-4月19日）") {
+		t.Errorf("格上不应再画星座名+日期范围小标")
 	}
 }
 

@@ -287,7 +287,7 @@ func generateSingleConstellationArticleHTML(f *model.Fortune, date string) strin
 	weekdayStr := weekdayChinese(t.Weekday())
 
 	var b strings.Builder
-	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 20px;">`)
+	b.WriteString(`<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; max-width: 680px; margin: 0 auto; padding: 0;">`)
 	fmt.Fprintf(&b, `<p style="font-size: 16px; text-indent: 2em; margin: 15px 0; color: #555;">今天是%s %s，来看看你的专属好运吧！✨ 愿你今天充满活力，把握每一个机会！</p>`, dateStr, weekdayStr)
 	b.WriteString(`<hr style="border: none; border-top: 1px solid #e0e0e0; margin: 25px 0;">`)
 	fmt.Fprintf(&b, `<h2 style="font-size: 20px; font-weight: bold; color: #e74c3c; margin: 30px 0 15px 0; padding: 10px 0; border-left: 4px solid #e74c3c; padding-left: 15px;">%s %s</h2>`,
@@ -350,8 +350,9 @@ func buildImageArticleHTML(daily *model.DailyHoroscope, rows []*model.Fortune, d
 			if _, ok := fmap[c]; !ok {
 				continue // 缺行整格跳过（微信表格自然塌缩）
 			}
-			b.WriteString(`<td width="33%" style="padding: 4px; vertical-align: top; text-align: center;">`)
-			fmt.Fprintf(&b, `<div style="color: #E86A6A; font-size: 14px; font-weight: bold; margin: 6px 0 4px 0;">%s%s</div>`, c, constellationMonth(c))
+			// 2026-11-16 用户反馈：格上不再画星座名/日期范围小标（海报自带大星座名），
+			// 且收窄格距——海报图直接铺满 td。
+			b.WriteString(`<td width="33%" style="padding: 2px; vertical-align: top; text-align: center;">`)
 			fmt.Fprintf(&b, `<img src="%s" style="width: 100%%; border-radius: 8px; display: block;" alt="%s">`, imgURL(c), c)
 			b.WriteString(`</td>`)
 		}
