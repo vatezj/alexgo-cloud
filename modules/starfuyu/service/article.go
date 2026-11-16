@@ -88,7 +88,9 @@ func (s *articleService) BuildHTML(ctx context.Context, date, constellation stri
 	}), nil
 }
 
-// UploadToMP 默认整版 1 篇：Ensure 封面 → Open 字节 → AddDraft。
+// UploadToMP 默认整版 1 篇（图片版，spec §5）：GenerateAll 12 张 v3 海报 →
+// 封面永久素材 → 12 张正文图逐传 uploadimg（任一失败即中止，不发半成品草稿）→
+// buildImageArticleHTML（CDN URL）→ AddDraft。
 func (s *articleService) UploadToMP(ctx context.Context, date string) ([]UploadedArticle, error) {
 	// 密钥空配：立即 30507，不打网络（短路在素材/HTML 流水线之前）。
 	if !s.mpConfigured() {
@@ -96,30 +98,60 @@ func (s *articleService) UploadToMP(ctx context.Context, date string) ([]Uploade
 			fmt.Errorf("wechat_mp appid/secret 未配置"))
 	}
 
-	// 1. 封面：Ensure 白羊座图（整版数据应含 12 星座）→ storage key。
-	thumbKey, err := s.images.Ensure(ctx, date, ConstellationList[0])
-	if err != nil {
-		return nil, err // 30501/30502 原样透传
+	// 1. 12 张 v3 海报齐（单张失败 err 透传——30501/30502）。
+	if _, err := s.images.GenerateAll(ctx, date); err != nil {
+		return nil, err
 	}
 
-	// 2. 读封面字节（preflight 裁定：ArticleService 经 Driver.Open）。
+	// 2. 封面：Ensure 白羊座 → 读字节 → 永久素材。
+	thumbKey, err := s.images.Ensure(ctx, date, ConstellationList[0])
+	if err != nil {
+		return nil, err
+	}
 	data, err := readStorageAll(ctx, s.driver, thumbKey)
 	if err != nil {
 		return nil, errs.New(errs.CodeStarfuyuMpUploadFailed,
 			fmt.Errorf("读封面素材 %q: %w", thumbKey, err))
 	}
-
-	// 3. 上传永久图片素材 → thumb_media_id。
 	thumbMediaID, err := s.mp.UploadImageMaterial(ctx, data)
 	if err != nil {
 		return nil, wrapMpErr(err)
 	}
 
-	// 4. 整版 HTML + AddDraft（默认 1 篇）。
-	html, err := s.BuildHTML(ctx, date, "")
+	// 3. 正文图逐传 uploadimg → CDN URL；任一失败直接返回（AddDraft 未触达）。
+	imgURLs := make(map[string]string, len(ConstellationList))
+	for _, c := range ConstellationList {
+		key, err := fortuneImageKey(date, c)
+		if err != nil {
+			return nil, err
+		}
+		imgBytes, err := readStorageAll(ctx, s.driver, key)
+		if err != nil {
+			return nil, errs.New(errs.CodeStarfuyuMpUploadFailed,
+				fmt.Errorf("读正文图 %q: %w", key, err))
+		}
+		url, err := s.mp.UploadContentImage(ctx, imgBytes)
+		if err != nil {
+			return nil, wrapMpErr(err)
+		}
+		imgURLs[c] = url
+	}
+
+	// 4. rows + daily（miss → nil 降级）→ 图片版 HTML → AddDraft。
+	rows, err := s.fortunes.GetByDate(ctx, date)
 	if err != nil {
 		return nil, err
 	}
+	var daily *model.DailyHoroscope
+	if s.daily != nil {
+		row, _, dErr := s.daily.GetByDate(ctx, date)
+		if dErr != nil {
+			return nil, dErr
+		}
+		daily = row
+	}
+	html := buildImageArticleHTML(daily, rows, date, func(c string) string { return imgURLs[c] })
+
 	dateStr := formatDate(date)
 	weekdayStr := weekdayChinese(mustParseDate(date).Weekday())
 	title := fmt.Sprintf("十二星座每日好运｜%s", dateStr)

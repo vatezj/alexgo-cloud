@@ -3,10 +3,12 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"alexGo-cloud/modules/starfuyu/model"
@@ -83,17 +85,39 @@ func (d *stubMPDriver) Open(context.Context, string) (io.ReadCloser, error) {
 
 func (d *stubMPDriver) Delete(context.Context, string) error { return nil }
 
-// fakeWeChat 假微信：token / 素材 / 草稿三端点；draftErrCode≠0 时草稿报错。
-func fakeWeChat(t *testing.T, draftErrCode int) *httptest.Server {
+// fakeWeChatStats 假微信调用统计：端点命中次数、draft 请求体、uploadimg 第 N 次失败注入。
+type fakeWeChatStats struct {
+	uploadimg      int32
+	material       int32
+	draft          int32
+	lastDraftBody  []byte
+	uploadimgFailN int32 // 0=不失败；N=第 N 次 uploadimg 返回 errcode≠0
+}
+
+// fakeWeChat 假微信：token / 素材 / 正文图 / 草稿四端点；draftErrCode≠0 时草稿报错。
+func fakeWeChat(t *testing.T, draftErrCode int) (*httptest.Server, *fakeWeChatStats) {
 	t.Helper()
+	st := &fakeWeChatStats{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/cgi-bin/token", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"tok-test","expires_in":7200}`))
 	})
 	mux.HandleFunc("/cgi-bin/material/add_material", func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&st.material, 1)
 		_, _ = w.Write([]byte(`{"media_id":"thumb-1","url":"https://mmbiz.qpic.cn/x.jpg"}`))
 	})
-	mux.HandleFunc("/cgi-bin/draft/add", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/cgi-bin/media/uploadimg", func(w http.ResponseWriter, _ *http.Request) {
+		n := atomic.AddInt32(&st.uploadimg, 1)
+		if st.uploadimgFailN != 0 && n == st.uploadimgFailN {
+			_, _ = w.Write([]byte(`{"errcode":40004,"errmsg":"invalid media"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"url":"https://mmbiz.qpic.cn/img` + itoa(int(n)) + `"}`))
+	})
+	mux.HandleFunc("/cgi-bin/draft/add", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&st.draft, 1)
+		body, _ := io.ReadAll(r.Body)
+		st.lastDraftBody = body
 		if draftErrCode != 0 {
 			_, _ = w.Write([]byte(`{"errcode":` + itoa(draftErrCode) + `,"errmsg":"biz err"}`))
 			return
@@ -102,7 +126,7 @@ func fakeWeChat(t *testing.T, draftErrCode int) *httptest.Server {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, st
 }
 
 func itoa(n int) string {
@@ -124,11 +148,12 @@ type articleFixture struct {
 	drv *stubMPDriver
 	cfg *config.Config
 	srv *httptest.Server
+	st  *fakeWeChatStats
 }
 
 func newArticleFixture(t *testing.T, draftErrCode int) *articleFixture {
 	t.Helper()
-	srv := fakeWeChat(t, draftErrCode)
+	srv, st := fakeWeChat(t, draftErrCode)
 	cfg := &config.Config{}
 	cfg.Starfuyu.WechatMp.AppID = "wx-test-appid"
 	cfg.Starfuyu.WechatMp.AppSecret = "wx-test-secret"
@@ -146,7 +171,7 @@ func newArticleFixture(t *testing.T, draftErrCode int) *articleFixture {
 			Intro: "这天是一个积极热情有能量的日子，办事情能够把握好分寸。",
 		}},
 	)
-	return &articleFixture{svc: svc, mp: mp, drv: drv, cfg: cfg, srv: srv}
+	return &articleFixture{svc: svc, mp: mp, drv: drv, cfg: cfg, srv: srv, st: st}
 }
 
 // TestBuildHTML_ContainsAllConstellations 图片版整版：12 星座名 + 12 张 v3 海报
@@ -310,6 +335,61 @@ func TestUploadToMP_SuccessReturnsMediaIDs(t *testing.T) {
 	}
 	if f.drv.opens == 0 {
 		t.Fatalf("封面素材应经 storage.Driver.Open 读字节")
+	}
+	// 图片版流程：正文图 uploadimg 12 次、封面永久素材 1 次。
+	if n := atomic.LoadInt32(&f.st.uploadimg); n != 12 {
+		t.Fatalf("uploadimg 次数 = %d, want 12", n)
+	}
+	if n := atomic.LoadInt32(&f.st.material); n != 1 {
+		t.Fatalf("add_material 次数 = %d, want 1", n)
+	}
+}
+
+// TestUploadToMP_ContentUsesCDNUrls 草稿 content 必须是微信 CDN URL：
+// 12 个 mmbiz.qpic.cn、不含预览用 /api/public/ 相对路径、含四象胶囊文案。
+func TestUploadToMP_ContentUsesCDNUrls(t *testing.T) {
+	f := newArticleFixture(t, 0)
+	if _, err := f.svc.UploadToMP(context.Background(), "2026-11-12"); err != nil {
+		t.Fatalf("UploadToMP err = %v, want nil", err)
+	}
+	var body struct {
+		Articles []struct {
+			Content string `json:"content"`
+		} `json:"articles"`
+	}
+	if err := json.Unmarshal(f.st.lastDraftBody, &body); err != nil {
+		t.Fatalf("解析 draft body 失败: %v", err)
+	}
+	if len(body.Articles) != 1 {
+		t.Fatalf("draft articles = %d, want 1", len(body.Articles))
+	}
+	content := body.Articles[0].Content
+	if n := strings.Count(content, "https://mmbiz.qpic.cn/img"); n != 12 {
+		t.Errorf("content CDN 图数 = %d, want 12", n)
+	}
+	if strings.Contains(content, "/api/public/") {
+		t.Errorf("content 混入预览相对路径 /api/public/")
+	}
+	for _, pill := range []string{"火象星座", "土象星座", "风象星座", "水象星座"} {
+		if !strings.Contains(content, pill) {
+			t.Errorf("content 缺四象胶囊 %q", pill)
+		}
+	}
+}
+
+// TestUploadToMP_ContentUploadFailNoDraft 第 3 张正文图上传失败 → 30507 且草稿零调用（不发半成品）。
+func TestUploadToMP_ContentUploadFailNoDraft(t *testing.T) {
+	f := newArticleFixture(t, 0)
+	f.st.uploadimgFailN = 3
+	got, err := f.svc.UploadToMP(context.Background(), "2026-11-12")
+	if !errs.Is(err, errs.CodeStarfuyuMpUploadFailed) {
+		t.Fatalf("正文图失败应 30507, got %v", err)
+	}
+	if got != nil {
+		t.Fatalf("失败不得返回篇目: %+v", got)
+	}
+	if n := atomic.LoadInt32(&f.st.draft); n != 0 {
+		t.Fatalf("draft 调用 = %d, want 0（不发半成品）", n)
 	}
 }
 
