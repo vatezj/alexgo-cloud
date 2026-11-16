@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -599,4 +600,75 @@ func TestArticlePreviewForVisual(t *testing.T) {
 		t.Fatalf("写预览 HTML err = %v", err)
 	}
 	t.Logf("软文预览已落盘: %s（海报目录 %s）", out, root)
+}
+
+// TestUploadRealDraftManual 真实上传公众号草稿箱：内存库 realisticRows + 真海报渲染 +
+// 真微信密钥（alexgo-server/configs/config.yaml，不回显不落断言）→ UploadToMP。
+// 手动用例：go test -short 跳过；wechat_mp 密钥未配 → Skip；线上库零写入。
+func TestUploadRealDraftManual(t *testing.T) {
+	if testing.Short() {
+		t.Skip("真实上传：-short 跳过")
+	}
+	// 读仓库根 config（LoadGlobalConfig 固定路径相对 cwd），读完切回 service 包 cwd。
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Join(wd, "..", "..", "..")); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadGlobalConfig()
+	_ = os.Chdir(wd) // 立刻切回：后续 data/ 相对路径按 service 包 cwd 解析
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig err = %v", err)
+	}
+	if cfg.Starfuyu.WechatMp.AppID == "" || cfg.Starfuyu.WechatMp.AppSecret == "" {
+		t.Skip("wechat_mp app_id/app_secret 未配置")
+	}
+
+	const date = "2026-11-16"
+	ctx := context.Background()
+
+	// 1) 内存库 + 你验收过的真实感数据 + 当日星象（线上库零写入）。
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	dailyRepo := repository.NewDailyRepository(db)
+	rows := realisticRows(date)
+	if err := repo.UpsertBatch(ctx, rows); err != nil {
+		t.Fatalf("seed rows err = %v", err)
+	}
+	if err := dailyRepo.Upsert(ctx, &model.DailyHoroscope{
+		Date:  date,
+		Astro: "月水星，月土六合，木火合",
+		Intro: "这天是一个积极热情有能量的日子，办事情能够把握好分寸与人情之间的关系，在金钱和感情方面都有好消息。",
+	}); err != nil {
+		t.Fatalf("seed daily err = %v", err)
+	}
+	fortuneSvc := NewFortuneService(repo, dailyRepo, &stubFetcher{rows: rows})
+
+	// 2) 真渲染 12 张 v3 海报（临时 storage）。
+	imgDrv, err := storage.NewLocalDriver(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgCfg := &config.Config{}
+	imgCfg.Starfuyu.FontFile = "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"
+	imgCfg.Starfuyu.BgFile = "../../../data/starfuyu/bg.png"
+	imgCfg.Starfuyu.CuteDir = "../../../data/starfuyu/cute/cutout"
+	imgSvc := NewImageService(fortuneSvc, imgDrv, imgCfg)
+
+	// 3) 真微信客户端 + 图片版整版上传（草稿箱，不群发）。
+	mp := NewWeChatMPClient(cfg.Starfuyu.WechatMp.AppID, cfg.Starfuyu.WechatMp.AppSecret)
+	articleSvc := NewArticleService(fortuneSvc, imgSvc, mp, imgDrv, cfg, dailyRepo)
+
+	up, err := articleSvc.UploadToMP(ctx, date)
+	if err != nil {
+		t.Fatalf("UploadToMP err = %v", err)
+	}
+	for _, a := range up {
+		t.Logf("已入草稿箱: title=%q media_id=%s", a.Title, a.MediaID)
+	}
+	if len(up) != 1 {
+		t.Fatalf("篇数 = %d, want 1", len(up))
+	}
 }
