@@ -436,6 +436,22 @@ func TestRender_FullShareFields(t *testing.T) {
 	}
 }
 
+// TestRender_TitleDrawn 顶部标题槽：星座名必画，区域与底图最大像素差 > 20。
+func TestRender_TitleDrawn(t *testing.T) {
+	const date = "2026-11-12"
+	f := newImageFixture(t, "")
+	f.seed(t, twelveRows(date, "题"))
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if err != nil {
+		t.Fatalf("Ensure err = %v, want nil", err)
+	}
+	img := decodeRendered(t, f, context.Background(), key)
+	bg := loadShareBG(t)
+	if d := regionMaxDiff(img, bg, shareCardLayout.Title); d <= 20 {
+		t.Fatalf("Title 槽区域最大像素差 = %.2f, want > 20（标题必画）", d)
+	}
+}
+
 // TestRenderSampleForVisual 视觉验收采样：满值白羊座出样图到 /tmp，供人工对照底图检查。
 // 分享卡字段用顶格字数内容（对照 prompt 上限），以暴露换行/截断 … 效果。
 // go test -short 跳过（CI 不落盘）；本地 -run 显式跑。

@@ -10,17 +10,20 @@ type slot struct{ x, y, w, h float64 }
 // 逐槽字号与颜色（初值：上卡值 44、运程条 40、小卡 34、必做 40；
 // 文本色 #5B4A4A 深棕与底图印字同系）。视觉迭代时在此微调。
 const (
-	shareFontUpper  = 44.0 // 上卡五槽值
-	shareFontLane   = 40.0 // 四条运程条文字
-	shareFontCard   = 34.0 // 三小卡文案
-	shareFontTodo   = 40.0 // 今日必做三行
-	shareFontSlogan = 44.0 // 底部粉条口号
+	shareFontUpper  = 44.0  // 上卡五槽值
+	shareFontLane   = 40.0  // 四条运程条文字
+	shareFontCard   = 34.0  // 三小卡文案
+	shareFontTodo   = 40.0  // 今日必做三行
+	shareFontSlogan = 44.0  // 底部粉条口号
+	shareFontTitle  = 240.0 // 顶部星座名大字（3 字 ≈720px 宽，视觉迭代微调）
 
-	shareTextColor  = "#3F2E2A" // 值文本深棕（视觉迭代：#5B4A4A 偏灰，压深与印字同系）
-	shareTrackColor = "#F7EAD0" // 进度条铺底色（≈底图浅色段）
-	shareBarReunion = "#F08C8C" // 复合运填充（粉）
-	shareBarSingle  = "#F6A93B" // 脱单运填充（橙）
-	shareBarJob     = "#F08C8C" // 求职运填充（粉）
+	shareTextColor   = "#3F2E2A" // 值文本深棕（视觉迭代：#5B4A4A 偏灰，压深与印字同系）
+	shareTrackColor  = "#F7EAD0" // 进度条铺底色（≈底图浅色段）
+	shareBarReunion  = "#F08C8C" // 复合运填充（粉）
+	shareBarSingle   = "#F6A93B" // 脱单运填充（橙）
+	shareBarJob      = "#F08C8C" // 求职运填充（粉）
+	shareTitleColor  = "#F2837F" // 标题珊瑚粉（参考图样式）
+	shareTitleStroke = 12.0      // 标题白描边半径（16 向圆周偏移）
 )
 
 // shareCardLayout 分享卡 19 槽布局常量表：上卡五槽（标签已印底图，值画冒号之后）、
@@ -28,6 +31,7 @@ const (
 // 三进度条槽（铺底+填充段）、今日必做三行（勾选框右侧）、底部粉条口号（居中）。
 // 坐标对照 data/starfuyu/bg.png（1728×2397，bg_file 配置）实测量取（2026-11-13），微调只动本表。
 var shareCardLayout = struct {
+	Title                                        slot                         // 顶部星座名（水平居中绘制）
 	Summary, Score, Match, Advice, Avoid         slot                         // 上卡五槽
 	LaneWealth, LaneCareer, LaneLove, LaneHealth slot                         // 四运程条文字区
 	Reunion, Single, Job                         slot                         // 三小卡文案区
@@ -35,6 +39,10 @@ var shareCardLayout = struct {
 	Todos                                        [3]slot                      // 今日必做三行文字区
 	Slogan                                       slot                         // 底部粉条口号（水平居中）
 }{
+	// 顶部标题：槽中心 x=864=画布中线；240 号 ink 底 ~310 < 上卡顶 403、
+	// 右缘 ~1224 < 右上太阳 x~1450（2026-11-16 初值，视觉迭代只动本表）。
+	Title: slot{164, 60, 1400, 280},
+
 	// 上卡：值 x=1100（标签冒号 1068 后留 32），行基线与印字标签对齐。
 	// Summary 右侧无图标放宽到 1640；Avoid 行右有爱心图标收到 1500。
 	Summary: slot{1100, 445, 540, 102}, // 今日简述（≤2 行；y 469→445 用户视觉反馈上移）

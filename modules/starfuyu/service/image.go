@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image/jpeg"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -191,6 +192,11 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	dc := gg.NewContext(bg.Bounds().Dx(), bg.Bounds().Dy())
 	dc.DrawImage(bg, 0, 0)
 
+	// 顶部星座名：珊瑚粉大字 + 白描边（f.Constellation 必非空——key 校验已钉 12 枚举）。
+	if err := drawShareTitle(dc, fontPath, f.Constellation, shareCardLayout.Title); err != nil {
+		return nil, err
+	}
+
 	// 上卡五槽：标签已印底图，只画冒号后的值。
 	upper := []struct {
 		text string
@@ -330,6 +336,29 @@ func drawShareText(dc *gg.Context, fontPath string, size float64, text string, r
 		}
 		dc.DrawString(line, r.x, r.y+size*0.84+lineH*float64(i))
 	}
+	return nil
+}
+
+// drawShareTitle 顶部星座名：槽内水平居中 + 垂直近似居中，
+// 白描边（16 向圆周偏移 ±shareTitleStroke 画底）+ 珊瑚粉面字。
+// 独立于 drawShareText（描边+居中两个差异点，不值得给主函数加参）。
+func drawShareTitle(dc *gg.Context, fontPath, text string, r slot) error {
+	if text == "" {
+		return nil
+	}
+	if err := dc.LoadFontFace(fontPath, shareFontTitle); err != nil {
+		return fontFail(fontPath, err)
+	}
+	w, _ := dc.MeasureString(text)
+	cx := r.x + (r.w-w)/2
+	cy := r.y + r.h/2 + shareFontTitle*0.36 // 与 drawShareText 基线惯例一致
+	for i := 0; i < 16; i++ {
+		a := 2 * math.Pi * float64(i) / 16
+		dc.SetHexColor("#FFFFFF")
+		dc.DrawString(text, cx+shareTitleStroke*math.Cos(a), cy+shareTitleStroke*math.Sin(a))
+	}
+	dc.SetHexColor(shareTitleColor)
+	dc.DrawString(text, cx, cy)
 	return nil
 }
 
