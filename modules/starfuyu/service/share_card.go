@@ -32,6 +32,7 @@ const (
 // 坐标对照 data/starfuyu/bg.png（1728×2397，bg_file 配置）实测量取（2026-11-13），微调只动本表。
 var shareCardLayout = struct {
 	Title                                        slot                         // 顶部星座名（水平居中绘制）
+	Mascot                                       slot                         // 左上角角色抠图（contain 缩放）
 	Summary, Score, Match, Advice, Avoid         slot                         // 上卡五槽
 	LaneWealth, LaneCareer, LaneLove, LaneHealth slot                         // 四运程条文字区
 	Reunion, Single, Job                         slot                         // 三小卡文案区
@@ -42,6 +43,9 @@ var shareCardLayout = struct {
 	// 顶部标题：槽中心 x=864=画布中线；240 号 ink 底 ~310 < 上卡顶 403、
 	// 右缘 ~1224 < 右上太阳 x~1450（2026-11-16 初值，视觉迭代只动本表）。
 	Title: slot{164, 60, 1400, 280},
+
+	// 角色：左列——右让上卡（x≥856）、下让运程条（y≈1066）、上接标题带（y≥330）。
+	Mascot: slot{40, 330, 720, 710},
 
 	// 上卡：值 x=1100（标签冒号 1068 后留 32），行基线与印字标签对齐。
 	// Summary 右侧无图标放宽到 1640；Avoid 行右有爱心图标收到 1500。

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"image/jpeg"
 	"log"
 	"math"
@@ -38,20 +39,43 @@ type imageService struct {
 	assetsDir string
 	fontFile  string // starfuyu.font_file：字体路径（源码树外）；空回退 assets/fonts glob
 	bgFile    string // starfuyu.bg_file：底图路径（源码树外）；空回退 assets/bgimage/bg.png
+	cuteDir   string // starfuyu.cute_dir：角色抠图目录（源码树外）；空串渲染时 30502 不回退
 }
 
-// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致；fontFile/bgFile 直取 cfg。
+// NewImageService 构造图片服务。assetsDir 缺省与 config loader 默认一致；fontFile/bgFile/cuteDir 直取 cfg。
 func NewImageService(fortunes FortuneService, driver storage.Driver, cfg *config.Config) ImageService {
 	dir := "modules/starfuyu/assets"
-	var fontFile, bgFile string
+	var fontFile, bgFile, cuteDir string
 	if cfg != nil {
 		if cfg.Starfuyu.AssetsDir != "" {
 			dir = cfg.Starfuyu.AssetsDir
 		}
 		fontFile = cfg.Starfuyu.FontFile
 		bgFile = cfg.Starfuyu.BgFile
+		cuteDir = cfg.Starfuyu.CuteDir
 	}
-	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir, fontFile: fontFile, bgFile: bgFile}
+	return &imageService{fortunes: fortunes, driver: driver, assetsDir: dir, fontFile: fontFile, bgFile: bgFile, cuteDir: cuteDir}
+}
+
+// resolveCutePath 角色抠图定位：cute_dir 空 → 30502「未配置」；slug 未命中 → 30502
+// 「非法星座」；文件缺失 → 30502 指明完整路径。不静默跳过——与 font_file/bg_file 同精神。
+func (s *imageService) resolveCutePath(constellation string) (string, error) {
+	if s.cuteDir == "" {
+		return "", errs.New(errs.CodeStarfuyuImageFailed,
+			fmt.Errorf("cute_dir 未配置（starfuyu.cute_dir），无法定位角色素材"))
+	}
+	slug, ok := constellationSlug(constellation)
+	if !ok {
+		return "", errs.New(errs.CodeStarfuyuImageFailed,
+			fmt.Errorf("非法星座无法映射 cute slug: %q", constellation))
+	}
+	path := filepath.Join(s.cuteDir, "cute_"+slug+"_cut.png")
+	fi, err := os.Stat(path)
+	if err != nil || fi.IsDir() {
+		return "", errs.New(errs.CodeStarfuyuImageFailed,
+			fmt.Errorf("角色抠图不存在: %s", path))
+	}
+	return path, nil
 }
 
 // resolveBgPath 底图定位：bg_file 配置非空 → 直用（文件缺失 30502 指明 bg_file，
@@ -189,6 +213,17 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	if err != nil {
 		return nil, errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("加载背景图 %q: %w", bgPath, err))
 	}
+
+	// 角色抠图定位 fail-fast（先于任何绘制：缺素材整张不落盘）。
+	cutePath, err := s.resolveCutePath(f.Constellation)
+	if err != nil {
+		return nil, err
+	}
+	mascot, err := gg.LoadImage(cutePath)
+	if err != nil {
+		return nil, errs.New(errs.CodeStarfuyuImageFailed, fmt.Errorf("加载角色抠图 %q: %w", cutePath, err))
+	}
+
 	dc := gg.NewContext(bg.Bounds().Dx(), bg.Bounds().Dy())
 	dc.DrawImage(bg, 0, 0)
 
@@ -196,6 +231,9 @@ func (s *imageService) render(f *model.Fortune) ([]byte, error) {
 	if err := drawShareTitle(dc, fontPath, f.Constellation, shareCardLayout.Title); err != nil {
 		return nil, err
 	}
+
+	// 左上角角色：contain 等比缩放居中于 Mascot 槽（各张 bbox 比例不同，不越界不变形）。
+	drawShareMascot(dc, mascot, shareCardLayout.Mascot)
 
 	// 上卡五槽：标签已印底图，只画冒号后的值。
 	upper := []struct {
@@ -360,6 +398,26 @@ func drawShareTitle(dc *gg.Context, fontPath, text string, r slot) error {
 	dc.SetHexColor(shareTitleColor)
 	dc.DrawString(text, cx, cy)
 	return nil
+}
+
+// drawShareMascot 角色抠图 contain 缩放绘制：s=min(槽宽/图宽, 槽高/图高)，
+// 居中于槽。gg DrawImageAnchored 走当前矩阵（BiLinear 重采样），Scale 后必须 Identity 复位。
+func drawShareMascot(dc *gg.Context, mascot image.Image, r slot) {
+	b := mascot.Bounds()
+	w, h := float64(b.Dx()), float64(b.Dy())
+	if w <= 0 || h <= 0 {
+		return
+	}
+	s := r.w / w
+	if rs := r.h / h; rs < s {
+		s = rs
+	}
+	px := r.x + (r.w-w*s)/2
+	py := r.y + (r.h-h*s)/2
+	dc.Translate(px, py)
+	dc.Scale(s, s)
+	dc.DrawImageAnchored(mascot, 0, 0, 0, 0)
+	dc.Identity()
 }
 
 // drawShareSlogan 底部粉条口号：白字、槽内水平+垂直居中；wrap 按槽宽、单行截断 …。

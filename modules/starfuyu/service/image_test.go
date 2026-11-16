@@ -65,6 +65,8 @@ func newImageFixtureCfg(t *testing.T, assetsDir, fontFile, bgFile string) *image
 	cfg.Starfuyu.AssetsDir = assetsDir
 	cfg.Starfuyu.FontFile = fontFile
 	cfg.Starfuyu.BgFile = bgFile
+	// 角色抠图在仓库根 data/（相对 service 包 cwd）——所有渲染测试共用真实 12 张产物。
+	cfg.Starfuyu.CuteDir = "../../../data/starfuyu/cute/cutout"
 	repo := repository.NewFortuneRepository(db)
 	return &imageFixture{
 		svc:  NewImageService(NewFortuneService(repo, &stubFetcher{}), drv, cfg),
@@ -449,6 +451,74 @@ func TestRender_TitleDrawn(t *testing.T) {
 	bg := loadShareBG(t)
 	if d := regionMaxDiff(img, bg, shareCardLayout.Title); d <= 20 {
 		t.Fatalf("Title 槽区域最大像素差 = %.2f, want > 20（标题必画）", d)
+	}
+}
+
+// TestConstellationSlug 12 星座→slug 硬表全量覆盖、与 ConstellationList 对齐、slug 无重复。
+func TestConstellationSlug(t *testing.T) {
+	want := map[string]string{
+		"白羊座": "aries", "金牛座": "taurus", "双子座": "gemini", "巨蟹座": "cancer",
+		"狮子座": "leo", "处女座": "virgo", "天秤座": "libra", "天蝎座": "scorpio",
+		"射手座": "sagittarius", "摩羯座": "capricorn", "水瓶座": "aquarius", "双鱼座": "pisces",
+	}
+	if len(ConstellationList) != 12 {
+		t.Fatalf("ConstellationList 长度 = %d, want 12", len(ConstellationList))
+	}
+	seen := make(map[string]bool, len(want))
+	for _, c := range ConstellationList {
+		got, ok := constellationSlug(c)
+		if !ok {
+			t.Fatalf("constellationSlug(%q) 未命中", c)
+		}
+		if want[c] != got {
+			t.Fatalf("constellationSlug(%q) = %q, want %q", c, got, want[c])
+		}
+		if seen[got] {
+			t.Fatalf("slug %q 重复", got)
+		}
+		seen[got] = true
+	}
+	if len(seen) != 12 {
+		t.Fatalf("slug 覆盖 %d 条, want 12", len(seen))
+	}
+	if _, ok := constellationSlug("不存在座"); ok {
+		t.Fatalf("非法星座应未命中")
+	}
+}
+
+// TestRender_MascotDrawn 角色槽必画：Mascot 区域与底图最大像素差 > 20。
+func TestRender_MascotDrawn(t *testing.T) {
+	const date = "2026-11-12"
+	f := newImageFixture(t, "")
+	f.seed(t, twelveRows(date, "角"))
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if err != nil {
+		t.Fatalf("Ensure err = %v, want nil", err)
+	}
+	img := decodeRendered(t, f, context.Background(), key)
+	bg := loadShareBG(t)
+	if d := regionMaxDiff(img, bg, shareCardLayout.Mascot); d <= 20 {
+		t.Fatalf("Mascot 槽区域最大像素差 = %.2f, want > 20（角色必画）", d)
+	}
+}
+
+// TestRender_CuteFileMissing30502 cute_dir 指向空目录 → 30502 指明 cute、不落盘
+// （配置错了必须炸，与 font_file/bg_file 同精神）。
+func TestRender_CuteFileMissing30502(t *testing.T) {
+	const date = "2026-11-12"
+	f := newImageFixture(t, "")
+	f.svc.(*imageService).cuteDir = t.TempDir() // 同包测试直改字段，免动夹具签名
+	f.seed(t, twelveRows(date, "缺角色"))
+
+	key, err := f.svc.Ensure(context.Background(), date, "白羊座")
+	if !errs.Is(err, errs.CodeStarfuyuImageFailed) {
+		t.Fatalf("cute 文件缺失应为 30502, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "cute") {
+		t.Fatalf("错误应指明 cute 素材, got %v", err)
+	}
+	if key != "" || f.drv.saves != 0 {
+		t.Fatalf("失败不得落盘: key = %q, saves = %d", key, f.drv.saves)
 	}
 }
 

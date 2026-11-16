@@ -26,3 +26,26 @@ func IsValidConstellation(constellation string) bool {
 	}
 	return false
 }
+
+// constellationSlugs 中星座→cute 素材英文 slug（与 scripts/starfuyu_cutout.py
+// 产物命名 cute_{slug}_cut.png 逐字一致，12 条硬表，两边同步改）。
+var constellationSlugs = map[string]string{
+	"白羊座": "aries",
+	"金牛座": "taurus",
+	"双子座": "gemini",
+	"巨蟹座": "cancer",
+	"狮子座": "leo",
+	"处女座": "virgo",
+	"天秤座": "libra",
+	"天蝎座": "scorpio",
+	"射手座": "sagittarius",
+	"摩羯座": "capricorn",
+	"水瓶座": "aquarius",
+	"双鱼座": "pisces",
+}
+
+// constellationSlug 中星座→slug；未命中返回 ok=false（调用方映射 30502/10001）。
+func constellationSlug(c string) (string, bool) {
+	s, ok := constellationSlugs[c]
+	return s, ok
+}

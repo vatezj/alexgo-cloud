@@ -93,3 +93,4 @@ starfuyu:
   assets_dir: "modules/starfuyu/assets"   # legacy 回退根（底图/字体均走独立配置，不放源码树）
   font_file: "./data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"   # 运势图字体（运行时目录，源码树外）；空串=回退 assets/fonts 字典序首个
   bg_file: "./data/starfuyu/bg.png"       # 分享卡底图 1728×2397（可替换模板，源码树外）；空串=回退 assets/bgimage/bg.png
+  cute_dir: "./data/starfuyu/cute/cutout" # 角色抠图目录（12 张透明 PNG，scripts/starfuyu_cutout.py 产出）；空串=渲染 30502 不回退

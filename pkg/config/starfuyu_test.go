@@ -37,6 +37,10 @@ func TestLoadGlobalConfig_StarfuyuSection(t *testing.T) {
 	if got := cfg.Starfuyu.BgFile; got != "./data/starfuyu/bg.png" {
 		t.Errorf("starfuyu.bg_file = %q, want %q", got, "./data/starfuyu/bg.png")
 	}
+	// 角色抠图目录同理：cute_dir 指向 data/starfuyu/cute/cutout（12 张透明 PNG）。
+	if got := cfg.Starfuyu.CuteDir; got != "./data/starfuyu/cute/cutout" {
+		t.Errorf("starfuyu.cute_dir = %q, want %q", got, "./data/starfuyu/cute/cutout")
+	}
 	// 密钥必须空串：仓库不落 goLucky 明文，由运维另填。
 	if got := cfg.Starfuyu.Deepseek.APIKey; got != "" {
 		t.Errorf("starfuyu.deepseek.api_key = %q, want empty", got)

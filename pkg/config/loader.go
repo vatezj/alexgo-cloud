@@ -66,6 +66,7 @@ func LoadGlobalConfig() (*Config, error) {
 	v.SetDefault("starfuyu.cron.fetch_fortune", "10 0 * * *")
 	v.SetDefault("starfuyu.cron.generate_images", "20 0 * * *")
 	v.SetDefault("starfuyu.assets_dir", "modules/starfuyu/assets")
+	v.SetDefault("starfuyu.cute_dir", "./data/starfuyu/cute/cutout")
 
 	// 常用 env 覆盖：兼容 docker-compose / k8s secret 注入。
 	_ = v.BindEnv("server.http_addr", "HTTP_ADDR")
