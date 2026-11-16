@@ -9,6 +9,7 @@ import (
 	"alexGo-cloud/pkg/client"
 	"alexGo-cloud/pkg/config"
 	"alexGo-cloud/pkg/database"
+	"alexGo-cloud/pkg/job"
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/tenant/gormplugin"
 	"alexGo-cloud/pkg/token"
@@ -36,6 +37,8 @@ func options() []fx.Option {
 			})
 		}),
 		fx.Invoke(trace.InitTracer),
+		// system.FxModule 的 sweep job 依赖 *job.Manager（pkg/job 单例）。
+		job.FxModule,
 		system.FxModule,
 		fx.Invoke(grpcserver.StartGRPCServer),
 	}

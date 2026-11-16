@@ -2,11 +2,9 @@ package system
 
 import (
 	"context"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 
 	"alexGo-cloud/alexgo-server/server"
 	"alexGo-cloud/modules/system/controller/admin"
@@ -19,7 +17,7 @@ import (
 	"alexGo-cloud/modules/system/repository"
 	"alexGo-cloud/modules/system/service"
 	"alexGo-cloud/pkg/audit"
-	"alexGo-cloud/pkg/logger"
+	"alexGo-cloud/pkg/job"
 	"alexGo-cloud/pkg/migrate"
 	"alexGo-cloud/pkg/tenant"
 	"alexGo-cloud/pkg/token"
@@ -93,35 +91,10 @@ var FxModule = fx.Module("system",
 		tokenServiceRegistrar,
 	),
 	fx.Invoke(service.StartSeeder),
-	// 过期令牌清扫 ticker（T11，仿 outbox.StartRelay 的 Fx 生命周期模式）。
-	// 关键：OnStart 的 ctx 在启动完成即被 cancel——goroutine 不能监听它（会秒退），
-	// 改为独立 runCtx，并在 OnStop 时 cancel 保证退出（OnStart 只负责起 goroutine）。
-	fx.Invoke(func(lc fx.Lifecycle, svc *token.Service) {
-		runCtx, cancel := context.WithCancel(context.Background())
-		lc.Append(fx.Hook{
-			OnStart: func(context.Context) error {
-				go func() {
-					ticker := time.NewTicker(time.Hour)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-runCtx.Done():
-							return
-						case <-ticker.C:
-							// 扫描用 Background：不受请求/生命周期 ctx 影响。
-							if err := svc.SweepExpired(context.Background()); err != nil && logger.Log != nil {
-								logger.Log.Warn("token sweep failed", zap.Error(err))
-							}
-						}
-					}
-				}()
-				return nil
-			},
-			OnStop: func(context.Context) error {
-				cancel()
-				return nil
-			},
-		})
+	// 过期令牌清扫迁 pkg/job（原手写 ticker，见 git 历史）：@every 1h，
+	// 起停/panic 恢复/开关守卫由 job.Manager 统一负责（行为变化：受 modules.system 守卫）。
+	fx.Invoke(func(m *job.Manager, svc *token.Service) {
+		registerSweepJob(m, svc)
 	}),
 	fx.Provide(
 		fx.Annotate(
@@ -260,4 +233,11 @@ func (m *systemModule) RegisterRoutes(r *gin.RouterGroup) {
 	// vben-admin 自读端点（/api/auth/login|logout|codes、/api/user/info、/api/menu/all）：
 	// 挂在 /api 根组（r 已带 /api 前缀），与 admin/app 组无路径冲突。
 	m.vbenCtrl.Register(r)
+}
+
+// registerSweepJob 注册 token 过期清扫（原手写 ticker，@every 1h）。
+func registerSweepJob(m *job.Manager, svc *token.Service) {
+	m.Register("system.sweep_tokens", "@every 1h", func(ctx context.Context) error {
+		return svc.SweepExpired(ctx)
+	})
 }

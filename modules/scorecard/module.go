@@ -2,7 +2,6 @@ package scorecard
 
 import (
 	"context"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
@@ -15,6 +14,7 @@ import (
 	"alexGo-cloud/modules/scorecard/service"
 	"alexGo-cloud/modules/system/oauth2/social"
 	"alexGo-cloud/pkg/config"
+	"alexGo-cloud/pkg/job"
 	"alexGo-cloud/pkg/logger"
 	"alexGo-cloud/pkg/migrate"
 )
@@ -81,35 +81,11 @@ var FxModule = fx.Module("scorecard",
 			fx.ResultTags(`group:"migration_sources"`),
 		),
 	),
-	// 超时关房 ticker（2h TTL 心跳不续期，spec §4.2）：照 modules/system/module.go
-	// token SweepExpired 的 Fx 生命周期模式——OnStart 的 ctx 在启动完成即被 cancel，
-	// goroutine 不能监听它（会秒退），改独立 runCtx 并在 OnStop cancel 保证退出。
-	// 扫描用 Background：不受请求/生命周期 ctx 影响；错误只记 warn 不致命，下轮再扫。
-	fx.Invoke(func(lc fx.Lifecycle, svc service.RoomService) {
-		runCtx, cancel := context.WithCancel(context.Background())
-		lc.Append(fx.Hook{
-			OnStart: func(context.Context) error {
-				go func() {
-					ticker := time.NewTicker(time.Minute)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-runCtx.Done():
-							return
-						case <-ticker.C:
-							if _, err := svc.SweepExpired(context.Background()); err != nil && logger.Log != nil {
-								logger.Log.Warn("scorecard sweep failed", zap.Error(err))
-							}
-						}
-					}
-				}()
-				return nil
-			},
-			OnStop: func(context.Context) error {
-				cancel()
-				return nil
-			},
-		})
+	// 超时关房清扫迁 pkg/job（原手写 ticker，见 git 历史）：@every 1m，
+	// 起停/panic 恢复/开关守卫由 job.Manager 统一负责
+	//（行为变化：受 modules.scorecard 守卫——关模块连带停清扫，spec §4.6 已裁定）。
+	fx.Invoke(func(m *job.Manager, svc service.RoomService) {
+		registerSweepJob(m, svc)
 	}),
 	// 分享卡参数补建（system_configs scorecard.share.*）：幂等只补缺、不覆盖管理员改过的值；
 	// 异步跑（同 system seeder 模式），失败只告警不阻断启动——公开端点自带内置默认兜底。
@@ -199,4 +175,12 @@ func (m *scorecardModule) RegisterRoutes(r *gin.RouterGroup) {
 	app.PUT("/friends/:userId/rank", m.appCtrl.SetFriendRank)
 	// 跨模块接口映射（如 token.Issuer）归入口 main.go，模块内不重复 Provide——
 	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
+}
+
+// registerSweepJob 注册超时关房清扫（原手写 ticker，@every 1m，2h TTL 心跳不续期）。
+func registerSweepJob(m *job.Manager, svc service.RoomService) {
+	m.Register("scorecard.sweep_rooms", "@every 1m", func(ctx context.Context) error {
+		_, err := svc.SweepExpired(ctx)
+		return err
+	})
 }
