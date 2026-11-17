@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"alexGo-cloud/modules/starfuyu/model"
 	"alexGo-cloud/modules/starfuyu/repository"
@@ -97,7 +98,7 @@ type fakeWeChatStats struct {
 	draft          int32
 	lastDraftBody  []byte
 	materialBody   []byte // add_material 收到的 media 字节（封面来源断言）
-	uploadimgFailN int32   // 0=不失败；N=第 N 次 uploadimg 返回 errcode≠0
+	uploadimgFailN int32  // 0=不失败；N=第 N 次 uploadimg 返回 errcode≠0
 }
 
 // fakeWeChat 假微信：token / 素材 / 正文图 / 草稿四端点；draftErrCode≠0 时草稿报错。
@@ -685,7 +686,8 @@ func TestUploadRealDraftManual(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chdir(filepath.Join(wd, "..", "..", "..")); err != nil {
+	root := filepath.Join(wd, "..", "..", "..")
+	if err := os.Chdir(root); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.LoadGlobalConfig()
@@ -693,11 +695,13 @@ func TestUploadRealDraftManual(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGlobalConfig err = %v", err)
 	}
+	// cover_dir 相对仓库根：测试 cwd 在 service 包，转绝对路径（生产 cwd=仓库根无需）。
+	cfg.Starfuyu.CoverDir = filepath.Join(root, "data", "starfuyu", "cover")
 	if cfg.Starfuyu.WechatMp.AppID == "" || cfg.Starfuyu.WechatMp.AppSecret == "" {
 		t.Skip("wechat_mp app_id/app_secret 未配置")
 	}
 
-	const date = "2026-11-16"
+	date := time.Now().Format("2006-01-02") // 动态今天：标题/封面/正文同日
 	ctx := context.Background()
 
 	// 1) 内存库 + 你验收过的真实感数据 + 当日星象（线上库零写入）。
