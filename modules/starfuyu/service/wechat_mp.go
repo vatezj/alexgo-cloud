@@ -32,6 +32,32 @@ type MPClient interface {
 	UploadContentImage(ctx context.Context, data []byte) (url string, err error)
 	// AddDraft 新建草稿（articles 至少 1 条），返回草稿 media_id。
 	AddDraft(ctx context.Context, articles []MPArticle) (mediaID string, err error)
+	// ListDrafts 分页列草稿（draft/batchget，no_content=1 只回元数据），返回 total 与条目。
+	ListDrafts(ctx context.Context, offset, count int) (total int, items []DraftMeta, err error)
+	// DeleteDraft 删除单条草稿（draft/delete，不可逆）。失败一律 30507。
+	DeleteDraft(ctx context.Context, mediaID string) error
+}
+
+// DraftMeta 草稿条目元数据（draft/batchget item；只取清理工具要用的字段）。
+type DraftMeta struct {
+	MediaID string `json:"media_id"`
+	Content struct {
+		Title    string `json:"title"`
+		NewsItem []struct {
+			Title string `json:"title"`
+		} `json:"news_item"`
+	} `json:"content"`
+}
+
+// Title 首篇文章标题：content.title（单层）或 content.news_item[0].title（图文结构）。
+func (d DraftMeta) Title() string {
+	if d.Content.Title != "" {
+		return d.Content.Title
+	}
+	if len(d.Content.NewsItem) > 0 {
+		return d.Content.NewsItem[0].Title
+	}
+	return ""
 }
 
 // MPArticle 草稿箱文章条目（字段对齐微信 draft/add articles[]）。
@@ -159,6 +185,22 @@ func (c *wechatMPClient) doJSON(ctx context.Context, path string, payload any) (
 	return body, nil
 }
 
+// checkErrOnly 只解 {errcode,errmsg}：errcode≠0 → 30507；0 → nil。
+// 供不回 media_id 的端点用（draft/delete、draft/batchget——checkErrCode 会误报缺 media_id）。
+func checkErrOnly(path string, body []byte) error {
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return mpFail("解析 %s 响应失败: %w", path, err)
+	}
+	if result.ErrCode != 0 {
+		return mpFail("微信API错误 %s: errcode=%d errmsg=%s", path, result.ErrCode, result.ErrMsg)
+	}
+	return nil
+}
+
 // checkErrCode 解包 {errcode,errmsg,media_id}；errcode≠0 → 30507。
 func checkErrCode(path string, body []byte) (mediaID string, err error) {
 	var result struct {
@@ -279,6 +321,40 @@ func (c *wechatMPClient) UploadContentImage(ctx context.Context, data []byte) (s
 		return "", mpFail("正文图片响应缺 url: %s", truncate(string(body), 200))
 	}
 	return out.URL, nil
+}
+
+// ListDrafts 分页列草稿：POST draft/batchget {offset,count,no_content}。
+// 合同：失败一律 30507。
+func (c *wechatMPClient) ListDrafts(ctx context.Context, offset, count int) (int, []DraftMeta, error) {
+	body, err := c.doJSON(ctx, "/cgi-bin/draft/batchget", map[string]any{
+		"offset": offset, "count": count, "no_content": 1,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+	if err := checkErrOnly("/cgi-bin/draft/batchget", body); err != nil {
+		return 0, nil, err
+	}
+	var out struct {
+		TotalCount int         `json:"total_count"`
+		Item       []DraftMeta `json:"item"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return 0, nil, mpFail("解析草稿列表失败: %w, 预览: %s", err, truncate(string(body), 200))
+	}
+	return out.TotalCount, out.Item, nil
+}
+
+// DeleteDraft 删除草稿（draft/delete，不可逆）。合同：失败一律 30507。
+func (c *wechatMPClient) DeleteDraft(ctx context.Context, mediaID string) error {
+	if mediaID == "" {
+		return mpFail("media_id 为空")
+	}
+	body, err := c.doJSON(ctx, "/cgi-bin/draft/delete", map[string]any{"media_id": mediaID})
+	if err != nil {
+		return err
+	}
+	return checkErrOnly("/cgi-bin/draft/delete", body)
 }
 
 // AddDraft 新建草稿（个人订阅号草稿箱接口，照 goLucky）。
