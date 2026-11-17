@@ -173,6 +173,9 @@ type Config struct {
 		// CuteDir 角色抠图目录（源码树外，如 ./data/starfuyu/cute/cutout，12 张透明 PNG，
 		// scripts/starfuyu_cutout.py 产出）。空串不回退——渲染时 30502（配置错了必须炸）。
 		CuteDir string `mapstructure:"cute_dir"`
+		// CoverDir 软文封面目录（源码树外，如 ./data/starfuyu/cover，当日 {date}.png 合成封面）。
+		// 有当日文件 → 作公众号草稿封面；缺失 → 回退白羊海报（软降级，脚本 scripts/starfuyu_cover.py 产出）。
+		CoverDir string `mapstructure:"cover_dir"`
 	} `mapstructure:"starfuyu"`
 
 	// Scorecard：scorecard《打牌记账》模块配置。

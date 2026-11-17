@@ -96,7 +96,8 @@ type fakeWeChatStats struct {
 	material       int32
 	draft          int32
 	lastDraftBody  []byte
-	uploadimgFailN int32 // 0=不失败；N=第 N 次 uploadimg 返回 errcode≠0
+	materialBody   []byte // add_material 收到的 media 字节（封面来源断言）
+	uploadimgFailN int32   // 0=不失败；N=第 N 次 uploadimg 返回 errcode≠0
 }
 
 // fakeWeChat 假微信：token / 素材 / 正文图 / 草稿四端点；draftErrCode≠0 时草稿报错。
@@ -107,8 +108,16 @@ func fakeWeChat(t *testing.T, draftErrCode int) (*httptest.Server, *fakeWeChatSt
 	mux.HandleFunc("/cgi-bin/token", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"tok-test","expires_in":7200}`))
 	})
-	mux.HandleFunc("/cgi-bin/material/add_material", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/cgi-bin/material/add_material", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&st.material, 1)
+		if err := r.ParseMultipartForm(1 << 20); err == nil {
+			if _, fh, err := r.FormFile("media"); err == nil {
+				if f, err := fh.Open(); err == nil {
+					st.materialBody, _ = io.ReadAll(f)
+					_ = f.Close()
+				}
+			}
+		}
 		_, _ = w.Write([]byte(`{"media_id":"thumb-1","url":"https://mmbiz.qpic.cn/x.jpg"}`))
 	})
 	mux.HandleFunc("/cgi-bin/media/uploadimg", func(w http.ResponseWriter, _ *http.Request) {
@@ -398,6 +407,44 @@ func TestUploadToMP_ContentUsesCDNUrls(t *testing.T) {
 		if !strings.Contains(content, pill) {
 			t.Errorf("content 缺四象胶囊 %q", pill)
 		}
+	}
+}
+
+// TestUploadToMP_CoverFilePreferred cover_dir 有当日封面（{date}.png）→ 封面素材用它
+// （字节含标记可辨），不再用白羊海报（终审后新增：封面改 cover_bg 合成图）。
+func TestUploadToMP_CoverFilePreferred(t *testing.T) {
+	const date = "2026-11-12"
+	f := newArticleFixture(t, 0)
+	coverDir := t.TempDir()
+	marker := []byte{0x89, 0x50, 0x4E, 0x47, 0xAA, 0xBB, 0xCC} // 伪 PNG 头 + 标记
+	if err := os.WriteFile(filepath.Join(coverDir, date+".png"), marker, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.cfg.Starfuyu.CoverDir = coverDir
+
+	if _, err := f.svc.UploadToMP(context.Background(), date); err != nil {
+		t.Fatalf("UploadToMP err = %v, want nil", err)
+	}
+	if n := atomic.LoadInt32(&f.st.material); n != 1 {
+		t.Fatalf("add_material 次数 = %d, want 1", n)
+	}
+	if !bytes.Contains(f.st.materialBody, marker[4:]) {
+		t.Fatalf("封面素材字节应来自 cover 文件（缺标记），got % x", f.st.materialBody[:min(16, len(f.st.materialBody))])
+	}
+}
+
+// TestUploadToMP_CoverFallbackToPoster cover_dir 无当日文件 → 回退白羊海报封面（软性降级不失败）。
+func TestUploadToMP_CoverFallbackToPoster(t *testing.T) {
+	const date = "2026-11-12"
+	f := newArticleFixture(t, 0)
+	f.cfg.Starfuyu.CoverDir = t.TempDir() // 空目录
+
+	if _, err := f.svc.UploadToMP(context.Background(), date); err != nil {
+		t.Fatalf("UploadToMP err = %v, want nil", err)
+	}
+	// 回退路径读 stub 图片服务的 key → driver 字节（stubMPDriver 预置 0xFF D8 FF D9）。
+	if !bytes.Contains(f.st.materialBody, []byte{0xFF, 0xD8, 0xFF, 0xD9}) {
+		t.Fatalf("应回退海报字节作封面, got % x", f.st.materialBody[:min(16, len(f.st.materialBody))])
 	}
 }
 

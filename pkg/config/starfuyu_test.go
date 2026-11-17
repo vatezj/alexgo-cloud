@@ -36,6 +36,10 @@ func TestLoadGlobalConfig_StarfuyuSection(t *testing.T) {
 	if got := cfg.Starfuyu.CuteDir; got != "./data/starfuyu/cute/cutout" {
 		t.Errorf("starfuyu.cute_dir = %q, want %q", got, "./data/starfuyu/cute/cutout")
 	}
+	// 软文封面目录同理。
+	if got := cfg.Starfuyu.CoverDir; got != "./data/starfuyu/cover" {
+		t.Errorf("starfuyu.cover_dir = %q, want %q", got, "./data/starfuyu/cover")
+	}
 	// 密钥：2026-11-16 裁定改为允许本地明文（运营在本机 config.yaml 直填
 	// deepseek/wechat_mp 密钥以便跑真实上传；原「必须空串」政策作废）。
 	// ⚠ 提交 config.yaml 前必须先把 api_key/app_secret 清回空串——密钥不进 git。

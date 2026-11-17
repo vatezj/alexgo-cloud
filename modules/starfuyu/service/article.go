@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -104,17 +106,27 @@ func (s *articleService) UploadToMP(ctx context.Context, date string) ([]Uploade
 		return nil, err
 	}
 
-	// 2. 封面：Ensure 白羊座 → 读字节 → 永久素材。
-	thumbKey, err := s.images.Ensure(ctx, date, ConstellationList[0])
-	if err != nil {
-		return nil, err
+	// 2. 封面：cover_dir/{date}.png（scripts/starfuyu_cover.py 合成图）优先；
+	// 缺失/未配置 → 回退白羊海报（软降级——脚本没跑不阻断上传）。
+	// date 先过格式校验再拼路径（防 ../ 穿越；非法 date 后续 fortuneImageKey 也会 10001）。
+	var thumbData []byte
+	if _, perr := time.Parse("2006-01-02", date); perr == nil && s.cfg != nil && s.cfg.Starfuyu.CoverDir != "" {
+		if b, rerr := os.ReadFile(filepath.Join(s.cfg.Starfuyu.CoverDir, date+".png")); rerr == nil && len(b) > 0 {
+			thumbData = b
+		}
 	}
-	data, err := readStorageAll(ctx, s.driver, thumbKey)
-	if err != nil {
-		return nil, errs.New(errs.CodeStarfuyuMpUploadFailed,
-			fmt.Errorf("读封面素材 %q: %w", thumbKey, err))
+	if thumbData == nil {
+		thumbKey, err := s.images.Ensure(ctx, date, ConstellationList[0])
+		if err != nil {
+			return nil, err
+		}
+		thumbData, err = readStorageAll(ctx, s.driver, thumbKey)
+		if err != nil {
+			return nil, errs.New(errs.CodeStarfuyuMpUploadFailed,
+				fmt.Errorf("读封面素材 %q: %w", thumbKey, err))
+		}
 	}
-	thumbMediaID, err := s.mp.UploadImageMaterial(ctx, data)
+	thumbMediaID, err := s.mp.UploadImageMaterial(ctx, thumbData)
 	if err != nil {
 		return nil, wrapMpErr(err)
 	}

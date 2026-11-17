@@ -65,6 +65,7 @@ func LoadGlobalConfig() (*Config, error) {
 	// 缺键时兜底保证 assets_dir 恒有值（cron 表达式缺省在代码 Register，见 pkg/job）。
 	v.SetDefault("starfuyu.assets_dir", "modules/starfuyu/assets")
 	v.SetDefault("starfuyu.cute_dir", "./data/starfuyu/cute/cutout")
+	v.SetDefault("starfuyu.cover_dir", "./data/starfuyu/cover")
 
 	// 常用 env 覆盖：兼容 docker-compose / k8s secret 注入。
 	_ = v.BindEnv("server.http_addr", "HTTP_ADDR")
