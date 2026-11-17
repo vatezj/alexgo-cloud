@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	errs "alexGo-cloud/pkg/errors"
 )
@@ -354,6 +355,13 @@ func TestDraftManageRealManual(t *testing.T) {
 				limit = n
 			}
 		}
+		// 限频间隔（ms）：45009 日配额 + 高频触发都有先例，默认 300ms 保守降频。
+		pause := 300 * time.Millisecond
+		if v := os.Getenv("STARFUYU_DRAFT_DELETE_PAUSE_MS"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				pause = time.Duration(n) * time.Millisecond
+			}
+		}
 		remaining := ids
 		done := 0
 		for i := 0; i < limit && len(remaining) > 0; i++ {
@@ -367,6 +375,9 @@ func TestDraftManageRealManual(t *testing.T) {
 			done++
 			if done%25 == 0 {
 				_ = os.WriteFile(deleteFile, []byte(strings.Join(remaining, "\n")+"\n"), 0o644)
+			}
+			if pause > 0 {
+				time.Sleep(pause)
 			}
 		}
 		_ = os.WriteFile(deleteFile, []byte(strings.Join(remaining, "\n")+"\n"), 0o644)
