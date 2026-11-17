@@ -190,6 +190,7 @@ daily_astro/daily_intro 与星座无关、全篇同一条。
 7. summary ≤24字。
 8. slogan 为卡片底部横幅口号：必须由当日运势生发——先看该星座 overall_score 高低与 summary/advice 的主题，高分写乘势/庆祝、低分写蓄力/从容，落到与 summary 同一件事上；积极向上、每日不同、≤16字。
 9. daily_astro/daily_intro 是当日全局一条：与12星座无关、全篇同一条，不随星座变化。
+10. daily_intro 不得用「今天/今日」（文章提前一天发，口吻用「明天/明日」或中性「这天」）；其余星座文案（summary/tip/slogan 等）仍按当日口吻写（与海报模板「今日」标签配套）。
 
 请严格遵循以上规则。现在，请根据日期 %s 生成对象包裹（daily_astro、daily_intro + fortunes 内12个星座详细数据）的运势信息。`, date, date)
 

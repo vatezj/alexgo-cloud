@@ -389,6 +389,7 @@ func TestUploadToMP_ContentUsesCDNUrls(t *testing.T) {
 	var body struct {
 		Articles []struct {
 			Content string `json:"content"`
+			Digest  string `json:"digest"`
 		} `json:"articles"`
 	}
 	if err := json.Unmarshal(f.st.lastDraftBody, &body); err != nil {
@@ -398,6 +399,16 @@ func TestUploadToMP_ContentUsesCDNUrls(t *testing.T) {
 		t.Fatalf("draft articles = %d, want 1", len(body.Articles))
 	}
 	content := body.Articles[0].Content
+	// 用户裁定 2026-11-17：草稿提前一天出，文章口吻必须「明日」不能「今日/今天」。
+	if strings.Contains(body.Articles[0].Digest, "今天是") || !strings.Contains(body.Articles[0].Digest, "明日是") {
+		t.Errorf("digest 应为「明日是…」而非「今天是…」: %q", body.Articles[0].Digest)
+	}
+	if strings.Contains(body.Articles[0].Digest, "今日运势") || !strings.Contains(body.Articles[0].Digest, "明日运势") {
+		t.Errorf("digest 应提「明日运势」: %q", body.Articles[0].Digest)
+	}
+	if strings.Contains(content, "今日好运") || !strings.Contains(content, "明日好运") {
+		t.Errorf("底部关注区应为「明日好运」: 含今日好运=%v", strings.Contains(content, "今日好运"))
+	}
 	if n := strings.Count(content, "https://mmbiz.qpic.cn/img"); n != 12 {
 		t.Errorf("content CDN 图数 = %d, want 12", n)
 	}

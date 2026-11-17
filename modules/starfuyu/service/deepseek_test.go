@@ -88,6 +88,10 @@ func TestFetchFortunes_PromptAndShareFields(t *testing.T) {
 	if !strings.Contains(prompt, "对象包裹") {
 		t.Errorf("prompt 缺对象包裹措辞")
 	}
+	// 文章提前一天出：开篇总述不得用「今天/今日」（用户裁定 2026-11-17）。
+	if !strings.Contains(prompt, "daily_intro 不得用「今天/今日」") {
+		t.Errorf("prompt 缺 daily_intro 明日口吻规则")
+	}
 
 	row := rows[0]
 	if row.Advice == "" {
