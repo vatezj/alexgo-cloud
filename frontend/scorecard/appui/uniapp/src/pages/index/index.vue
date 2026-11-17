@@ -522,7 +522,7 @@ function goSalary() {
           ♠
         </text>
         <text class="ntitle">
-          打牌记账
+          记账局叙
         </text>
       </view>
       <view class="side right">

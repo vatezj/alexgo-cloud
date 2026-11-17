@@ -40,7 +40,7 @@ function goManual() {
       name="i-carbon-volume-up"
     />
     <text class="txt">
-      “打牌记账”<b>不涉及金钱，禁止用于违法行为</b>
+      “记账局叙”<b>不涉及金钱，禁止用于违法行为</b>
     </text>
     <text
       class="link"

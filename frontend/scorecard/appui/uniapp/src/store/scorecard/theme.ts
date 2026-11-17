@@ -1,5 +1,5 @@
 /**
- * 打牌记账 4 主题 store + 组合式
+ * 记账局叙 4 主题 store + 组合式
  *
  * - themeId: 1|2|3|4（1=墨金 BASELINE，2=深海筹码，3=红黑赌场，4=青瓷茶室）
  * - persist：走脚手架 pinia persist 插件（store/persist.ts 按 $id 持久化），$id = 'scorecard-theme'
@@ -43,7 +43,7 @@ function applyRootThemeClass(id: ScorecardThemeId) {
 }
 
 /**
- * 打牌记账主题
+ * 记账局叙主题
  *
  * @example
  * ```ts

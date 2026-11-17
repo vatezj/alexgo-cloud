@@ -289,6 +289,7 @@ declare global {
   const usePreferredReducedMotion: typeof import('@vueuse/core')['usePreferredReducedMotion']
   const usePrevious: typeof import('@vueuse/core')['usePrevious']
   const useProfileGate: typeof import('./composables/scorecard/useProfileGate')['useProfileGate']
+  const useProfileZodiac: typeof import('./store/starfuyu/useProfileZodiac')['useProfileZodiac']
   const useRafFn: typeof import('@vueuse/core')['useRafFn']
   const useRefHistory: typeof import('@vueuse/core')['useRefHistory']
   const useRequest: typeof import('alova/client')['useRequest']
@@ -357,6 +358,7 @@ declare global {
   const useWindowFocus: typeof import('@vueuse/core')['useWindowFocus']
   const useWindowScroll: typeof import('@vueuse/core')['useWindowScroll']
   const useWindowSize: typeof import('@vueuse/core')['useWindowSize']
+  const useZodiacStore: typeof import('./store/starfuyu/zodiac')['useZodiacStore']
   const watch: typeof import('vue')['watch']
   const watchArray: typeof import('@vueuse/core')['watchArray']
   const watchAtMost: typeof import('@vueuse/core')['watchAtMost']
@@ -374,6 +376,7 @@ declare global {
   const watchWithFilter: typeof import('@vueuse/core')['watchWithFilter']
   const whenever: typeof import('@vueuse/core')['whenever']
   const withConfigType: typeof import('./api/createApis')['withConfigType']
+  const zodiacList: typeof import('./store/starfuyu/zodiac')['zodiacList']
 }
 // for type re-export
 declare global {
@@ -666,6 +669,7 @@ declare module 'vue' {
     readonly usePreferredReducedMotion: UnwrapRef<typeof import('@vueuse/core')['usePreferredReducedMotion']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useProfileGate: UnwrapRef<typeof import('./composables/scorecard/useProfileGate')['useProfileGate']>
+    readonly useProfileZodiac: UnwrapRef<typeof import('./store/starfuyu/useProfileZodiac')['useProfileZodiac']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useRequest: UnwrapRef<typeof import('alova/client')['useRequest']>
@@ -734,6 +738,7 @@ declare module 'vue' {
     readonly useWindowFocus: UnwrapRef<typeof import('@vueuse/core')['useWindowFocus']>
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
+    readonly useZodiacStore: UnwrapRef<typeof import('./store/starfuyu/zodiac')['useZodiacStore']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>
@@ -751,5 +756,6 @@ declare module 'vue' {
     readonly watchWithFilter: UnwrapRef<typeof import('@vueuse/core')['watchWithFilter']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
     readonly withConfigType: UnwrapRef<typeof import('./api/createApis')['withConfigType']>
+    readonly zodiacList: UnwrapRef<typeof import('./store/starfuyu/zodiac')['zodiacList']>
   }
 }

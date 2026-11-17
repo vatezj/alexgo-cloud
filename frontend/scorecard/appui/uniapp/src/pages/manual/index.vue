@@ -62,7 +62,7 @@ function goBack() {
       <view class="ntitle">
         使用手册
         <text class="nsub">
-          打牌记账 · 当前版本 {{ version }}
+          记账局叙 · 当前版本 {{ version }}
         </text>
       </view>
       <view class="side right">
@@ -119,7 +119,7 @@ function goBack() {
       </view>
       <view class="man-b">
         <view class="li red">
-          <text>“打牌记账”是记账、计分工具 — 不能涉及金钱，禁止用于违法行为</text>
+          <text>“记账局叙”是记账、计分工具 — 不能涉及金钱，禁止用于违法行为</text>
         </view>
         <view class="li">
           <text>需要帮助：微信客服留言（人多请耐心等待，24h 内回复）</text>

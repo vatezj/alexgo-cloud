@@ -239,6 +239,7 @@ onShow(() => {
       >
         <wd-icon
           css-icon
+          size="24px"
           class="navicon"
           name="i-carbon-chevron-left"
         />
@@ -507,7 +508,7 @@ onShow(() => {
   display: block;
   margin: 14px 20px 8px;
   color: var(--dim);
-  font-size: 11px;
+  font-size: 16px;
   letter-spacing: 0.12em;
 }
 

@@ -13,9 +13,9 @@ Wot Starter
   <a href="https://starter.wot-ui.cn/">📖 在线文档</a>
 </p>
 
-## 打牌记账小程序 · 运行说明
+## 记账局叙小程序 · 运行说明
 
-打牌记账（scorecard）页面位于 `src/pages`（index / room / settle / records / friends / expense / manual / login），运行方式如下。
+记账局叙（scorecard）页面位于 `src/pages`（index / room / settle / records / friends / expense / manual / login），运行方式如下。
 
 ### 安装与开发
 

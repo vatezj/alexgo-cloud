@@ -2,7 +2,7 @@
 import type { ConfigProviderProps } from '@wot-ui/ui/components/wd-config-provider/types'
 
 const { themeVars, theme } = useManualTheme()
-// 打牌记账主题 class：小程序端无 document，主题根节点 class 挂在本根视图（H5 同时另挂 documentElement）
+// 记账局叙主题 class：小程序端无 document，主题根节点 class 挂在本根视图（H5 同时另挂 documentElement）
 const { themeId } = useScorecardTheme()
 
 // 在此 setup 调用 useDialog('globalDialog') 以向整棵子树 provide 共享 ref：

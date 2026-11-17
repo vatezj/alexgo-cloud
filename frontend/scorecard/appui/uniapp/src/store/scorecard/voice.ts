@@ -1,5 +1,5 @@
 /**
- * 打牌记账语音 5 档 store（设计 10 / 手册 §3.8）
+ * 记账局叙语音 5 档 store（设计 10 / 手册 §3.8）
  *
  * - state 三 bool：{entertain, ledger, roomDyn}（娱乐 / 流水 / 房间动态），persist 按 $id
  *   = 'scorecard-voice'（脚手架 pinia persist 插件自动落盘）

@@ -8,7 +8,10 @@
  * - 邀请（设计 03）：房号标题/右上 ••• → QrInvitePanel 扇牌小程序码弹层；
  *   转发 onShareAppMessage 与小程序码同走 scene 进房协议（roomId 直达不再作为邀请 path）
  * - 流水：recent_logs 账板 + 「查看更多」→ wd-popup 内 logs 分页上拉
- * - 筹码轨：客服占位 | 支出 → expense（预选空）| 结束牌局 → settle（房主 status===0）| 我的 → AvatarPopup（设计 10 头像弹窗）；
+ * - 悬浮操作栏（wd-fab，右下角偏上 + 可拖动吸边）：点筹码展开菜单 → 支出（expense 预选空）|
+ *   客服占位 | 结束牌局 → settle（房主 status===0）| 我的 → AvatarPopup（设计 10 头像弹窗）；
+ *   底部 --ad-space 留白给微信自动插入的广告，账板在 flex 链中得到相应固定高度；
+ *   点击页面其它处由 useQueue closeOutside 收起菜单；FAB z-index 低于弹层遮罩（9）
  *   点成员头像 → expense 页预填 toUserId query
  * - 轮询：onShow refresh（错误本页 toast）+ start；onHide/onUnload stop；下拉刷新 refresh
  * - 业务错误本页 toast（ApiError 非 401/403，handlers 已全局提示的不重复）；
@@ -16,6 +19,7 @@
  * - 色值零硬编码：全走主题 token 与全局工具类（.comply/.num/.win-n/.lose-n/.jade-n）
  */
 import type { RoomLogItem } from '@/api/scorecard/types'
+import { useQueue } from '@wot-ui/ui'
 import { ApiError } from '@/api/core/handlers'
 import { logs as fetchLogs } from '@/api/scorecard/room'
 import AvatarPopup from '@/components/scorecard/AvatarPopup.vue'
@@ -174,7 +178,7 @@ onShareAppMessage(() => {
     ? (inv ? `qr=${code},inv=${inv}` : `qr=${code}`)
     : null
   return {
-    title: `${roomCodeText.value} · 邀你打牌记账`,
+    title: `${roomCodeText.value} · 邀你记账局叙`,
     path: scene
       ? `/pages/index/index?scene=${encodeURIComponent(scene)}`
       : '/pages/index/index',
@@ -195,6 +199,29 @@ function onTeaPoolClick() {
 /** 我的 → 头像弹窗（设计 10：昵称 / 语音 5 档 / 主题入口 / 退出房间）。 */
 function onMineClick() {
   showAvatarPopup.value = true
+}
+
+/* ── 悬浮操作栏（wd-fab） ── */
+
+const { closeOutside } = useQueue()
+
+/** FAB 菜单展开态（v-model:active；点筹码 toggle，动作项/页面其它处收起）。 */
+const fabActive = ref(false)
+
+/** 菜单动作：先收菜单再执行（页面栈返回时不留展开态）。 */
+function onFabExpense() {
+  fabActive.value = false
+  goExpense()
+}
+
+function onFabSettle() {
+  fabActive.value = false
+  goSettle()
+}
+
+function onFabMine() {
+  fabActive.value = false
+  onMineClick()
 }
 
 /* ── 全部流水弹层（分页上拉） ── */
@@ -297,6 +324,7 @@ onPullDownRefresh(() => {
   <view
     class="room-page"
     :style="pageStyle"
+    @click="closeOutside"
   >
     <!-- 自绘 nav -->
     <view class="nav">
@@ -304,9 +332,7 @@ onPullDownRefresh(() => {
         class="side"
         @click="goBack"
       >
-        <text class="navicon">
-          ⌂
-        </text>
+        <wd-icon name="home-fill" color="var(--brass)"  size="24px"></wd-icon>
       </view>
       <view
         class="ntitle"
@@ -420,7 +446,7 @@ onPullDownRefresh(() => {
          .ledger.fill → scroll-view，逐层 flex:1 + min-height:0 压出定高，内部滚动。
          注意：MP 自定义组件会渲染真实 host 节点（未开 virtualHost），它是 zone 的
          flex 子元素——不给 host 定 flex 规则的话，flex:1 只作用在组件内部根节点上，
-         host 按内容自然高度把账板顶进筹码轨且 scroll-view 无法滚动（H5 无 host 节点，
+         host 按内容自然高度把账板撑出 flex 区且 scroll-view 无法滚动（H5 无 host 节点，
          class 直接合并到组件根，同一条规则两边都成立） -->
     <view class="ledger-zone">
       <RoomLedger
@@ -432,57 +458,79 @@ onPullDownRefresh(() => {
       />
     </view>
 
-    <!-- 筹码轨 -->
-    <view class="rail">
+    <!-- 悬浮操作栏（wd-fab）：右下角偏上、可拖动；点筹码展开 支出/客服/结束牌局/我的。
+         底部 --ad-space 留白 = 微信自动广告位，gap 为与屏幕边缘距离（非按钮尺寸），按真机微调；
+         draggable 开启后组件自行维护 top/left（拖动吸边并自动改弹出方向），
+         不能再用 custom-style 覆盖 top，否则拖动被锁死 -->
+    <wd-fab
+      v-model:active="fabActive"
+      position="right-bottom"
+      direction="top"
+      draggable
+      :gap="{ top: 16, right: 0, bottom: 30, left: 0 }"
+      :z-index="5"
+    >
+      <template #trigger>
+        <view
+          class="fab-chip"
+          :class="{ on: fabActive }"
+          @click="fabActive = !fabActive"
+        >
+          <text>支出/退出</text>
+        </view>
+      </template>
+
+      <!-- .wd-fab__actions 为 column-reverse 竖排：DOM 首项紧贴筹码上方 -->
+      <view
+        class="fab-act"
+        @click="onFabExpense"
+      >
+        <wd-icon
+          css-icon
+          class="fa-ico"
+          name="i-carbon-edit"
+        />
+        <text>支出</text>
+      </view>
       <wd-button
         variant="text"
         open-type="contact"
         custom-style="display: block; padding: 0; height: auto; line-height: 1; background: transparent;"
+        @click="fabActive = false"
       >
-        <view class="side">
+        <view class="fab-act">
           <wd-icon
             css-icon
-            class="ico"
+            class="fa-ico"
             name="i-carbon-headset"
           />
           <text>客服</text>
         </view>
       </wd-button>
       <view
-        class="main"
-        @click="goExpense()"
-      >
-        <view class="bigchip">
-          <text>支出</text>
-        </view>
-        <text class="cap2">
-          记分入口 · 头像快捷
-        </text>
-      </view>
-      <view
         v-if="canSettle"
-        class="side"
-        @click="goSettle"
+        class="fab-act"
+        @click="onFabSettle"
       >
         <wd-icon
           css-icon
-          class="ico"
+          class="fa-ico"
           name="i-carbon-flag"
         />
         <text>结束牌局</text>
       </view>
       <view
-        class="side"
-        @click="onMineClick"
+        class="fab-act"
+        @click="onFabMine"
       >
         <wd-icon
           css-icon
-          class="ico"
+          class="fa-ico"
           name="i-carbon-user"
         />
         <text>我的</text>
       </view>
-    </view>
+    </wd-fab>
 
     <!-- 全部流水弹层（分页上拉） -->
     <wd-popup
@@ -557,7 +605,12 @@ onPullDownRefresh(() => {
   /* 定高：H5 页面根内容驱动高度时 flex 兜底失效（MP 页面容器自带定高，H5 必须显式给） */
   height: 100vh;
   min-height: 100vh;
-  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0 0;
+
+  /* 底部广告留白（微信自动插入的广告位，高度按实际广告调整）；
+     留白后账板在 flex 链中得到相应固定高度 */
+  --ad-space: 64px;
+  padding: calc(var(--status-bar-h, env(safe-area-inset-top, 0px)) + 6px) 0
+    calc(var(--ad-space) + env(safe-area-inset-bottom, 0px));
   color: var(--on-ink);
   background: var(--ink-900);
   background-image: var(--spot);
@@ -674,7 +727,7 @@ onPullDownRefresh(() => {
   box-shadow: var(--shadow-tile), inset 0 0 0 2px var(--brass-a50);
 }
 
-/* 账板占位区：吃满牌桌与筹码轨之间剩余空间（flex 链 min-height:0 保证可压缩） */
+/* 账板占位区：吃满牌桌与底部广告留白之间剩余空间（flex 链 min-height:0 保证可压缩） */
 .ledger-zone {
   display: flex;
   flex: 1;
@@ -803,74 +856,71 @@ onPullDownRefresh(() => {
   background: var(--on-ink-a25);
 }
 
-/* ── 筹码轨 ── */
-.rail {
-  z-index: 4;
-  display: flex;
-  flex: none;
-  gap: 30px;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
-  background: linear-gradient(180deg, transparent, var(--ink-900) 34%);
+/* ── 悬浮操作栏（wd-fab） ── */
+
+/* 动作菜单容器（组件内部节点）：column-reverse 竖排，补项间距 */
+:deep(.wd-fab__actions) {
+  gap: 7px;
 }
 
-.rail .side {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: center;
-  padding-top: 6px;
-  font-size: 11px;
-  color: var(--dim);
-  cursor: pointer;
-}
-
-.rail .side .ico {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.rail .main {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
-  cursor: pointer;
-}
-
-.rail .main .bigchip {
+/* 触发器：支出大筹码（自定义 #trigger，点击 toggle 菜单）。
+   整体按原尺寸 ×0.7 等比缩小 30% */
+.fab-chip {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 84px;
-  height: 84px;
+  width: 59px;
+  height: 59px;
   background: repeating-conic-gradient(from 8deg, var(--brass-lo) 0 18deg, var(--brass) 18deg 36deg);
   border-radius: 50%;
-  box-shadow: 0 5px 0 var(--brass-lo), 0 14px 26px var(--ink-900);
+  box-shadow: 0 3.5px 0 var(--brass-lo), 0 10px 18px var(--ink-900);
+  cursor: pointer;
 }
 
-.rail .main .bigchip::before {
+.fab-chip::before {
   position: absolute;
-  inset: 8px;
+  inset: 5.6px;
   content: '';
   background: radial-gradient(circle at 50% 36%, var(--brass-hi), var(--brass) 78%);
   border-radius: 50%;
 }
 
-.rail .main .bigchip text {
+.fab-chip text {
   position: relative;
   z-index: 1;
-  font-size: 19px;
+  font-size: 7px;
   font-weight: 700;
   color: var(--ink-900);
   letter-spacing: 0.05em;
 }
 
-.rail .main .cap2 {
-  font-size: 11px;
-  color: var(--dim);
+/* 菜单展开态：外圈提示 */
+.fab-chip.on {
+  box-shadow: 0 3.5px 0 var(--brass-lo), 0 10px 18px var(--ink-900), 0 0 0 3px var(--brass-a50);
+}
+
+/* 菜单动作胶囊 */
+.fab-act {
+  display: flex;
+  gap: 4.2px;
+  align-items: center;
+  padding: 5.6px 9.8px;
+  font-size: 8.4px;
+  color: var(--on-ink);
+  white-space: nowrap;
+  background: var(--ink-900);
+  border: 1px solid var(--brass-a50);
+  border-radius: 999px;
+  box-shadow: var(--shadow-tile);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+
+.fab-act .fa-ico {
+  font-size: 11.2px;
+  line-height: 1;
+  color: var(--brass);
 }
 
 /* ── 全部流水弹层 ── */

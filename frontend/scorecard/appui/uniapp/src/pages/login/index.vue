@@ -160,7 +160,7 @@ async function onPasswordLogin() {
   >
     <view class="brand">
       <text class="brand-title">
-        打牌记账
+        记账局叙
       </text>
       <text class="brand-sub">
         开一桌 · 账目分明

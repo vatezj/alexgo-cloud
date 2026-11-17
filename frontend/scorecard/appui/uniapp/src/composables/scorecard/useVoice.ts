@@ -128,7 +128,7 @@ function speakMp(text: string): void {
 }
 
 /**
- * 打牌记账语音播报
+ * 记账局叙语音播报
  *
  * @example
  * ```ts

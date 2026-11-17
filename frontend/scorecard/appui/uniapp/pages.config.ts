@@ -12,9 +12,9 @@ import { defineUniPages } from '@uni-helper/vite-plugin-uni-pages'
 export default defineUniPages({
   pages: [],
   globalStyle: {
-    // 全局自绘导航（打牌记账：牌桌即界面，导航栏由各页自绘）
+    // 全局自绘导航（记账局叙：牌桌即界面，导航栏由各页自绘）
     navigationStyle: 'custom',
-    navigationBarTitleText: '打牌记账',
+    navigationBarTitleText: '记账局叙',
 
     // 页面背景配置（原生底色 = T1 墨金 BASELINE ink-900；页面内容背景走 var(--ink-900)）
     backgroundColor: '#14120F',

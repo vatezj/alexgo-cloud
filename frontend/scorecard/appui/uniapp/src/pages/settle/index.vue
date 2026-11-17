@@ -308,6 +308,7 @@ onUnload(() => {
       >
         <wd-icon
           css-icon
+          size="24px"
           class="navicon"
           name="i-carbon-chevron-left"
         />

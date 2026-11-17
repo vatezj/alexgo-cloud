@@ -1,5 +1,5 @@
 /**
- * 打牌记账房间 store
+ * 记账局叙房间 store
  *
  * - snapshot：当前房间全量快照（RoomSnapshot|null），房间页渲染源，支出/结算任务复用
  * - roomId：当前房间 id（0 = 无）；persist 插件按 $id = 'scorecard-room' 持久化整个 state，

@@ -26,6 +26,7 @@ const emit = defineEmits<{
     >
       <wd-icon
         css-icon
+        size="24px"
         class="fcn-navicon"
         name="i-carbon-chevron-left"
       />

@@ -284,7 +284,7 @@ function onPreset(p: number) {
 
 .rv {
   color: var(--lane);
-  font-size: 38px;
+  font-size: 28px;
   line-height: 1;
 }
 

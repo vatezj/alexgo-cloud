@@ -29,6 +29,7 @@ declare module 'vue' {
     WdButton: typeof import('@wot-ui/ui/components/wd-button/wd-button.vue')['default']
     WdConfigProvider: typeof import('@wot-ui/ui/components/wd-config-provider/wd-config-provider.vue')['default']
     WdDialog: typeof import('@wot-ui/ui/components/wd-dialog/wd-dialog.vue')['default']
+    WdFab: typeof import('@wot-ui/ui/components/wd-fab/wd-fab.vue')['default']
     WdIcon: typeof import('@wot-ui/ui/components/wd-icon/wd-icon.vue')['default']
     WdInput: typeof import('@wot-ui/ui/components/wd-input/wd-input.vue')['default']
     WdNotify: typeof import('@wot-ui/ui/components/wd-notify/wd-notify.vue')['default']

@@ -1,5 +1,5 @@
 /**
- * 打牌记账登录态 store
+ * 记账局叙登录态 store
  *
  * - persist：走脚手架 pinia persist 插件（store/persist.ts 按 $id 持久化），$id = 'scorecard-auth'
  * - token/refreshToken 令牌三元组（LoginResult）；user 为 /member/me 资料缓存（可空）
