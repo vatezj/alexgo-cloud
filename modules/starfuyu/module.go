@@ -2,6 +2,7 @@ package starfuyu
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
@@ -51,6 +52,7 @@ var FxModule = fx.Module("starfuyu",
 		service.NewArticleService, // ArticleService（Task 8 草稿箱上传）
 		app.NewAppLimitController,
 		service.NewTaskRunner, // TaskRunner（Task 9 定时任务编排）
+		service.NewDraftRunner,
 		// Task 10：C 端 13 端点合一控制器（Bearer member 自鉴权，spec §4.1）。
 		// token.Validator 的接口映射归入口（main.go），模块内不重复 Provide。
 		app.NewAppController,
@@ -75,8 +77,8 @@ var FxModule = fx.Module("starfuyu",
 	),
 	// 定时任务迁 pkg/job（原 cron.go）：缺省表达式在此注册，运维覆盖走 config jobs 段；
 	// 起停/时区/panic 恢复/开关守卫由 job.Manager 统一负责。
-	fx.Invoke(func(m *job.Manager, runner service.TaskRunner, cfg *config.Config) {
-		registerJobs(m, runner, cfg)
+	fx.Invoke(func(m *job.Manager, runner service.TaskRunner, drafts service.DraftRunner, cfg *config.Config) {
+		registerJobs(m, runner, drafts, cfg)
 	}),
 )
 
@@ -174,9 +176,9 @@ func (m *starfuyuModule) RegisterRoutes(r *gin.RouterGroup) {
 	// 需要时在此上方参照 modules/member/module.go 补 fx.Provide 映射。
 }
 
-// registerJobs 注册 starfuyu 两个定时任务（原 cron.go 的 cronLifecycle）。
-// runner 类型用接口而非具体 nopRunner——测试传桩即可。
-func registerJobs(m *job.Manager, runner service.TaskRunner, cfg *config.Config) {
+// registerJobs 注册 starfuyu 三个定时任务（原 cron.go 的 cronLifecycle +
+// 2026-11-17 次日草稿）。runner/drafts 类型用接口——测试传桩即可。
+func registerJobs(m *job.Manager, runner service.TaskRunner, drafts service.DraftRunner, cfg *config.Config) {
 	m.Register("starfuyu.fetch_fortune", "10 0 * * *", func(ctx context.Context) error {
 		if skipFetch(cfg.Starfuyu.Deepseek.APIKey) {
 			return nil
@@ -185,6 +187,14 @@ func registerJobs(m *job.Manager, runner service.TaskRunner, cfg *config.Config)
 	})
 	m.Register("starfuyu.generate_images", "20 0 * * *", func(ctx context.Context) error {
 		return runner.GenerateImagesToday(ctx)
+	})
+	// 每天 17:10 出次日软文草稿（用户裁定 2026-11-17：下午 5:10 出第二天的）。
+	// DeepSeek 空 key 同 fetch 守卫跳过；单双底图与 fetch→封面→上传流程见 DraftRunner。
+	m.Register("starfuyu.upload_draft", "10 17 * * *", func(ctx context.Context) error {
+		if skipFetch(cfg.Starfuyu.Deepseek.APIKey) {
+			return nil
+		}
+		return drafts.UploadDraft(ctx, service.TomorrowSH(time.Now()))
 	})
 }
 

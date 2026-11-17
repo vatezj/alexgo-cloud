@@ -56,6 +56,7 @@ jobs:                          # job 覆盖表（pkg/job）：嵌套 模块→�
   starfuyu:
     fetch_fortune: "10 0 * * *"
     generate_images: "20 0 * * *"
+    upload_draft: "10 17 * * *"     # 每天 17:10 出次日软文草稿（单数日粉底图/双数日橙底图）
 
 fishgame:
   wechat:

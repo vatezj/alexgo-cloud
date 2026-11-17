@@ -808,3 +808,58 @@ func TestUploadToMP_DailyReadPinnedTidZero(t *testing.T) {
 		t.Fatalf("UploadToMP 路径非零租户下 daily 应仍可读，content 缺重点星象")
 	}
 }
+
+// TestUploadDraftRealManual 次日草稿端到端：真实 DeepSeek 抓次日运势 →
+// python 按单双底图合成封面 → 草稿箱。STARFUYU_REAL_UPLOAD=1 开启；
+// STARFUYU_DRAFT_DATE 覆盖目标日（默认明天）。与定时任务 starfuyu.upload_draft 同路径。
+func TestUploadDraftRealManual(t *testing.T) {
+	if os.Getenv("STARFUYU_REAL_UPLOAD") != "1" {
+		t.Skip("真实上传需 STARFUYU_REAL_UPLOAD=1 显式开启")
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(wd, "..", "..", "..")
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadGlobalConfig()
+	_ = os.Chdir(wd)
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig err = %v", err)
+	}
+	if cfg.Starfuyu.WechatMp.AppID == "" || cfg.Starfuyu.Deepseek.APIKey == "" {
+		t.Skip("需 wechat_mp 密钥与 deepseek api_key")
+	}
+	date := os.Getenv("STARFUYU_DRAFT_DATE")
+	if date == "" {
+		date = TomorrowSH(time.Now())
+	}
+	ctx := context.Background()
+
+	// 真实运势服务（内存库；Fetch 缺则 DeepSeek 现抓）+ 真图片/文章/微信。
+	db := newTestDB(t)
+	repo := repository.NewFortuneRepository(db)
+	dailyRepo := repository.NewDailyRepository(db)
+	fortuneSvc := NewFortuneService(repo, dailyRepo, NewDeepSeekFetcher(cfg)) // 真抓次日
+	imgDrv, err := storage.NewLocalDriver(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgCfg := &config.Config{}
+	imgCfg.Starfuyu.FontFile = "../../../data/fonts/AlibabaPuHuiTi-3-85-Bold.ttf"
+	imgCfg.Starfuyu.BgFile = "../../../data/starfuyu/bg.png"
+	imgCfg.Starfuyu.CuteDir = "../../../data/starfuyu/cute/cutout"
+	imgSvc := NewImageService(fortuneSvc, imgDrv, imgCfg)
+	mp := NewWeChatMPClient(cfg.Starfuyu.WechatMp.AppID, cfg.Starfuyu.WechatMp.AppSecret)
+	cfg.Starfuyu.CoverDir = filepath.Join(root, "data", "starfuyu", "cover")
+	articleSvc := NewArticleService(fortuneSvc, imgSvc, mp, imgDrv, cfg, dailyRepo)
+
+	runner := NewDraftRunner(fortuneSvc, articleSvc, cfg).(*draftRunner)
+	runner.scriptPath = filepath.Join(root, "scripts", "starfuyu_cover.py") // 测试 cwd 非仓库根
+	if err := runner.UploadDraft(ctx, date); err != nil {
+		t.Fatalf("UploadDraft(%s) err = %v", date, err)
+	}
+	t.Logf("次日草稿已入箱: date=%s", date)
+}
