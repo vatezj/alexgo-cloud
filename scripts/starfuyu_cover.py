@@ -2,8 +2,12 @@
 """starfuyu 软文封面合成：cover_bg 去右下「豆包AI生成」水印 + 左上 logo + 日期（参考图风格）。
 
 用法:
-    python3 scripts/starfuyu_cover.py [YYYY-MM-DD] [-o 输出路径]
-缺省日期=今天，输出=/tmp/starfuyu_cover_{YYYY-MM-DD}.png。
+    python3 scripts/starfuyu_cover.py [YYYY-MM-DD] [-o 输出路径] [--bg 背景图] [--clean-only]
+缺省日期=今天，输出=/tmp/starfuyu_cover_{YYYY-MM-DD}.png，背景=cover_bg.png。
+
+清水印源机制（2026-11-17）：`--clean-only` 把背景去水印后存为 `{stem}.clean.png`
+（如 cover_bg.clean.png）；合成时若 `.clean` 源存在则直接读取、跳过去水印步骤
+——原始带水印文件保留作底稿，以后不再重复处理。
 
 三步:
   1. 水印清除：右下白字区整块用左侧同排像素克隆覆盖（保留水彩色触感），mask 羽化过渡。
@@ -93,8 +97,18 @@ def paste_logo(im: Image.Image) -> None:
     im.alpha_composite(logo, LOGO_POS)
 
 
-def compose(date: dt.date) -> Image.Image:
-    im = remove_watermark(Image.open(COVER_BG).convert("RGB")).convert("RGBA")
+def clean_source(bg: Path) -> Path:
+    """清水印源：{stem}.clean.png 存在即用；否则原图（合成时现场去水印）。"""
+    cand = bg.with_name(bg.stem + ".clean" + bg.suffix)
+    return cand if cand.exists() else bg
+
+
+def compose(date: dt.date, bg: Path = COVER_BG) -> Image.Image:
+    src = clean_source(bg)
+    if src == bg:
+        im = remove_watermark(Image.open(bg).convert("RGB")).convert("RGBA")
+    else:
+        im = Image.open(src).convert("RGBA")  # 已是清水印源，直接用
 
     digits = ImageFont.truetype(FONT_DIGIT, DATE_POS["digits"][1])
     weekday_font = ImageFont.truetype(FONT_CJK, DATE_POS["weekday"][1])
@@ -112,11 +126,23 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("date", nargs="?", default=dt.date.today().isoformat())
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--bg", default=str(COVER_BG), help="背景图路径（默认 cover_bg.png）")
+    ap.add_argument("--clean-only", action="store_true", help="只去水印存 {stem}.clean.png，不合成")
     args = ap.parse_args()
+    bg = Path(args.bg)
+
+    if args.clean_only:
+        out_clean = bg.with_name(bg.stem + ".clean" + bg.suffix)
+        cleaned = remove_watermark(Image.open(bg).convert("RGB"))
+        cleaned.save(out_clean)
+        # 复核：清水印产物右下角不应再有低饱和字形（粗检，人工看图为准）
+        print(f"clean: {out_clean}")
+        return 0
+
     date = dt.date.fromisoformat(args.date)
     out = Path(args.out) if args.out else Path(f"/tmp/starfuyu_cover_{date.isoformat()}.png")
 
-    im = compose(date)
+    im = compose(date, bg)
     im.convert("RGB").save(out, quality=95)
     print(f"cover: {out}")
     return 0
