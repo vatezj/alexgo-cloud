@@ -366,7 +366,7 @@ func TestDraftManageRealManual(t *testing.T) {
 		done := 0
 		for i := 0; i < limit && len(remaining) > 0; i++ {
 			id := remaining[0]
-			if err := mp.DeleteDraft(ctx, id); err != nil {
+			if err := deleteDraftWithRetry(ctx, mp, id); err != nil {
 				_ = os.WriteFile(deleteFile, []byte(strings.Join(remaining, "\n")+"\n"), 0o644)
 				t.Fatalf("第 %d 条失败，剩余 %d 条保留在 %s: id=%s err=%v",
 					done+1, len(remaining), deleteFile, id, err)
@@ -395,4 +395,20 @@ func TestDraftManageRealManual(t *testing.T) {
 		}
 		t.Logf("已删除: %s", id)
 	}
+}
+
+// deleteDraftWithRetry 临时性错误（errcode=-1 system error）重试 3 次、2s 退避；
+// 配额(45009)/IP(40164) 等硬错误立即上抛（重试无意义）。
+func deleteDraftWithRetry(ctx context.Context, mp MPClient, id string) error {
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err = mp.DeleteDraft(ctx, id); err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "errcode=-1") {
+			return err
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return err
 }
