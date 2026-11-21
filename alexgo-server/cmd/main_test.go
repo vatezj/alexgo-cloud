@@ -1,6 +1,8 @@
 package main
 
 import (
+	"alexGo-cloud/pkg/job"
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -95,5 +97,40 @@ func TestBaseOptions_RequiresTokenValidator(t *testing.T) {
 	full := append(append(options(&config.Config{}, false), consumeValidator), fx.NopLogger)
 	if err := fx.ValidateApp(full...); err != nil {
 		t.Fatalf("带接口映射的完整图必须可满足: %v", err)
+	}
+}
+
+// TestRunJobOnce_TriggersSynchronously --run-job 核心语义：起图（无 HTTP）→
+// 同步执行任务体 → 返回 nil。Manager 构造期 Invoke 捕获。
+func TestRunJobOnce_TriggersSynchronously(t *testing.T) {
+	ran := false
+	opts := []fx.Option{
+		fx.Supply(&config.Config{}),
+		job.FxModule,
+		fx.Invoke(func(m *job.Manager) {
+			m.Register("test.ok", "@every 1h", func(context.Context) error {
+				ran = true
+				return nil
+			})
+		}),
+		fx.NopLogger,
+	}
+	if err := runJobOnce(opts, "test.ok"); err != nil {
+		t.Fatalf("runJobOnce err = %v, want nil", err)
+	}
+	if !ran {
+		t.Fatal("任务体未被同步执行")
+	}
+}
+
+// TestRunJobOnce_JobNotFound 未注册任务 → 错误上抛（退出码非 0 的来源）。
+func TestRunJobOnce_JobNotFound(t *testing.T) {
+	opts := []fx.Option{
+		fx.Supply(&config.Config{}),
+		job.FxModule,
+		fx.NopLogger,
+	}
+	if err := runJobOnce(opts, "test.missing"); err == nil {
+		t.Fatal("未注册任务应返回错误")
 	}
 }

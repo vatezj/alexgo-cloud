@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
 	"go.uber.org/fx"
@@ -54,6 +55,9 @@ import (
 func main() {
 	// --migrate-only：用于 CI/CD 或 K8s Job，只做 schema migrate，不起 HTTP。
 	migrateOnly := flag.Bool("migrate-only", false, "run migrations only")
+	// --run-job：同步执行单个定时任务后退出（复用 migrate-only 的无 HTTP 依赖图），
+	// 服务器手动出稿/任务排障用：./alexgo-server-linux --run-job starfuyu.upload_draft
+	runJob := flag.String("run-job", "", "run a single job synchronously then exit (no HTTP)")
 	flag.Parse()
 
 	// 初始化全局 logger（Zap），后续所有模块共用同一实例。
@@ -73,8 +77,43 @@ func main() {
 		panic(err)
 	}
 
+	// --run-job：起图（与 --migrate-only 同图，不起 HTTP）→ 同步 Trigger → 按结果退出码返回。
+	if *runJob != "" {
+		if err := runJobOnce(options(cfg, true), *runJob); err != nil {
+			fmt.Fprintf(os.Stderr, "job %s FAILED: %v\n", *runJob, err)
+			os.Exit(1)
+		}
+		fmt.Printf("job %s OK\n", *runJob)
+		return
+	}
+
 	// fx.New(...) 会构建依赖图并按 Lifecycle 启动；Run() 会阻塞直到接收到退出信号。
 	run(fx.New(options(cfg, *migrateOnly)...), *migrateOnly)
+}
+
+// runJobOnce 以 migrate-only 形态起图（迁移/任务注册照跑、HTTP 不起）→
+// 同步 Trigger 指定任务 → Stop。返回 Trigger 的错误（未注册/停用/执行失败）。
+// Manager 经构造期 fx.Invoke 捕获（该 fx 版本无公开 Container()）。
+// 超时：Start 用 fx.DefaultTimeout；任务本体单独 5 分钟（抓取+封面+上传约 1 分钟）。
+func runJobOnce(opts []fx.Option, name string) error {
+	var m *job.Manager
+	app := fx.New(append(opts, fx.Invoke(func(mm *job.Manager) { m = mm }))...)
+	startCtx, cancel := context.WithTimeout(context.Background(), fx.DefaultTimeout)
+	defer cancel()
+	if err := app.Start(startCtx); err != nil {
+		return fmt.Errorf("start app: %w", err)
+	}
+	if m == nil {
+		_ = app.Stop(context.Background())
+		return fmt.Errorf("job.Manager 未注入")
+	}
+	jobCtx, cancelJob := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancelJob()
+	triggerErr := m.Trigger(jobCtx, name)
+	if stopErr := app.Stop(context.Background()); stopErr != nil && logger.Log != nil {
+		logger.Log.Error("run-job stop failed", zap.Error(stopErr))
+	}
+	return triggerErr
 }
 
 // run 按模式启动：migrate-only 走 Start→Stop 即退（迁移挂在 fx.Invoke，
