@@ -103,6 +103,15 @@ function goStarfuyu() {
   }
   uni.navigateTo({ url: '/pages/starfuyu/index/index' })
 }
+
+/** 算24（fun-minigames-24-huarong）→ 分包 pages/game24/index */
+function goGame24() {
+  router.push({ path: '/pages/game24/index' })
+}
+/** 华容道（fun-minigames-24-huarong）→ 分包 pages/huarong/index */
+function goHuarong() {
+  router.push({ path: '/pages/huarong/index' })
+}
 </script>
 
 <template>
@@ -277,6 +286,54 @@ function goStarfuyu() {
           </text>
           <text class="r-s">
             今日运势 · 查八字
+          </text>
+        </view>
+        <wd-icon
+          css-icon
+          class="chev"
+          name="i-carbon-chevron-right"
+        />
+      </view>
+
+      <view
+        class="g-row fun-row"
+        @click="goGame24"
+      >
+        <view class="fc-tile y">
+          <text class="fc-tile-t">
+            24
+          </text>
+        </view>
+        <view class="r-main">
+          <text class="r-t">
+            算24
+          </text>
+          <text class="r-s">
+            四张牌凑二十四
+          </text>
+        </view>
+        <wd-icon
+          css-icon
+          class="chev"
+          name="i-carbon-chevron-right"
+        />
+      </view>
+
+      <view
+        class="g-row fun-row"
+        @click="goHuarong"
+      >
+        <view class="fc-tile i">
+          <text class="fc-tile-t">
+            华
+          </text>
+        </view>
+        <view class="r-main">
+          <text class="r-t">
+            华容道
+          </text>
+          <text class="r-s">
+            经典横刀立马
           </text>
         </view>
         <wd-icon
