@@ -120,6 +120,7 @@ function onSubmit() {
       dealTimer = null
       cards.value = dealCards()
       steps.value = []
+      clearAnswer()
       wrongFlash.value = false
     }, 800)
     return
@@ -255,7 +256,7 @@ onUnmounted(() => {
           @click="onBackspace"
         >
           <text class="g24-op-t">
-            ⌫
+            ⌫ 删除
           </text>
         </view>
       </view>
@@ -466,6 +467,11 @@ onUnmounted(() => {
 
 .g24-op--bs {
   background: transparent;
+}
+
+/* 「⌫ 删除」双语混排，略缩字号防 1fr 格内溢出 */
+.g24-op--bs .g24-op-t {
+  font-size: 17px;
 }
 
 .g24-pill--hover {

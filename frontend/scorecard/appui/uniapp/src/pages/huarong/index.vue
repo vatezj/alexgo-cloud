@@ -12,6 +12,7 @@ import type { Dir, Piece } from '@/utils/huarong/board'
 import ModNav from '@/components/funCompass/ModNav.vue'
 import { useSystemBar } from '@/composables/useSystemBar'
 import {
+  canMove,
   COLS,
   INITIAL_PIECES,
   isWin,
@@ -116,10 +117,12 @@ function onPieceClick(p: Piece) {
   selectedId.value = selectedId.value === p.id ? null : p.id
 }
 
-/** 点箭头：movePiece 重赋值 + 计步 + 判胜（箭头只渲染可动方向） */
+/** 点箭头：复校可动性（MP 视图层滞后防连点盲移）→ movePiece 重赋值 + 计步 + 判胜 */
 function onArrow(dir: Dir) {
   const id = selectedId.value
   if (won.value || !id)
+    return
+  if (!canMove(pieces.value, id, dir))
     return
   pieces.value = movePiece(pieces.value, id, dir)
   steps.value++

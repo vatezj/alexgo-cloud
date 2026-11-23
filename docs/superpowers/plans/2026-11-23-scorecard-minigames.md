@@ -138,7 +138,7 @@ git commit -m "test(scorecard-appui): 算24 有理数中缀表达式求值器（
 - Consumes: Task 2 的 `Token`、`evalTokens`、`ratEq`
 - Produces:
   - `export function findSolution(cards: number[]): Token[] | null`——返回**每个二元运算都带括号**的中缀 token 序列（保证 `evalTokens` 可直接求值），无解返回 `null`
-  - `export function formatExpr(tokens: Token[]): string`——展示串，剥除最外层一对冗余括号（如 `((1+2))` → `1+2`，其余保留）
+  - `export function formatExpr(tokens: Token[]): string`——展示串，剥除最外层一对冗余括号（如 `((1+2))` → `(1+2)`，其余保留）
   - `export function dealCards(rng?: () => number): number[]`——发 4 张 1–13（可重复），用 `findSolution` 验证有解才返回；`rng` 默认 `Math.random`
 
 - [ ] **Step 1: 写失败测试**

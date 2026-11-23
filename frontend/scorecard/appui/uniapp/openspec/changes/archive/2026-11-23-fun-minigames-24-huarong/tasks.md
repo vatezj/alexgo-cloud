@@ -14,7 +14,7 @@
 
 - [x] 2.1 `vite.config.ts` `subPackages` 追加 `'src/pages/game24'`
 - [x] 2.2 实现 `src/pages/game24/index.vue`（ModNav 自绘导航、点选拼式、提交判定/看答案/换题/清空、墨金主题、`g24-` 前缀、零存储零接口）
-- [x] 2.3 `pnpm lint && pnpm type-check && pnpm build:h5` 全绿，`src/pages.json` 生成物含 `pages/game24` 分包（不手改，随提交入库）
+- [x] 2.3 `pnpm lint && pnpm type-check && pnpm build:h5` 全绿，`src/pages.json` 生成物含 `pages/game24` 分包（不手改，随提交入库）；终审补跑 `pnpm build:mp-weixin` 亦通过（2026-11-23 final-fix）
 - [x] 2.4 Commit：`feat(scorecard-appui): 算24 小游戏分包页面（点选拼式/提交判定/看答案/换题）`
 
 ## 3. 华容道核心逻辑（TDD）
@@ -28,7 +28,7 @@
 
 - [x] 4.1 `vite.config.ts` `subPackages` 追加 `'src/pages/huarong'`（与 2.1 合并为完整四元素数组）
 - [x] 4.2 实现 `src/pages/huarong/index.vue`（ModNav、4×5 棋盘渲染、点选高亮方向移动计步、重置、`huarong:best` 本地 storage 通关更新、`hr-` 前缀、无计时无提示无接口）
-- [x] 4.3 `pnpm lint && pnpm type-check && pnpm build:h5` 全绿，`src/pages.json` 含 `pages/huarong` 分包（随提交入库）
+- [x] 4.3 `pnpm lint && pnpm type-check && pnpm build:h5` 全绿，`src/pages.json` 含 `pages/huarong` 分包（随提交入库）；终审补跑 `pnpm build:mp-weixin` 亦通过（2026-11-23 final-fix）
 - [x] 4.4 Commit：`feat(scorecard-appui): 华容道分包页面（横刀立马/点箭头移动/计步/最佳本地存储）`
 
 ## 5. 【我的】页入口
@@ -40,7 +40,7 @@
 
 ## 6. 验证与归档
 
-- [x] 6.1 全量门禁复跑：`pnpm lint && pnpm type-check && pnpm build:h5` + 三个 node 测试文件全绿
+- [x] 6.1 全量门禁复跑：`pnpm lint && pnpm type-check && pnpm build:h5` + 三个 node 测试文件全绿；终审 fix wave 后补跑 `pnpm build:mp-weixin` 全绿（2026-11-23 final-fix，对齐 proposal/design 验收）
 - [x] 6.2 人工冒烟：`pnpm dev:h5` 验证我的页入口、算24 一局、华容道移动/重置/造胜后最佳步数落 storage（环境不通则如实记录）——H5 冒烟完成：我的页五行走序与两入口跳转、算24 发牌/看答案/换题/正误提交/标红/清空/零存储、华容道选中箭头移动计步/重置/通关 overlay/`huarong:best` 落 storage/重玩保留最佳均验证通过（通关为注入近胜局面后走真实 onArrow 路径）
 - [x] 6.3 按实际完成情况勾选本 tasks.md；调 Skill `openspec-verify-change` 核对 spec/任务/实现一致
 - [x] 6.4 调 Skill `openspec-archive-change` 归档变更
