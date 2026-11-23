@@ -120,6 +120,18 @@ const (
 	// CodeJobDisabled pkg/job：任务已停用（模块开关关 / 配置空串），拒绝手动触发。
 	CodeJobDisabled Code = 30602
 
+	// ---- 307xx taokouling ----
+	// CodeTaoKoulingPasswordNotFound taokouling：分享文本里未识别到淘口令。
+	CodeTaoKoulingPasswordNotFound Code = 30701
+	// CodeTaoKoulingConfigMissing taokouling：淘口令服务配置缺失。
+	CodeTaoKoulingConfigMissing Code = 30702
+	// CodeTaoKoulingChannelMissing taokouling：未配置可用推广渠道。
+	CodeTaoKoulingChannelMissing Code = 30703
+	// CodeTaoKoulingRateLimited taokouling：请求过于频繁，限流命中。
+	CodeTaoKoulingRateLimited Code = 30704
+	// CodeTaoKoulingParseFailed taokouling：淘口令解析失败。
+	CodeTaoKoulingParseFailed Code = 30705
+
 	// 5xxxx 系统
 	CodeInternal Code = 50000
 	// CodeWxacodeNotConfigured scorecard 小程序码：租户未配置（或已停用）微信小程序渠道，
@@ -192,6 +204,12 @@ var registry = map[Code]string{
 
 	CodeJobNotFound: "任务不存在",
 	CodeJobDisabled: "任务已停用",
+
+	CodeTaoKoulingPasswordNotFound: "未识别到淘口令",
+	CodeTaoKoulingConfigMissing:    "淘口令服务配置缺失",
+	CodeTaoKoulingChannelMissing:   "未配置可用推广渠道",
+	CodeTaoKoulingRateLimited:      "请求过于频繁，请稍后再试",
+	CodeTaoKoulingParseFailed:      "淘口令解析失败",
 
 	CodeInternal: "系统繁忙，请稍后重试",
 
