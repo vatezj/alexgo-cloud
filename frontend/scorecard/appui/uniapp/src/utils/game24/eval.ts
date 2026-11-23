@@ -67,7 +67,7 @@ export function evalTokens(tokens: Token[]): Rational | null {
 
   // 加减层
   function parseExpr(): Rational | null {
-    let left = parseTerm()
+    let left: Rational | null = parseTerm()
     if (left === null)
       return null
     while (pos < tokens.length && (tokens[pos] === '+' || tokens[pos] === '-')) {
@@ -76,7 +76,8 @@ export function evalTokens(tokens: Token[]): Rational | null {
       const right = parseTerm()
       if (right === null)
         return null
-      const v = op === '+' ? ratAdd(left, right) : ratSub(left, right)
+      // 显式标注打破 left↔v 循环推断（vue-tsc TS7022）
+      const v: Rational = op === '+' ? ratAdd(left, right) : ratSub(left, right)
       left = v
     }
     return left
@@ -84,7 +85,7 @@ export function evalTokens(tokens: Token[]): Rational | null {
 
   // 乘除层
   function parseTerm(): Rational | null {
-    let left = parseFactor()
+    let left: Rational | null = parseFactor()
     if (left === null)
       return null
     while (pos < tokens.length && (tokens[pos] === '*' || tokens[pos] === '/')) {
@@ -93,7 +94,7 @@ export function evalTokens(tokens: Token[]): Rational | null {
       const right = parseFactor()
       if (right === null)
         return null
-      const v = op === '*' ? ratMul(left, right) : ratDiv(left, right)
+      const v: Rational | null = op === '*' ? ratMul(left, right) : ratDiv(left, right)
       if (v === null)
         return null // 除零
       left = v

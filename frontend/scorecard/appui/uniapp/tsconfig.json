@@ -14,6 +14,9 @@
       "@wot-ui/ui/global",
       "uni-echarts/global"
     ],
+    // game24 等 node --experimental-strip-types 单测相对导入需 .ts 扩展名；
+    // 配合 type-check 的 --noEmit（TS 要求 allowImportingTsExtensions 时 noEmit/emitDeclarationOnly）
+    "allowImportingTsExtensions": true,
     "sourceMap": true
   },
   "vueCompilerOptions": {

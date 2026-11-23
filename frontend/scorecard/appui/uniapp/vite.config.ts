@@ -33,8 +33,9 @@ export default defineConfig({
        * 分包扫描根（fun-compass 变更）：pages/fun 下六页进 subPackages，
        * root 自动派生为 pages/fun（路由前缀 pages/fun/compass/* 不变），主包自动剔除
        * starfuyu 分包（luckyu-into-scorecard）：pages/starfuyu 下 index/bazi 两页同理进 subPackages
+       * 算24 分包 fun-minigames-24-huarong：pages/game24 进 subPackages
        */
-      subPackages: ['src/pages/fun', 'src/pages/starfuyu'],
+      subPackages: ['src/pages/fun', 'src/pages/starfuyu', 'src/pages/game24'],
     }),
     // https://github.com/uni-helper/vite-plugin-uni-layouts
     UniHelperLayouts(),
