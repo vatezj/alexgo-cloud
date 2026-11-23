@@ -136,6 +136,9 @@ func applyEnvOverrides(cfg *Config) {
 		{"REDIS_PASSWORD", func(v string) { cfg.Redis.Password = v }},
 		{"DEPLOYMENT_MODE", func(v string) { cfg.Deployment.Mode = v }},
 		{"SYSTEM_GRPC_ADDR", func(v string) { cfg.SystemGRPCAddr = v }},
+		{"TAOKOULING_ZHETAKE_APPKEY", func(v string) { cfg.Taokouling.Zhetaoke.Appkey = v }},
+		{"TAOKOULING_TOP_SECRET", func(v string) { cfg.Taokouling.Top.Secret = v }},
+		{"TAOKOULING_SHORTURL_APIKEY", func(v string) { cfg.Taokouling.ShortURL.APIKey = v }},
 	}
 	for _, p := range pairs {
 		if v := os.Getenv(p.env); v != "" {

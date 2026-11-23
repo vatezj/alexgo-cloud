@@ -94,3 +94,36 @@ starfuyu:
   bg_file: "./data/starfuyu/bg.png"       # 分享卡底图 1728×2397（可替换模板，源码树外）；空串=回退 assets/bgimage/bg.png
   cover_dir: "./data/starfuyu/cover"    # 软文封面目录（{date}.png 合成封面，scripts/starfuyu_cover.py 产出）；缺失回退海报
   cute_dir: "./data/starfuyu/cute/cutout" # 角色抠图目录（12 张透明 PNG，scripts/starfuyu_cutout.py 产出）；空串=渲染 30502 不回退
+
+taokouling:
+  zhetaoke:
+    appkey: ""             # 凭据提交空串（密钥不进 git），部署期 env TAOKOULING_ZHETAKE_APPKEY 注入
+    sid: "21649"
+    parse_pid: "mm_106702626_354300208_99225400058"
+    base_url: "https://api.zhetaoke.com:10001"
+    timeout: 5
+    max_retries: 1
+  haodanku:
+    base_url: "http://v2.api.haodanku.com"
+    timeout: 5
+    max_retries: 1
+  top:
+    appkey: "25922261"
+    secret: ""             # 凭据提交空串，部署期 env TAOKOULING_TOP_SECRET 注入
+    user_id: "1060631727"
+    base_url: "https://eco.taobao.com/router/rest"
+    timeout: 5
+    max_retries: 1
+  shorturl:
+    base_url: "http://api.ft12.com/api.php"
+    apikey: ""             # 凭据提交空串，部署期 env TAOKOULING_SHORTURL_APIKEY 注入
+    timeout: 3
+  fallback_search_url: ""
+  rebate_rate: 0.05
+  rebate_tutorial_url: ""
+  rate_limit:
+    enabled: true
+    limit: 10
+    window_seconds: 60
+  cache_enabled: true
+  cache_ttl_seconds: 1800

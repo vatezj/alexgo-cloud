@@ -196,6 +196,59 @@ type Config struct {
 		// AllowedExts：扩展名白名单（小写、无点）；空则用 service 内置白名单。
 		AllowedExts []string `mapstructure:"allowed_exts"`
 	} `mapstructure:"storage"`
+
+	// Taokouling：淘口令返利模块配置（spec §8）。三家第三方（折淘客/好单库/淘宝客
+	// Top）+ 短链服务的凭据与超时、返利参数、限流与缓存开关。
+	// 凭据（zhetaoke.appkey / top.secret / shorturl.apikey）yaml 提交空串，
+	// 部署期由 env 覆盖（TAOKOULING_ZHETAKE_APPKEY 等，见 loader.applyEnvOverrides）。
+	Taokouling struct {
+		// Zhetaoke 折淘客：淘口令解析。
+		Zhetaoke struct {
+			Appkey     string `mapstructure:"appkey"`
+			Sid        string `mapstructure:"sid"`
+			ParsePID   string `mapstructure:"parse_pid"`
+			BaseURL    string `mapstructure:"base_url"`
+			Timeout    int    `mapstructure:"timeout"`     // 秒
+			MaxRetries int    `mapstructure:"max_retries"`
+		} `mapstructure:"zhetaoke"`
+		// Haodanku 好单库：商品搜索/选品。
+		Haodanku struct {
+			BaseURL    string `mapstructure:"base_url"`
+			Timeout    int    `mapstructure:"timeout"` // 秒
+			MaxRetries int    `mapstructure:"max_retries"`
+		} `mapstructure:"haodanku"`
+		// Top 淘宝客 open API（eco.taobao.com/router/rest）：返利链接生成。
+		Top struct {
+			Appkey     string `mapstructure:"appkey"`
+			Secret     string `mapstructure:"secret"`
+			UserID     string `mapstructure:"user_id"`
+			BaseURL    string `mapstructure:"base_url"`
+			Timeout    int    `mapstructure:"timeout"` // 秒
+			MaxRetries int    `mapstructure:"max_retries"`
+		} `mapstructure:"top"`
+		// ShortURL 短链服务（淘口令 → 短链）。
+		ShortURL struct {
+			BaseURL string `mapstructure:"base_url"`
+			APIKey  string `mapstructure:"apikey"`
+			Timeout int    `mapstructure:"timeout"` // 秒
+		} `mapstructure:"shorturl"`
+		// FallbackSearchURL 解析失败时的兜底搜索页 URL；空 = 直接报错。
+		FallbackSearchURL string `mapstructure:"fallback_search_url"`
+		// RebateRate 返利比例（佣金分成给下单用户）。
+		RebateRate float64 `mapstructure:"rebate_rate"`
+		// RebateTutorialURL 返利教程页 URL；空 = 不展示引导。
+		RebateTutorialURL string `mapstructure:"rebate_tutorial_url"`
+		// RateLimit 解析/查询接口的限流（按 key 计数窗口）。
+		RateLimit struct {
+			Enabled       bool `mapstructure:"enabled"`
+			Limit         int  `mapstructure:"limit"`
+			WindowSeconds int  `mapstructure:"window_seconds"`
+		} `mapstructure:"rate_limit"`
+		// CacheEnabled 解析结果缓存开关（同一淘口令命中缓存不打三方）。
+		CacheEnabled bool `mapstructure:"cache_enabled"`
+		// CacheTTLSeconds 缓存 TTL（秒）；Go 字段名 CacheTTLSeconds 全任务统一。
+		CacheTTLSeconds int `mapstructure:"cache_ttl_seconds"`
+	} `mapstructure:"taokouling"`
 }
 
 // FlatJobs 把嵌套 Jobs（模块 → 任务名 → 表达式）摊平成 "模块.任务名" → 表达式，
