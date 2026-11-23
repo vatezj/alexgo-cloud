@@ -27,8 +27,32 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 COVER_BG = ROOT / "data" / "starfuyu" / "cover_bg.png"
 LOGO = ROOT / "data" / "starfuyu" / "logo.jpg"
-FONT_DIGIT = "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"
-FONT_CJK = str(ROOT / "data" / "fonts" / "AlibabaPuHuiTi-3-85-Bold.ttf")
+
+# 字体：跨平台候选链（2026-11-23 服务器修复：原 mac 固定路径在 Linux 报
+# OSError: cannot open resource）。首选仓库内置 Fredoka（OFL，data/fonts/，
+# 两端字形统一）；回退 mac Arial Rounded；数字最后回退普惠体。
+# CJK 回退链兜底服务器缺普惠体的情况，全失败给可执行的缺文件报错。
+FONT_DIGIT_CANDS = [
+    ROOT / "data" / "fonts" / "Fredoka.ttf",
+    Path("/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"),
+    ROOT / "data" / "fonts" / "AlibabaPuHuiTi-3-85-Bold.ttf",
+]
+FONT_CJK_CANDS = [
+    ROOT / "data" / "fonts" / "AlibabaPuHuiTi-3-85-Bold.ttf",
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+    Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+]
+
+
+def resolve_font(cands: list, label: str) -> Path:
+    """按候选序取第一个存在的字体；全缺 → 明确报缺哪个目录该随部署拷贝。"""
+    for c in cands:
+        if Path(c).exists():
+            return Path(c)
+    raise SystemExit(
+        f"[cover] 缺字体({label})，已尝试: " + ", ".join(str(c) for c in cands)
+        + " —— 请随部署拷贝 data/fonts/（Fredoka.ttf + AlibabaPuHuiTi-3-85-Bold.ttf）"
+    )
 
 # 水印清除：右下白字块（实测 2140..2299 × 941..973，外扩），克隆源左移量。
 WM_BOX = (2126, 926, 2304, 986)   # x0,y0,x1,y1
@@ -110,8 +134,12 @@ def compose(date: dt.date, bg: Path = COVER_BG) -> Image.Image:
     else:
         im = Image.open(src).convert("RGBA")  # 已是清水印源，直接用
 
-    digits = ImageFont.truetype(FONT_DIGIT, DATE_POS["digits"][1])
-    weekday_font = ImageFont.truetype(FONT_CJK, DATE_POS["weekday"][1])
+    digits = ImageFont.truetype(str(resolve_font(FONT_DIGIT_CANDS, "数字")), DATE_POS["digits"][1])
+    try:  # Fredoka 可变字体取 SemiBold 字重；非可变字体（Arial/普惠体）静默跳过
+        digits.set_variation_by_axes([600])
+    except Exception:
+        pass
+    weekday_font = ImageFont.truetype(str(resolve_font(FONT_CJK_CANDS, "中文")), DATE_POS["weekday"][1])
     (dcx, dcy), _ = DATE_POS["digits"]
     (wcx, wcy), _ = DATE_POS["weekday"]
     stroke_text(im, (dcx * im.width, dcy * im.height), date.strftime("%m%d"), digits)
