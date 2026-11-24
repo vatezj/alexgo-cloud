@@ -17,10 +17,13 @@ import (
 var FxModule = fx.Module("taokouling",
 	fx.Provide(
 		repository.NewChannelRepository,
+		// T4b 机械适配：service 消费端接口 ← 新仓储具体类型（结构化满足）。
+		func(r *repository.ChannelRepository) service.ChannelRepo { return r },
 		service.NewChannelService,
 		admin.NewAdminChannelController,
 		app.NewAppChannelController,
-		repository.NewLogRepository,
+		repository.NewConversionLogRepository,
+		func(r *repository.ConversionLogRepository) service.LogRepo { return r },
 		service.NewLogService,
 		admin.NewAdminLogController,
 		app.NewAppLogController,

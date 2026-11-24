@@ -1,8 +1,6 @@
 package admin
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 
 	"alexGo-cloud/modules/taokouling/model"
@@ -11,6 +9,8 @@ import (
 	"alexGo-cloud/pkg/resp"
 )
 
+// T4b 机械适配：新仓储 ConversionLogRepository 仅 Append/List，
+// 脚手架 Get/Update/Delete 无对应 service 方法，随死代码删除（T14 重写时整体替换）。
 type AdminLogController struct {
 	svc service.LogService
 }
@@ -29,59 +29,13 @@ func (c *AdminLogController) List(ctx *gin.Context) {
 	resp.OK(ctx, list)
 }
 
-func (c *AdminLogController) Get(ctx *gin.Context) {
-	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
-	if id == 0 {
-		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
-		return
-	}
-	entity, err := c.svc.GetByID(ctx.Request.Context(), id)
-	if err != nil {
-		resp.Fail(ctx, err)
-		return
-	}
-	resp.OK(ctx, entity)
-}
-
 func (c *AdminLogController) Create(ctx *gin.Context) {
-	var req model.Log
+	var req model.ConversionLog
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
 	if err := c.svc.Create(ctx.Request.Context(), &req); err != nil {
-		resp.Fail(ctx, err)
-		return
-	}
-	resp.OK(ctx, nil)
-}
-
-func (c *AdminLogController) Update(ctx *gin.Context) {
-	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
-	if id == 0 {
-		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
-		return
-	}
-	var req model.Log
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
-		return
-	}
-	req.ID = id
-	if err := c.svc.Update(ctx.Request.Context(), &req); err != nil {
-		resp.Fail(ctx, err)
-		return
-	}
-	resp.OK(ctx, nil)
-}
-
-func (c *AdminLogController) Delete(ctx *gin.Context) {
-	id, _ := strconv.ParseUint(ctx.Param("id"), 10, 64)
-	if id == 0 {
-		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, nil))
-		return
-	}
-	if err := c.svc.Delete(ctx.Request.Context(), id); err != nil {
 		resp.Fail(ctx, err)
 		return
 	}

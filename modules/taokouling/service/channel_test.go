@@ -23,15 +23,15 @@ func (f *fakeChannelRepo) Create(_ context.Context, e *model.Channel) error {
 	return nil
 }
 
-func (f *fakeChannelRepo) List(_ context.Context, _ uint64) ([]*model.Channel, error) {
-	out := make([]*model.Channel, 0, len(f.data))
+func (f *fakeChannelRepo) List(_ context.Context, _, _ int) ([]model.Channel, int64, error) {
+	out := make([]model.Channel, 0, len(f.data))
 	for _, e := range f.data {
-		out = append(out, e)
+		out = append(out, *e)
 	}
-	return out, nil
+	return out, int64(len(out)), nil
 }
 
-func (f *fakeChannelRepo) GetByID(_ context.Context, _ uint64, id uint64) (*model.Channel, error) {
+func (f *fakeChannelRepo) GetByID(_ context.Context, id uint64) (*model.Channel, error) {
 	if e, ok := f.data[id]; ok {
 		return e, nil
 	}
@@ -43,7 +43,7 @@ func (f *fakeChannelRepo) Update(_ context.Context, e *model.Channel) error {
 	return nil
 }
 
-func (f *fakeChannelRepo) Delete(_ context.Context, _ uint64, id uint64) error {
+func (f *fakeChannelRepo) Delete(_ context.Context, id uint64) error {
 	delete(f.data, id)
 	return nil
 }
