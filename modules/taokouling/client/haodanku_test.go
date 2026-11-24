@@ -94,7 +94,8 @@ func TestHaodanku_RatesCodeZero(t *testing.T) {
 	}
 }
 
-// TestHaodanku_ItemDesc：正常取 data.itemdesc；连续 500 → err 且计数==2（HTTPHelper 重试一次）。
+// TestHaodanku_ItemDesc：正常取 data.itemdesc（apikey 由参数传入并入路径）；
+// 换第二个 apikey 请求路径随之变化（证明无硬编码兜底）；连续 500 → err 且计数==2（HTTPHelper 重试一次）。
 func TestHaodanku_ItemDesc(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		var count atomic.Int64
@@ -103,16 +104,16 @@ func TestHaodanku_ItemDesc(t *testing.T) {
 			if r.Method != http.MethodGet {
 				t.Errorf("method = %s, want GET", r.Method)
 			}
-			// 原项目固定 HAODANKYAPIKEY（index.php define）——路径段钉死。
-			if r.URL.Path != "/item_detail/apikey/vate/itemid/"+hkItemID {
-				t.Errorf("path = %q, want /item_detail/apikey/vate/itemid/%s", r.URL.Path, hkItemID)
+			// apikey 是渠道参数——路径段须为调用方传入的 "custom-key"，而非任何固定值。
+			if r.URL.Path != "/item_detail/apikey/custom-key/itemid/"+hkItemID {
+				t.Errorf("path = %q, want /item_detail/apikey/custom-key/itemid/%s", r.URL.Path, hkItemID)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":{"itemdesc":"` + hkItemDesc + `"}}`))
 		}))
 		defer srv.Close()
 
-		desc, err := newHaodankuTestClient(srv.URL, 1).ItemDesc(context.Background(), hkItemID)
+		desc, err := newHaodankuTestClient(srv.URL, 1).ItemDesc(context.Background(), hkItemID, "custom-key")
 		if err != nil {
 			t.Fatalf("ItemDesc err = %v", err)
 		}
@@ -124,6 +125,37 @@ func TestHaodanku_ItemDesc(t *testing.T) {
 		}
 	})
 
+	// 第二个 apikey → 路径随参数变化，证明无硬编码兜底（R7）。
+	t.Run("apikey parameter changes path", func(t *testing.T) {
+		var gotPath atomic.Value
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath.Store(r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"itemdesc":"` + hkItemDesc + `"}}`))
+		}))
+		defer srv.Close()
+
+		c := newHaodankuTestClient(srv.URL, 1)
+		if _, err := c.ItemDesc(context.Background(), hkItemID, "custom-key"); err != nil {
+			t.Fatalf("ItemDesc(custom-key) err = %v", err)
+		}
+		p1, _ := gotPath.Load().(string)
+		if want := "/item_detail/apikey/custom-key/itemid/" + hkItemID; p1 != want {
+			t.Errorf("path(custom-key) = %q, want %q", p1, want)
+		}
+
+		if _, err := c.ItemDesc(context.Background(), hkItemID, "partner-other-key"); err != nil {
+			t.Fatalf("ItemDesc(partner-other-key) err = %v", err)
+		}
+		p2, _ := gotPath.Load().(string)
+		if want := "/item_detail/apikey/partner-other-key/itemid/" + hkItemID; p2 != want {
+			t.Errorf("path(partner-other-key) = %q, want %q", p2, want)
+		}
+		if p1 == p2 {
+			t.Errorf("两个不同 apikey 得到同一路径 %q——apikey 未真正进入请求", p1)
+		}
+	})
+
 	t.Run("5xx retry once then fail", func(t *testing.T) {
 		var count atomic.Int64
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +164,7 @@ func TestHaodanku_ItemDesc(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := newHaodankuTestClient(srv.URL, 1).ItemDesc(context.Background(), hkItemID)
+		_, err := newHaodankuTestClient(srv.URL, 1).ItemDesc(context.Background(), hkItemID, "custom-key")
 		if err == nil {
 			t.Fatal("ItemDesc err = nil, want error after retry exhausted")
 		}

@@ -15,12 +15,6 @@ import (
 // 业务失败不触发 HTTPHelper 重试（单次尝试即返回）。
 var ErrNoRates = errors.New("haodanku: 换链失败")
 
-// haodankuItemAPIKey 是 item_detail 路径段的好单库 apikey。
-// 原 PHP 项目在 index.php 固定 define("HAODANKYAPIKEY", 'vate')，与换链用的
-// 渠道三元组 apikey（ratesurl 表单字段，落 taokouling_channel 表）相互独立；
-// 本模块 config 的 haodanku 段只留 base_url/超时（设计 §8），无 apikey 槽位，故沿用固定值。
-const haodankuItemAPIKey = "vate"
-
 // HaodankuClient 是好单库（haodanku）换链与商品详情客户端。
 type HaodankuClient struct {
 	helper  *HTTPHelper
@@ -98,11 +92,13 @@ func parseCouponMoney(n json.Number) int {
 }
 
 // ItemDesc 取商品描述（必买理由）：GET {base}/item_detail/apikey/{apikey}/itemid/{itemID}
-// （路径段经 url.PathEscape）→ data.itemdesc。
+// （apikey/itemID 两段均经 url.PathEscape）→ data.itemdesc。
+// apikey 属渠道三元组，由服务层（Task 12）按已解析渠道在调用时传入——
+// 合作渠道 apikey 各不相同，客户端不得硬编码。
 // 调用方容忍失败（err → 文案理由行省略）；传输层/5xx 按 HTTPHelper 策略重试。
-func (c *HaodankuClient) ItemDesc(ctx context.Context, itemID string) (string, error) {
+func (c *HaodankuClient) ItemDesc(ctx context.Context, itemID, apikey string) (string, error) {
 	u := c.baseURL + "/item_detail/apikey/" +
-		url.PathEscape(haodankuItemAPIKey) + "/itemid/" + url.PathEscape(itemID)
+		url.PathEscape(apikey) + "/itemid/" + url.PathEscape(itemID)
 
 	status, body, err := c.helper.Get(ctx, u)
 	if err != nil {
