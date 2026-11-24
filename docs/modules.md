@@ -851,7 +851,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 | `infra:codegen:sync` | 同上 | 同步 |
 | `infra:codegen:delete` | 同上 | 删除 |
 
-仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`/`social`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`system:online:list`、`scorecard:room`/`scorecard:record`/`scorecard:friend`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
+仅菜单/后端使用（前端无 v-access）：目录级 `system`/`order`/`infra`/`oauth2`/`scorecard`/`social`、`system:log:login`、`system:log:operate`、`system:auth:profile`、`system:tenant:manage`、`member:user:manage`、`system:online:list`、`scorecard:room`/`scorecard:record`/`scorecard:friend`、`taokouling:channel`/`taokouling:log`（菜单可见性 + 后端 casbin 双层控制，页内不拆按钮，见 §11.8）。
 
 ### 9.3 注意事项
 
@@ -1368,7 +1368,7 @@ goLucky 源码目录（含自带 `.git` 与构建产物）已随本模块收口�
 6. 带 partner 请求抓包 haodanku `ratesurl` pid 与渠道配置一致
 7. 同 IP 第 11 次/分 → 429 + code 30704
 8. 后台菜单两页可见、渠道增删改、记录页筛选（含同日 start=end 日期筛选返回当日数据）
-9. 删默认渠道行 → 30703；zhetaoke appkey 清空 → 30702
+9. API 删除默认渠道行 → 400+10001（禁删守卫）；直连数据库删除默认行后再转换 → 400+30703；zhetaoke appkey 清空 → 400+30702
 
 注记：需有效第三方凭据（挂起项，凭据确认后补验；TOP 若无 tbk.tpwd.create 授权按降级口径交付，spec 决定 26）。
 
