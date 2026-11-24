@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -159,6 +160,51 @@ func TestAdminLogs_PageShape(t *testing.T) {
 		if _, ok := data[k]; !ok {
 			t.Fatalf("data 缺键 %s: %s", k, w.Body.String())
 		}
+	}
+}
+
+// TestAdminLogs_DateOnlyEndIncludesFullDay date-only end 补全日：
+// 种今日 15:00（本地）行，start=end=今日（date-only）→ 行必须返回
+// （旧实现 end 解析为当日 00:00，`created_at <= ?` 会漏掉整个 end 当日）。
+func TestAdminLogs_DateOnlyEndIncludesFullDay(t *testing.T) {
+	r, db := newAdminRouter(t)
+	logs := repository.NewConversionLogRepository(db)
+
+	now := time.Now()
+	at := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, time.Local)
+	rec := &model.ConversionLog{
+		Endpoint: "parse", Status: 1, InputText: "tkl",
+		CreatedAt: at,
+	}
+	if err := logs.Append(t.Context(), rec); err != nil {
+		t.Fatal(err)
+	}
+	// 钉死 seed：跳过 gorm 自动回填，保证 created_at 就是今日 15:00 本地墙钟。
+	if err := db.Model(&model.ConversionLog{}).
+		Where("id = ?", rec.ID).UpdateColumn("created_at", at).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	day := at.Format("2006-01-02")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/logs?start="+day+"&end="+day, nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("应 200: status=%d body=%s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Code int `json:"code"`
+		Data struct {
+			List  []map[string]any `json:"list"`
+			Total int64            `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("解析失败: %v body=%s", err, w.Body.String())
+	}
+	if env.Code != 0 || env.Data.Total != 1 || len(env.Data.List) != 1 {
+		t.Fatalf("date-only 同日区间应含当日 15:00 行: code=%d total=%d list=%d body=%s",
+			env.Code, env.Data.Total, len(env.Data.List), w.Body.String())
 	}
 }
 

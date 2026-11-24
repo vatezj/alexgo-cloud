@@ -213,8 +213,8 @@ func (c *AdminController) DeleteChannel(ctx *gin.Context) {
 	resp.OK(ctx, nil)
 }
 
-// logReq GET /logs 查询入参：start/end RFC3339 或 2006-01-02（date-only 接受）；
-// status 缺省 -1（不过滤），显式传值才生效。
+// logReq GET /logs 查询入参：start/end RFC3339 或 2006-01-02（date-only 按本地时区，
+// end 的 date-only 含当日全天）；status 缺省 -1（不过滤），显式传值才生效。
 type logReq struct {
 	resp.PageReq
 	Start   string `form:"start"`
@@ -224,17 +224,23 @@ type logReq struct {
 	Status  *int   `form:"status"`
 }
 
-// parseTime 解析时间入参：空 → 零值（不过滤）；RFC3339 优先，退 2006-01-02；均败 → 10001。
-func parseTime(s string) (time.Time, error) {
+// parseTime 解析时间入参：空 → 零值（不过滤）；RFC3339 优先（自带时区，原样），退 2006-01-02
+// date-only 按 time.Local 解析（行按本地墙钟写入，UTC 解析会按偏移错位边界小时）；
+// isEnd（上界）时 date-only 再进一日到次日零点——repo 过滤用 <=，使 end 当日全天命中；
+// 均败 → 10001。
+func parseTime(s string, isEnd bool) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t, nil
 	}
-	t, err := time.Parse("2006-01-02", s)
+	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
 	if err != nil {
 		return time.Time{}, err
+	}
+	if isEnd {
+		t = t.AddDate(0, 0, 1)
 	}
 	return t, nil
 }
@@ -246,7 +252,7 @@ func parseTime(s string) (time.Time, error) {
 //	@Param		page	query		integer	false	"页码，默认 1"	Example(1)
 //	@Param		size	query		integer	false	"每页条数，默认 10"	Example(10)
 //	@Param		start	query		string	false	"RFC3339 或 2006-01-02"	Example(2026-11-24)
-//	@Param		end		query		string	false	"RFC3339 或 2006-01-02"	Example(2026-11-24)
+//	@Param		end		query		string	false	"RFC3339 或 2006-01-02（date-only 含当日全天）"	Example(2026-11-24)
 //	@Param		partner	query		string	false	"渠道短码精确过滤"	Example(kp)
 //	@Param		item_id	query		string	false	"商品 ID 精确过滤"	Example(123)
 //	@Param		status	query		integer	false	"1成功 2降级 3无口令 4硬错误；缺省 -1 不过滤"	Example(1)
@@ -260,12 +266,12 @@ func (c *AdminController) ListLogs(ctx *gin.Context) {
 		return
 	}
 	req.Defaults()
-	start, err := parseTime(req.Start)
+	start, err := parseTime(req.Start, false)
 	if err != nil {
 		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
 	}
-	end, err := parseTime(req.End)
+	end, err := parseTime(req.End, true)
 	if err != nil {
 		resp.Fail(ctx, errs.New(errs.CodeParamInvalid, err))
 		return
