@@ -37,6 +37,7 @@ alexGo-cloud 是一个多租户的管理后台 + C 端会员服务，后端 Go�
 | **order** | `modules/order` | 订单 CRUD + Transactional Outbox 发事件（可由 `cfg.Modules["order"]` 开关整体跳过） | `/api/admin/order` | 3 | 无（gap，见 §7.4） |
 | scorecard | modules/scorecard | 打牌记账（房间/计分/茶饭/战绩/好友） | /api/app/scorecard、/api/admin/scorecard | 23 | 全表 tenant_id |
 | starfuyu | modules/starfuyu | 星座运势/八字/求签 | /api/app/starfuyu、/api/admin/starfuyu、/api/public/starfuyu | 13+8+1 | 内容表 tid=0，用户表 tenant_id |
+| taokouling | modules/taokouling | 淘口令转换（解析/换链/生成口令/文案） | /api/app/taokouling、/api/admin/taokouling | 7 | 数据面恒 tid=0（平台级，非租户资产） |
 
 所有模块实现 `server.Module.RegisterRoutes`，由 `alexgo-server/server/http.go` 统一挂到 `/api` 组。
 
@@ -734,6 +735,9 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 │  ├─ Rooms          /scorecard/rooms      views/scorecard/ScorecardRoomsPage     perm="scorecard:room"
 │  ├─ Records        /scorecard/records    views/scorecard/ScorecardRecordsPage   perm="scorecard:record"
 │  └─ Friends        /scorecard/friends    views/scorecard/ScorecardFriendsPage   perm="scorecard:friend"
+├─ 淘口令            /taokouling           perm="taokouling"  sort=86
+│  ├─ 渠道配置       /taokouling/channels  views/taokouling/TaokoulingChannelsPage  perm="taokouling:channel"
+│  └─ 转换记录       /taokouling/logs      views/taokouling/TaokoulingLogsPage      perm="taokouling:log"
 ├─ 代码生成          /codegen               perm="infra"  sort=90
 │  └─ 代码生成配置   /codegen/config        views/infra/codegen/index        perm="infra:codegen"
 │     ├─ [按钮] 导入   perm="infra:codegen:import"
@@ -789,7 +793,7 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 
 ## 9. 权限码速查总表
 
-### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 28 组）
+### 9.1 后端 casbin 前缀 → 路由（`permission_routes.go`，共 30 组）
 
 | 前缀 | 保护路由 |
 | --- | --- |
@@ -821,6 +825,8 @@ app 五条挂 `/api/app` 组：登录两条公开；bind 三条在 handler 内 `
 | `fishgame:stats` | `/api/admin/fishgame/stats` |
 | `starfuyu:fortune` | `/api/admin/starfuyu/fortunes`, `/api/admin/starfuyu/fortunes/*` |
 | `starfuyu:task` | `/api/admin/starfuyu/tasks`, `/api/admin/starfuyu/tasks/*`, `/api/admin/starfuyu/limits` |
+| `taokouling:channel` | `/api/admin/taokouling/channels`, `/api/admin/taokouling/channels/*` |
+| `taokouling:log` | `/api/admin/taokouling/logs`, `/api/admin/taokouling/logs/*` |
 
 ### 9.2 前端 `v-access:code` 使用清单
 
@@ -1276,6 +1282,95 @@ goLucky 源码目录（含自带 `.git` 与构建产物）已随本模块收口�
 1. ~~luckyU 小程序切换 member/social 登录 + 对接新 API 契约~~——2026-11-13 已并入 scorecard appui 分包 `frontend/scorecard/appui/uniapp/src/pages/starfuyu/`（index+bazi 两页，走 member 登录态与新 API 契约），源目录 `modules/starfuyu/luckyU/` 已删除。
 2. admin vben 页面（运势列表/任务中心/限流概览）+ 菜单种子 + `permission_routes` 联调——本期无菜单无页面。
 3. （可选）签文模板库表化、运势内容租户化运营、公众号定时自动上传（现为手动触发）。
+
+---
+
+## 14. taokouling — 淘口令转换模块
+
+### 14.1 功能
+
+淘口令转换（taoquan 移植）：粘贴任意淘宝分享文案 → 正则提取口令体 → 折淘客 zhetaoke 解析 `item_id` → 按渠道换好单库 haodanku 带券链接 → 淘宝 TOP 生成自己的新口令 → 拼营销文案。设计见
+[`superpowers/specs/2026-11-23-taokouling-module-design.md`](superpowers/specs/2026-11-23-taokouling-module-design.md)；业务语义以移植文档为准，横切惯例以本仓库为准。
+
+- **轻量链路**（`POST /parse`，口令→`item_id`）：只解析出 `item_id` 交调用方自行跳转。口令提取按「成对货币符 + 8~24 位字母数字」正则（`￥` 优先），另支持 `?tk=` URL 型口令；zhetaoke 解析失败 → **30705 硬错不降级**，无口令 → 30701，密钥缺失 → 30702。
+- **完整链路**（`POST /convert`，轻量的超集）：解析 → 按渠道换 PID 带券链接（`item_id+pid` 进程内 TTL 缓存）→ TOP `tbk.tpwd.create` 生成新口令（`click_url` 缓存）→ 拼营销文案（券后价/无券促销价、最高返利、必买理由）。**业务失败（口令过期/无券/换链或生成失败）降级 HTTP 200 + `degraded:true`** 返回可用文案；配置缺失仍快速硬错 30702；每次转换落转换记录（限流命中的不落）。
+
+装配要点（`modules/taokouling/module.go`；`modules.taokouling: false` 时两端前缀全不注册）：
+
+- **client 子包**：zhetaoke / haodanku / top（TOP 签名自实现：参数按 key 升序拼接 + md5）/ shorturl 四家薄客户端，接口注入可打桩；每跳超时默认 5s（短链 3s）、网络错/5xx 重试 1 次、业务失败不重试
+- **service**：口令提取/文案渲染纯函数、渠道解析、按 ClientIP 固定窗口限流（两接口合计）、TTL 缓存（默认 1800s）、`convert.go` 编排
+- **C 端公开不挂 casbin/Bearer**；admin 5 端点 casbin 放行后 handler 不取 claims；数据面 service 层恒钉 tid=0
+
+### 14.2 权限与菜单
+
+| 端 | 范围 | 鉴权 |
+| --- | --- | --- |
+| app | `/api/app/taokouling` 2 端点 | 公开（无 Bearer）+ 按 ClientIP 限流（默认 10 次/分，两接口合计）→ **HTTP 429 + 30704**；限流前置，被限请求不落转换记录 |
+| admin | `/api/admin/taokouling` 5 端点 | 管理员 token + casbin，两前缀 `taokouling:channel` / `taokouling:log`（已登记 `permission_routes.go`，见 §9.1） |
+
+菜单种子 `modules/system/migrations/20261123000001_taokouling_menus.up.sql`（`tenant_id=0`、NOT EXISTS 幂等）：目录「淘口令」`/taokouling`（perm `taokouling`、sort=86）+ 两页面（见 §8.2）；页内不用 `v-access`、不拆按钮——可见性靠菜单、操作靠后端 casbin。
+
+### 14.3 端点（7 条）
+
+| 方法 | 路径 | 权限码 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/app/taokouling/parse` | 公开+限流 | 轻量链路。body `{password, partner?}` → `data:{item_id}`；无口令 30701、解析失败 30705、配置缺失 30702 |
+| POST | `/api/app/taokouling/convert` | 公开+限流 | 完整链路。成功/降级均 HTTP 200，`data:{text,item_id,degraded,title?,coupon_money?,new_tkl?}`；无口令 30701、渠道断供 30703 |
+| GET | `/api/admin/taokouling/channels` | `taokouling:channel` | 渠道分页列表（size≤100，恒 tid=0） |
+| POST | `/api/admin/taokouling/channels` | `taokouling:channel` | 新建渠道（partner/host/pid/apikey/tb_name/name/status；`(partner,host)` 组合查重；pid/apikey/tb_name 必填 10001；恒写 tid=0） |
+| PUT | `/api/admin/taokouling/channels/:id` | `taokouling:channel` | 更新（路径 id 优先，校验同上） |
+| DELETE | `/api/admin/taokouling/channels/:id` | `taokouling:channel` | 删除；默认行禁删 → 10001「默认渠道不可删除」 |
+| GET | `/api/admin/taokouling/logs` | `taokouling:log` | 转换记录只读分页（筛选 `start/end`、`partner`、`status`、`item_id`；id 倒序；date-only `end` 含当日全天，同日 `start=end` 返回当日数据） |
+
+### 14.4 数据模型（2 表）
+
+迁移 `modules/taokouling/migrations/20261123000001_taokouling_tables.{up,down}.sql`（`CREATE TABLE IF NOT EXISTS`、无外键）。两表虽带 `tenant_id` + `created_at`/`updated_at`，**读写在 service 层恒显式钉 0**（不走租户插件的请求上下文，决定 25——渠道/记录是平台级数据，伪造租户头切不到也写不进）：
+
+| 表 | 要点 |
+| --- | --- |
+| `taokouling_channel` | 渠道 PID 白名单：`name`、`partner`（空=非 partner 渠道）、`host`（空=不匹配，普通索引 `(tenant_id,host)`）、`pid`/`apikey`/`tb_name`（haodanku 三元组，**落表不进 config**）、`status` 1 启用 0 停用。**复合唯一 `UNIQUE(tenant_id, partner, host)`**——默认行 `('','')`、host 行、partner 行互不冲突，admin 按 `(partner,host)` 查重。种子仅默认行一行（name=默认渠道、partner=host=''、status=1、tid=0，NOT EXISTS 幂等），其余渠道走 admin 手工录入 |
+| `taokouling_conversion_log` | 转换记录（追加写，恒 tid=0）：`endpoint`（parse/convert）、`partner`、`input_text`（截断 500）、`extracted_tkl`、`item_id`（可空串）、`status` **1 成功 / 2 降级 / 3 无口令 / 4 硬错误**、`error`、`duration_ms`、`ip`；索引 `(tenant_id,created_at)`、`(item_id)`、`(partner)` |
+
+### 14.5 错误码（30701–30705）
+
+`pkg/errors/code.go` 常量 + registry 双登记（3xxxx → HTTP 400 走 `resp.statusFor`，**30704 限流例外由 handler 直写 429**）：
+
+| 码 | 含义 | 码 | 含义 |
+| --- | --- | --- | --- |
+| 30701 | 未识别到淘口令（提取不到口令体，两接口同） | 30704 | 请求过于频繁，请稍后再试（IP 限流，HTTP 429） |
+| 30702 | 淘口令服务配置缺失（zhetaoke/top 等密钥为空，fail-fast） | 30705 | 淘口令解析失败（轻量链路口令过期/商品不存在） |
+| 30703 | 未配置可用推广渠道（默认渠道行缺失/停用） | | |
+
+参数校验 `10001`、内部错 `50000` 走仓库标准码；完整链路业务失败不进错误码（降级 200）。
+
+### 14.6 配置段（`taokouling:`）
+
+`alexgo-server/configs/config.yaml`（结构体 `pkg/config/config.go` 的 `Taokouling`）+ `modules.taokouling: true`：
+
+- **非密钥项进 yaml**：`zhetaoke.{sid,parse_pid,base_url,timeout,max_retries}`、`haodanku.{base_url,timeout,max_retries}`、`top.{appkey,user_id,base_url,timeout,max_retries}`、`shorturl.{base_url,timeout}`、`fallback_search_url`（空=降级纯文案）、`rebate_rate`（0.05）、`rebate_tutorial_url`（空省行）、`rate_limit.{enabled,limit,window_seconds}`（true/10/60）、`cache_enabled`、`cache_ttl_seconds`（1800）
+- **三密钥不进 git**：`zhetaoke.appkey`、`top.secret`、`shorturl.apikey` yaml 只提交空串占位，值由本地工作区（不暂存）或环境变量 `TAOKOULING_ZHETAKE_APPKEY` / `TAOKOULING_TOP_SECRET` / `TAOKOULING_SHORTURL_APIKEY` 注入（`applyEnvOverrides`）；缺值运行时 **30702** fail-fast，上线后轮换
+- 渠道三元组（pid/apikey/tb_name）**不在 config**——落 `taokouling_channel` 表（见 14.4）
+
+### 14.7 已知限制
+
+- **host 渠道匹配 v1 未接线（R10）**：`Resolve` 只走 partner → 默认行，host 恒传空串（HTTP Host 提取属控制器职责，见 `service/convert.go` 注释）——host 渠道行可录入、复合唯一键可用，但换链暂不按 Host 头匹配。
+- **真钱冒烟为挂起项（决定 26）**：本期完成定义 = 代码 + 单测/桩测试全绿 + 下方冒烟清单成文；需有效第三方凭据的项凭据确认后补验；TOP 无 `tbk.tpwd.create` 授权时「新口令可用」按降级口径交付并记后续票。
+
+### 14.8 联调冒烟
+
+> 以下为手工冒烟清单，不进 CI；**需有效第三方凭据**（挂起项，凭据确认后补验）。
+
+1. 有券真口令 → `POST /api/app/taokouling/convert` 文案含「券后价」+ 新口令，新口令淘宝可打开同商品
+2. 无券口令 → 「促销价/限时特惠」分支
+3. 过期口令 → convert 200+degraded、parse 400+30705
+4. 纯关键词 → 两接口 400+30701
+5. `?tk=` 链接可解析
+6. 带 partner 请求抓包 haodanku `ratesurl` pid 与渠道配置一致
+7. 同 IP 第 11 次/分 → 429 + code 30704
+8. 后台菜单两页可见、渠道增删改、记录页筛选（含同日 start=end 日期筛选返回当日数据）
+9. 删默认渠道行 → 30703；zhetaoke appkey 清空 → 30702
+
+注记：需有效第三方凭据（挂起项，凭据确认后补验；TOP 若无 tbk.tpwd.create 授权按降级口径交付，spec 决定 26）。
 
 ---
 
