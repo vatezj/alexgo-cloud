@@ -6,13 +6,7 @@ import { ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 
-import {
-  Button,
-  Input,
-  message,
-  Popconfirm,
-  Switch,
-} from 'ant-design-vue';
+import { Button, message, Popconfirm, Switch } from 'ant-design-vue';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -25,9 +19,6 @@ import {
 import { formatDateTime } from '#/utils/format';
 
 defineOptions({ name: 'TaokoulingChannelsPage' });
-
-/** name 筛选（可选，模糊；空 = 不过滤） */
-const nameFilter = ref('');
 
 const gridOptions: VxeGridProps<TaokoulingChannel> = {
   columns: [
@@ -63,7 +54,6 @@ const gridOptions: VxeGridProps<TaokoulingChannel> = {
         const { list, total } = await listChannelsApi({
           page: page.currentPage,
           size: page.pageSize,
-          ...(nameFilter.value.trim() ? { name: nameFilter.value.trim() } : {}),
         });
         return { items: list, total };
       },
@@ -242,13 +232,6 @@ async function onDelete(row: TaokoulingChannel) {
   <Page auto-content-height>
     <Grid>
       <template #toolbar-tools>
-        <Input
-          v-model:value="nameFilter"
-          allow-clear
-          class="mr-2 w-44"
-          placeholder="渠道名称"
-          @press-enter="onSearch"
-        />
         <Button class="mr-2" type="primary" @click="onSearch">查询</Button>
         <Button type="primary" @click="onCreate">新建渠道</Button>
       </template>
