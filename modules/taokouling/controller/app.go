@@ -67,7 +67,7 @@ func (c *AppController) Parse(ctx *gin.Context) {
 		resp.Fail(ctx, err)
 		return
 	}
-	resp.OK(ctx, itemID)
+	resp.OK(ctx, gin.H{"item_id": itemID})
 }
 
 // Convert 完整链路：限流前置 → 绑参 → svc.Convert → ConvertResult（降级仍 200，data.degraded=true）。

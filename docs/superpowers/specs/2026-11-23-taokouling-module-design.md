@@ -163,7 +163,7 @@ modules/taokouling/
 ├── service/
 │   ├── password.go           # Step 1 纯函数：Extract(text) → (tkl, ok)（决定 9，含 tk= 变体）+ TitleOf(text)（【...】抓标题）
 │   ├── render.go             # Step 5 纯函数：Render(input) → 文案（券/无券两分支，决定 18）
-│   ├── channel.go            # 渠道解析（决定 23）+ 默认行查询
+│   ├── resolve.go            # 渠道解析（决定 23）+ 默认行查询
 │   ├── cache.go              # 进程内存 TTL（决定 16），两键位
 │   ├── ratelimit.go          # 按 IP 固定窗口（决定 4）
 │   ├── convert.go            # ConversionService：Parse（轻量）/ Convert（完整编排 + 降级 + 缓存 + 落日志）
@@ -201,6 +201,9 @@ modules/taokouling/
   → text = 「点击搜索其它店铺{链接}」或纯提示文案（fallback 空）
   → data{text, item_id(可能有), degraded:true}（log status=2）
 ```
+
+实际编排次序：`Resolve`（渠道）先于 `ParseTkl`（口令解析）——与上文流程图 Step 2/3 顺序相反，系决定 14「配置缺失快速硬错」的落地（渠道断供时先 30703，不被降级掩盖）。
+目录树中渠道解析文件为 `service/resolve.go`（非 `channel.go`；脚手架 channel.go 已随 T13 删除）。
 
 **轻量链路（`Parse`）**：Step 1 → Step 2，失败硬错（决定 13），不走降级、不查渠道、不落
 `degraded`。成功落 log status=1。

@@ -74,7 +74,7 @@ func postJSON(t *testing.T, r *gin.Engine, path, body string) (int, int, json.Ra
 	return w.Code, env.Code, env.Data, env.Msg
 }
 
-// TestAppParse_SuccessEnvelope 桩返回 "123" → 200 {"code":0,"data":"123"}。
+// TestAppParse_SuccessEnvelope 桩返回 "123" → 200 {"code":0,"data":{"item_id":"123"}}（spec §4.1）。
 func TestAppParse_SuccessEnvelope(t *testing.T) {
 	fake := &fakeConverter{parseItem: "123"}
 	r := newAppRouter(t, fake, unlimitedLimiter())
@@ -83,9 +83,11 @@ func TestAppParse_SuccessEnvelope(t *testing.T) {
 	if status != http.StatusOK || code != 0 {
 		t.Fatalf("应 200/code0: status=%d code=%d", status, code)
 	}
-	var itemID string
-	if err := json.Unmarshal(data, &itemID); err != nil || itemID != "123" {
-		t.Fatalf("data 应为 \"123\": data=%s err=%v", data, err)
+	var payload struct {
+		ItemID string `json:"item_id"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil || payload.ItemID != "123" {
+		t.Fatalf("data 应为 {\"item_id\":\"123\"}: data=%s err=%v", data, err)
 	}
 }
 
