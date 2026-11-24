@@ -22,6 +22,12 @@ var ErrTpwdCreate = errors.New("top: 淘口令生成失败")
 // 或 results.n_tbk_item 缺失/空数组/缺 title。同样不重试。
 var ErrItemInfo = errors.New("top: 商品信息缺失")
 
+// topLoc 为 TOP timestamp 公共参数固定时区（CST, UTC+8）；包级一次初始化。
+var topLoc = time.FixedZone("CST", 8*3600)
+
+// topTimeLayout 为 TOP timestamp 公共参数格式（与同包测试共用同一 layout 断言可解析性）。
+const topTimeLayout = "2006-01-02 15:04:05"
+
 // Item 是 TOP 商品信息（标题/主图/折扣价/划线价），Task 12 文案与返利计算消费。
 type Item struct {
 	Title        string
@@ -96,7 +102,8 @@ func topBusinessErr(sentinel error, e *topErrField) error {
 
 // TpwdCreate 生成自己的新淘口令：POST {base}，sys=taobao.tbk.tpwd.create，
 // 参数 user_id（构造传入）/text/url/logo（空则整键省略，不进签名集合）/ext="{}"/format=json
-// 及公共参数 appkey/sign_method=md5。成功取 data.model（"￥xxx￥"）。
+// 及公共参数 appkey/sign_method=md5/timestamp（协议必填，CST 时区 "2006-01-02 15:04:05"）。
+// 成功取 data.model（"￥xxx￥"）。
 // 业务失败（缺 data.model / error_response / 响应不可解析）→ ErrTpwdCreate，不重试；
 // 传输层失败（网络错 / 5xx 重试耗尽 / 4xx）→ 其他 error。
 func (c *TopClient) TpwdCreate(ctx context.Context, text, url, logo string) (string, error) {
@@ -104,6 +111,7 @@ func (c *TopClient) TpwdCreate(ctx context.Context, text, url, logo string) (str
 		"sys":         "taobao.tbk.tpwd.create",
 		"appkey":      c.appkey,
 		"sign_method": "md5",
+		"timestamp":   time.Now().In(topLoc).Format(topTimeLayout),
 		"user_id":     c.userID,
 		"text":        text,
 		"url":         url,
@@ -172,7 +180,8 @@ func parseTopPrice(raw json.RawMessage) (float64, error) {
 }
 
 // ItemInfo 查商品信息：POST {base}，sys=taobao.tbk.item.info.get，
-// num_iids=itemID、platform=1、ip=clientIP 及公共参数 + sign。
+// num_iids=itemID、platform=1、ip=clientIP 及公共参数 + sign
+// （含 timestamp，协议必填，CST 时区 "2006-01-02 15:04:05"）。
 // 响应 results.n_tbk_item 为数组，取 [0] 的 title/pict_url/zk_final_price/reserve_price
 // （兼容外层 tbk_item_info_get_response 包装与裸 results 两种形状）。
 // 业务失败（空数组 / 缺 title / 价格不可解析 / error_response / 不可解析）→ ErrItemInfo，不重试；
@@ -182,6 +191,7 @@ func (c *TopClient) ItemInfo(ctx context.Context, itemID, clientIP string) (Item
 		"sys":         "taobao.tbk.item.info.get",
 		"appkey":      c.appkey,
 		"sign_method": "md5",
+		"timestamp":   time.Now().In(topLoc).Format(topTimeLayout),
 		"num_iids":    itemID,
 		"platform":    "1",
 		"ip":          clientIP,

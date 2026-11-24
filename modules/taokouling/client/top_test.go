@@ -94,6 +94,13 @@ func TestTop_TpwdCreateSuccess(t *testing.T) {
 		if form.Get("logo") != "https://img.example/logo.jpg" {
 			t.Errorf("logo = %q", form.Get("logo"))
 		}
+		// timestamp 协议必填：非空且能被同一 layout 解析（证明格式正确）。
+		ts := form.Get("timestamp")
+		if ts == "" {
+			t.Error("timestamp 缺失或为空")
+		} else if _, err := time.Parse(topTimeLayout, ts); err != nil {
+			t.Errorf("timestamp = %q 不可被 layout %q 解析: %v", ts, topTimeLayout, err)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"model":"￥abc123￥"}}`))
 	}))
@@ -195,6 +202,13 @@ func TestTop_ItemInfoSuccess(t *testing.T) {
 		}
 		if form.Get("sign") == "" {
 			t.Error("sign 缺失或为空")
+		}
+		// timestamp 协议必填：非空且能被同一 layout 解析（证明格式正确）。
+		ts := form.Get("timestamp")
+		if ts == "" {
+			t.Error("timestamp 缺失或为空")
+		} else if _, err := time.Parse(topTimeLayout, ts); err != nil {
+			t.Errorf("timestamp = %q 不可被 layout %q 解析: %v", ts, topTimeLayout, err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(wrappedPayload))
